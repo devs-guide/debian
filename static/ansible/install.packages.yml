@@ -1,0 +1,110 @@
+---
+- name: Install Debian packages (grouped, user-tunable)
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed }}"
+    package_catalog_file: "{{ playbook_dir }}/{{ package_catalog_filename | default('packages.yml') }}"
+    package_catalog_url_effective: "{{ package_catalog_url }}"
+    default_disabled_groups:
+      - storage
+      - monitoring_benchmark
+      - hardware_info
+      - dev_tools
+      - archive_iso_tools
+      - desktop_rdp_optional
+      - apple_media_optional
+      - gpu_vendor_optional
+      - performance_power
+      - firmware
+
+  pre_tasks:
+    - name: Normalize package group override inputs
+      ansible.builtin.set_fact:
+        package_group_overrides_effective: "{{ package_group_overrides | default({}) }}"
+        package_overrides_effective: "{{ package_overrides | default({}) }}"
+        exclude_packages_effective: "{{ exclude_packages | default([]) }}"
+
+    - name: Check whether local package catalog exists
+      ansible.builtin.stat:
+        path: "{{ package_catalog_file }}"
+      register: package_catalog_stat
+
+    - name: Fetch package catalog from published source when local copy is missing
+      ansible.builtin.get_url:
+        url: "{{ package_catalog_url_effective }}"
+        dest: "{{ package_catalog_file }}"
+        mode: "0644"
+      when: not package_catalog_stat.stat.exists
+
+    - name: Load canonical Debian package catalog
+      ansible.builtin.set_fact:
+        package_catalog: "{{ lookup('file', package_catalog_file) | from_yaml }}"
+
+    - name: Merge package overrides into catalog
+      ansible.builtin.set_fact:
+        effective_catalog: "{{ package_catalog.groups | combine(package_overrides_effective, recursive=True) }}"
+
+    - name: Check whether udftools is available from configured repositories
+      ansible.builtin.command:
+        argv:
+          - apt-cache
+          - show
+          - udftools
+      register: udftools_package_check
+      changed_when: false
+      failed_when: false
+
+    - name: Remove udftools from archive_iso_tools when unavailable
+      ansible.builtin.set_fact:
+        effective_catalog: >-
+          {{
+            effective_catalog
+            | combine(
+                {
+                  'archive_iso_tools': (
+                    effective_catalog.get('archive_iso_tools', {})
+                    | combine(
+                        {
+                          'packages': (
+                            effective_catalog.get('archive_iso_tools', {}).get('packages', [])
+                            | difference(['udftools'])
+                          )
+                        },
+                        recursive=True
+                      )
+                  )
+                },
+                recursive=True
+              )
+          }}
+      when:
+        - effective_catalog.get('archive_iso_tools') is mapping
+        - udftools_package_check.rc != 0
+
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: "{{ apt_cache_valid_time | default(0) }}"
+      when: not apt_skip_cache_refresh | default(false)
+
+  tasks:
+    - name: Show effective package groups
+      ansible.builtin.debug:
+        msg: "Group {{ item.key }} packages: {{ item.value.packages | default([]) | difference(exclude_packages_effective) }}"
+      loop: "{{ effective_catalog | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Install package groups
+      ansible.builtin.apt:
+        name: "{{ item.value.packages | default([]) | difference(exclude_packages_effective) }}"
+        state: present
+      loop: "{{ effective_catalog | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when:
+        - item.value.packages | default([]) | difference(exclude_packages_effective) | length > 0
+        - package_group_overrides_effective.get(item.key, item.key not in default_disabled_groups)

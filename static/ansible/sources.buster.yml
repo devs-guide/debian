@@ -1,0 +1,38 @@
+---
+- name: "[debian]: configure apt archive sources for buster"
+  hosts: all
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_system }}"
+    debian_release: "buster"
+    debian_components: "main contrib non-free"
+
+  tasks:
+    - name: Configure Debian archive sources for buster
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list
+        mode: "0644"
+        content: |
+          deb http://archive.debian.org/debian {{ debian_release }} {{ debian_components }}
+          deb-src http://archive.debian.org/debian {{ debian_release }} {{ debian_components }}
+          deb http://archive.debian.org/debian-security {{ debian_release }}/updates {{ debian_components }}
+          deb-src http://archive.debian.org/debian-security {{ debian_release }}/updates {{ debian_components }}
+
+    - name: Allow archived metadata
+      ansible.builtin.copy:
+        dest: "/etc/apt/apt.conf.d/99-archive-{{ debian_release }}"
+        mode: "0644"
+        content: |
+          Acquire::Check-Valid-Until "false";
+          Acquire::AllowInsecureRepositories "true";
+
+    - name: Remove deb822 sources file when using archive sources
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/debian.sources
+        state: absent
+
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0

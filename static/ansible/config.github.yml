@@ -1,0 +1,8 @@
+# Shared locations and filenames for published Ansible artifacts (GitHub Pages)
+repo_owner: "devs-guide"
+repo_name: "debian"
+pages_base_url: "https://{{ repo_owner }}.github.io/{{ repo_name }}"
+pages_ansible_dir: "ansible"
+playlist_filename: "install.playbooks.txt"
+package_catalog_filename: "packages.yml"
+package_catalog_url: "{{ pages_base_url }}/{{ pages_ansible_dir }}/{{ package_catalog_filename }}"

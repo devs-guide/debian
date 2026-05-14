@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>devs-guide/debian</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f3ea;
+        --ink: #1d2a26;
+        --muted: #59655f;
+        --accent: #9e5a28;
+        --panel: #fffdf8;
+        --line: #d8cfbf;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        background:
+          radial-gradient(circle at top left, rgba(158, 90, 40, 0.14), transparent 28rem),
+          linear-gradient(180deg, #faf7ef 0%, var(--bg) 100%);
+        color: var(--ink);
+      }
+
+      main {
+        max-width: 52rem;
+        margin: 0 auto;
+        padding: 3rem 1.25rem 4rem;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 1rem 2rem rgba(29, 42, 38, 0.06);
+      }
+
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: clamp(2rem, 5vw, 3.25rem);
+        line-height: 1;
+      }
+
+      p, li {
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.6;
+      }
+
+      code, pre {
+        font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 0.9rem 1rem;
+        border-radius: 0.75rem;
+        background: #f2ede1;
+        border: 1px solid var(--line);
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      ul {
+        padding-left: 1.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <h1>devs-guide/debian</h1>
+        <p>Published Debian bootstrap and host-configuration artifacts.</p>
+        <p>Primary entrypoint:</p>
+        <pre>wget -qO- https://devs-guide.github.io/debian/bootstrap.sh | bash</pre>
+        <p>Compatibility aliases:</p>
+        <pre>wget -qO- https://devs-guide.github.io/debian/debian.sh | bash</pre>
+        <pre>wget -qO- https://devs-guide.github.io/debian/metal.sh | bash</pre>
+        <p>Optional Codex CLI runner:</p>
+        <pre>wget -qO- https://devs-guide.github.io/debian/setup.cli.codex.sh | bash</pre>
+        <ul>
+          <li><a href="./bootstrap.sh">bootstrap.sh</a></li>
+          <li><a href="./debian.sh">debian.sh</a></li>
+          <li><a href="./metal.sh">metal.sh</a></li>
+          <li><a href="./release.common.sh">release.common.sh</a></li>
+          <li><a href="./setup.cli.codex.sh">setup.cli.codex.sh</a></li>
+          <li><a href="./ansible/install.playbooks.txt">ansible/install.playbooks.txt</a></li>
+        </ul>
+      </div>
+    </main>
+  </body>
+</html>

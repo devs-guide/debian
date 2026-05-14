@@ -1,0 +1,3 @@
+---
+debian_release: "buster"
+debian_components: "main contrib non-free"

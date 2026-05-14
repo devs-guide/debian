@@ -1,0 +1,15 @@
+---
+debian_ssh_defaults:
+  server:
+    port: 22
+    include_dir: "{{ ssh_default_include_dir | default('/etc/ssh/sshd_config.d') }}"
+    include_path: "{{ ssh_default_include_path | default('/etc/ssh/sshd_config.d/90-debian-baseline.conf') }}"
+    permit_root_login: "yes"
+    password_authentication: "yes"
+    kbd_interactive_authentication: "no"
+    use_pam: "yes"
+    x11_forwarding: "no"
+  access:
+    allow_users: []
+  firewall:
+    manage_ufw_ssh_rules: true

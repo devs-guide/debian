@@ -1,0 +1,8 @@
+# ansible playbooks to publish via GitHub Pages
+# one playbook per line - order matters
+bootstrap.yml
+sources.yml
+install.packages.yml
+users.yml
+lan.yml
+network.yml

@@ -1,0 +1,23 @@
+---
+host_platform_family: "debian"
+debian_release: "trixie"
+debian_components: "main contrib non-free non-free-firmware"
+debian_runtime_facts_dir: "/etc/ansible/debian/facts"
+codex_runtime_facts_path: "/etc/ansible/debian/facts/cli.codex.yml"
+node_enable: false
+codex_enable: false
+package_group_overrides:
+  base: true
+  time_sync: true
+  security: true
+  networking: true
+  storage: false
+  monitoring_benchmark: false
+  hardware_info: false
+  dev_tools: false
+  archive_iso_tools: false
+  desktop_rdp_optional: false
+  apple_media_optional: false
+  gpu_vendor_optional: false
+  performance_power: false
+  firmware: false

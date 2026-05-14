@@ -1,0 +1,135 @@
+---
+# Canonical Debian package groups for host bootstrap and hardening.
+groups:
+  base:
+    description: Essential base tooling and SSH.
+    packages:
+      - sudo
+      - ca-certificates
+      - gnupg
+      - curl
+      - wget
+      - lsb-release
+      - net-tools
+      - iproute2
+      - openssh-server
+  time_sync:
+    description: Reliable time sync.
+    packages:
+      - chrony
+  security:
+    description: Host-level hardening and updates.
+    packages:
+      - ufw
+      - apparmor
+      - apparmor-profiles
+      - apparmor-profiles-extra
+      - unattended-upgrades
+      - apt-listchanges
+      - needrestart
+      - fail2ban
+      - auditd
+      - audispd-plugins
+      - libpam-tmpdir
+      - libpam-passwdqc
+  storage:
+    description: Disk, RAID, and filesystem tooling.
+    packages:
+      - nvme-cli
+      - hdparm
+      - util-linux
+      - mdadm
+      - lvm2
+      - lsscsi
+      - smartmontools
+      - xattr
+  monitoring_benchmark:
+    description: Observability and benchmark tooling.
+    packages:
+      - htop
+      - sysstat
+      - atop
+      - nmon
+      - dstat
+      - iotop
+      - bmon
+      - lm-sensors
+      - fancontrol
+      - i2c-tools
+      - radeontop
+      - fio
+      - bonnie++
+  networking:
+    description: Network tests and small utilities.
+    packages:
+      - iperf3
+      - tree
+      - mailutils
+      - nftables
+      - iptables-persistent
+  hardware_info:
+    description: Hardware inventory and firmware data.
+    packages:
+      - lshw
+      - dmidecode
+      - inxi
+      - pciutils
+      - usbutils
+      - hwinfo
+      - ipmitool
+      - freeipmi-tools
+      - ipmiutil
+      - smartmontools
+      - nvme-cli
+      - hdparm
+      - openssh-client
+  gpu_vendor_optional:
+    description: Optional GPU vendor helpers.
+    packages:
+      - intel-gpu-tools
+      - nvidia-detect
+      - firmware-amd-graphics
+  dev_tools:
+    description: Developer and shell utilities.
+    packages:
+      - git
+      - python3
+      - ksh
+  archive_iso_tools:
+    description: Archive, compression, and disk image utilities.
+    packages:
+      - p7zip-full
+      - unrar-free
+      - libarchive-tools
+      - genisoimage
+      - xorriso
+      - udftools
+      - dmg2img
+      - file
+      - apt-file
+      - sleuthkit
+  apple_media_optional:
+    description: Optional macOS/APFS/HFS utilities.
+    packages:
+      - hfsprogs
+      - hfsplus
+      - libfsapfs-utils
+      - xar
+  desktop_rdp_optional:
+    description: Optional lightweight GUI and RDP stack.
+    packages:
+      - xrdp
+      - xfce4
+      - xfce4-goodies
+      - xorg
+      - dbus-x11
+      - x11-xserver-utils
+      - task-lxde-desktop
+  performance_power:
+    description: CPU power management.
+    packages:
+      - linux-cpupower
+  firmware:
+    description: Optional firmware helpers.
+    packages:
+      - firmware-realtek
