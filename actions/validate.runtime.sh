@@ -79,6 +79,10 @@ if ! grep -q 'resolve.release.groupvars.file' "${ROOT}/setup/bootstrap.sh"; then
   echo "[validate.runtime][error] setup/bootstrap.sh must resolve Debian release lanes explicitly"
   rc=1
 fi
+if ! grep -q 'Bootstrap entry sha256' "${ROOT}/setup/bootstrap.sh"; then
+  echo "[validate.runtime][error] setup/bootstrap.sh must log a bootstrap entry revision marker"
+  rc=1
+fi
 if ! grep -q 'select.python.bootstrap.bin' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must detect compatible system python3"
   rc=1
@@ -91,6 +95,10 @@ if ! grep -q 'Bootstrap selection marker' "${ROOT}/setup/release.common.sh"; the
   echo "[validate.runtime][error] setup/release.common.sh must record bootstrap selection details"
   rc=1
 fi
+if ! grep -q 'Bootstrap helper sha256' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must log a helper revision marker"
+  rc=1
+fi
 if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/bootstrap.sh"; then
   echo "[validate.runtime][error] setup/bootstrap.sh must use neutral /tmp/ansible/debian cache paths"
   rc=1
@@ -101,6 +109,10 @@ if ! grep -q 'REFRESH' "${ROOT}/setup/bootstrap.sh"; then
 fi
 if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must use neutral /tmp/ansible/debian runtime paths"
+  rc=1
+fi
+if ! grep -q 'runtime_helper_sha256=' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must persist helper revision details in the selection marker"
   rc=1
 fi
 

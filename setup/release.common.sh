@@ -38,6 +38,9 @@ PYTHON_BOOTSTRAP_VERSION=""
 HOST_DEBIAN_CODENAME=""
 RESOLVED_RELEASE_LANE=""
 BOOTSTRAP_SELECTION_MARKER="${TMP_DIR}/bootstrap.selection.env"
+RUNTIME_HELPER_SOURCE_PATH="${BASH_SOURCE[0]}"
+RUNTIME_HELPER_PUBLISHED_URL="${PAGES_BASE_URL}/setup/release.common.sh"
+RUNTIME_HELPER_SHA256=""
 declare -a ANSIBLE_EXTRA_VARS_ARGS
 ANSIBLE_EXTRA_VARS_ARGS=()
 
@@ -48,6 +51,42 @@ fi
 if ! declare -F log.error >/dev/null 2>&1; then
   log.error() { printf '[bootstrap][error] %s\n' "$*" >&2; }
 fi
+
+if ! declare -F sha256.file >/dev/null 2>&1; then
+  sha256.file() {
+    local path="$1"
+
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "${path}" | awk '{print $1}'
+      return 0
+    fi
+
+    if command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 "${path}" | awk '{print $1}'
+      return 0
+    fi
+
+    return 1
+  }
+fi
+
+resolve.runtime.helper.sha256() {
+  if [[ -n "${RUNTIME_HELPER_SHA256}" || ! -r "${RUNTIME_HELPER_SOURCE_PATH}" ]]; then
+    return 0
+  fi
+
+  RUNTIME_HELPER_SHA256="$(sha256.file "${RUNTIME_HELPER_SOURCE_PATH}" 2>/dev/null || true)"
+}
+
+log.runtime.helper.identity() {
+  resolve.runtime.helper.sha256
+  log "Bootstrap helper published path: ${RUNTIME_HELPER_PUBLISHED_URL}"
+  log "Bootstrap helper source path: ${RUNTIME_HELPER_SOURCE_PATH}"
+  if [[ -n "${RUNTIME_HELPER_SHA256}" ]]; then
+    log "Bootstrap helper sha256: ${RUNTIME_HELPER_SHA256}"
+  fi
+  log "Bootstrap helper contract: python_min=${PYTHON_MIN_VERSION} ansible_core=${ANSIBLE_CORE_VERSION} managed_target=${MANAGED_TARGET_PYTHON_HOME}"
+}
 
 require.root() {
   if [ "${EUID:-$(id -u)}" -ne 0 ]; then
@@ -253,12 +292,16 @@ resolve.release.groupvars.file() {
 
 write.bootstrap.selection.marker() {
   mkdir -p "${TMP_DIR}"
+  resolve.runtime.helper.sha256
   cat > "${BOOTSTRAP_SELECTION_MARKER}" <<EOF
 python_bootstrap_bin=${PYTHON_BOOTSTRAP_BIN}
 python_bootstrap_version=${PYTHON_BOOTSTRAP_VERSION}
 host_debian_codename=${HOST_DEBIAN_CODENAME}
 resolved_release_lane=${RESOLVED_RELEASE_LANE}
 release_group_vars_file=${RELEASE_GROUP_VARS_FILE}
+runtime_helper_published_url=${RUNTIME_HELPER_PUBLISHED_URL}
+runtime_helper_source_path=${RUNTIME_HELPER_SOURCE_PATH}
+runtime_helper_sha256=${RUNTIME_HELPER_SHA256}
 EOF
   log "Bootstrap selection marker: ${BOOTSTRAP_SELECTION_MARKER}"
 }

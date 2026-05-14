@@ -16,6 +16,37 @@ COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
 RELEASE_GROUP_VARS_FILE="${DEBIAN_RELEASE_GROUP_VARS_FILE:-}"
 REFRESH="${REFRESH:-0}"
 
+sha256.file() {
+  local path="$1"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "${path}" | awk '{print $1}'
+    return 0
+  fi
+
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "${path}" | awk '{print $1}'
+    return 0
+  fi
+
+  return 1
+}
+
+log.bootstrap.entry.identity() {
+  local source_path="${BASH_SOURCE[0]:-stdin}"
+  local source_hash=""
+
+  if [[ -r "${source_path}" ]]; then
+    source_hash="$(sha256.file "${source_path}" 2>/dev/null || true)"
+  fi
+
+  log "Bootstrap entry published path: ${PAGES_BASE_URL}/setup/bootstrap.sh"
+  log "Bootstrap entry source path: ${source_path}"
+  if [[ -n "${source_hash}" ]]; then
+    log "Bootstrap entry sha256: ${source_hash}"
+  fi
+}
+
 reset.bootstrap.tmp.cache() {
   case "${REFRESH,,}" in
     1|true|yes|y|on)
@@ -30,19 +61,23 @@ source.release.common() {
 
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if [[ -r "${script_dir}/${COMMON_HELPER_NAME}" ]]; then
+    COMMON_HELPER_PATH="${script_dir}/${COMMON_HELPER_NAME}"
     # shellcheck source=setup/release.common.sh
-    source "${script_dir}/${COMMON_HELPER_NAME}"
-    return
+    source "${COMMON_HELPER_PATH}"
+  else
+    mkdir -p "${TMP_DIR}"
+    log "Fetching shared helper: ${COMMON_HELPER_URL}"
+    if ! wget -qO "${COMMON_HELPER_PATH}" "${COMMON_HELPER_URL}"; then
+      log.error "Failed to fetch ${COMMON_HELPER_URL}"
+      exit 1
+    fi
+    # shellcheck source=/tmp/ansible/debian/bootstrap/release.common.sh
+    source "${COMMON_HELPER_PATH}"
   fi
 
-  mkdir -p "${TMP_DIR}"
-  log "Fetching shared helper: ${COMMON_HELPER_URL}"
-  if ! wget -qO "${COMMON_HELPER_PATH}" "${COMMON_HELPER_URL}"; then
-    log.error "Failed to fetch ${COMMON_HELPER_URL}"
-    exit 1
+  if declare -F log.runtime.helper.identity >/dev/null 2>&1; then
+    log.runtime.helper.identity
   fi
-  # shellcheck source=/tmp/ansible/debian/bootstrap/release.common.sh
-  source "${COMMON_HELPER_PATH}"
 }
 
 detect.release.groupvars() {
@@ -65,6 +100,7 @@ use.local.runtime.files() {
 }
 
 main() {
+  log.bootstrap.entry.identity
   reset.bootstrap.tmp.cache
   source.release.common
   require.root
