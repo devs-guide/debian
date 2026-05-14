@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Published path: https://devs-guide.github.io/debian/setup/bootstrap.sh
 
 set -euo pipefail
 
@@ -8,7 +9,7 @@ log.error() { printf '[debian.bootstrap][error] %s\n' "$*" >&2; }
 TMP_DIR="${TMP_DIR:-/tmp/devsguide-debian-bootstrap}"
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
 COMMON_HELPER_NAME="release.common.sh"
-COMMON_HELPER_URL="${PAGES_BASE_URL}/${COMMON_HELPER_NAME}"
+COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
 RELEASE_GROUP_VARS_FILE="${DEBIAN_RELEASE_GROUP_VARS_FILE:-}"
 

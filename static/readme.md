@@ -11,17 +11,17 @@ removed or replaced.
 Primary entrypoint:
 
 ```bash
-wget -qO- https://devs-guide.github.io/debian/bootstrap.sh | bash
+wget -qO- https://devs-guide.github.io/debian/setup/bootstrap.sh | bash
 ```
 
 Compatibility aliases:
 
 ```bash
-wget -qO- https://devs-guide.github.io/debian/debian.sh | bash
+wget -qO- https://devs-guide.github.io/debian/setup/debian.sh | bash
 ```
 
 ```bash
-wget -qO- https://devs-guide.github.io/debian/metal.sh | bash
+wget -qO- https://devs-guide.github.io/debian/setup/metal.sh | bash
 ```
 
 ## Optional Setup Runner
@@ -29,7 +29,7 @@ wget -qO- https://devs-guide.github.io/debian/metal.sh | bash
 Codex CLI installer:
 
 ```bash
-wget -qO- https://devs-guide.github.io/debian/setup.cli.codex.sh | bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/codex.sh | bash
 ```
 
 ## Layout

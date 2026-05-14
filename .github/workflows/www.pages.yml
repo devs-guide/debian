@@ -1,0 +1,60 @@
+name: Publish static assets to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "setup/**"
+      - "ansible/**"
+      - "docs/**"
+      - "www/**"
+      - "readme.md"
+      - "actions/www.pages.sh"
+      - "actions/validate.runtime.sh"
+      - ".github/workflows/www.pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Validate runtime contract
+        run: bash ./actions/validate.runtime.sh
+
+      - name: Build static tree for GitHub Pages
+        env:
+          PUBLISH_DIR: static
+        run: bash ./actions/www.pages.sh
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./static
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

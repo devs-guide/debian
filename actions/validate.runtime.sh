@@ -10,7 +10,7 @@ files=(
   "setup/debian.sh"
   "setup/metal.sh"
   "setup/release.common.sh"
-  "setup/cli.codex.sh"
+  "setup/cli/codex.sh"
   "actions/www.pages.sh"
   "actions/validate.runtime.sh"
   "actions/validate.pages.sh"
@@ -74,21 +74,21 @@ if grep -q 'allow_rdp:[[:space:]]*true' "${ROOT}/ansible/lan.yml"; then
   rc=1
 fi
 
-echo "[validate.runtime] checking setup.cli.codex.sh runner contract..."
-if ! grep -q '"node.yml"' "${ROOT}/setup/cli.codex.sh"; then
-  echo "[validate.runtime][error] setup/cli.codex.sh must reference node.yml"
+echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
+if ! grep -q '"node.yml"' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must reference node.yml"
   rc=1
 fi
-if ! grep -q '"cli/codex.yml"' "${ROOT}/setup/cli.codex.sh"; then
-  echo "[validate.runtime][error] setup/cli.codex.sh must reference cli/codex.yml"
+if ! grep -q '"cli/codex.yml"' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must reference cli/codex.yml"
   rc=1
 fi
-if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli.codex.sh"; then
-  echo "[validate.runtime][error] setup/cli.codex.sh must define GROUP_VARS_FILES"
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must define GROUP_VARS_FILES"
   rc=1
 fi
-if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli.codex.sh"; then
-  echo "[validate.runtime][error] setup/cli.codex.sh must use ensure.local.ansible"
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must use ensure.local.ansible"
   rc=1
 fi
 
@@ -98,7 +98,7 @@ if rg -n 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guide.githu
   "${ROOT}/setup/debian.sh" \
   "${ROOT}/setup/metal.sh" \
   "${ROOT}/setup/release.common.sh" \
-  "${ROOT}/setup/cli.codex.sh" \
+  "${ROOT}/setup/cli/codex.sh" \
   "${ROOT}/actions/www.pages.sh" \
   "${ROOT}/actions/validate.pages.sh" \
   "${ROOT}/ansible" \

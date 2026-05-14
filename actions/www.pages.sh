@@ -28,11 +28,11 @@ main() {
   local src dest
   local -a root_files=(
     "www/index.html:index.html"
-    "setup/bootstrap.sh:bootstrap.sh"
-    "setup/debian.sh:debian.sh"
-    "setup/metal.sh:metal.sh"
-    "setup/release.common.sh:release.common.sh"
-    "setup/cli.codex.sh:setup.cli.codex.sh"
+    "setup/bootstrap.sh:setup/bootstrap.sh"
+    "setup/debian.sh:setup/debian.sh"
+    "setup/metal.sh:setup/metal.sh"
+    "setup/release.common.sh:setup/release.common.sh"
+    "setup/cli/codex.sh:setup/cli/codex.sh"
     "readme.md:readme.md"
   )
 
@@ -41,7 +41,7 @@ main() {
   require_file "${ROOT}/setup/debian.sh"
   require_file "${ROOT}/setup/metal.sh"
   require_file "${ROOT}/setup/release.common.sh"
-  require_file "${ROOT}/setup/cli.codex.sh"
+  require_file "${ROOT}/setup/cli/codex.sh"
   require_file "${ROOT}/ansible/install.playbooks.txt"
 
   rm -rf "${PUBLISH_DIR}"

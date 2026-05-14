@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Published path: https://devs-guide.github.io/debian/setup/debian.sh
 
 set -euo pipefail
 

@@ -9,11 +9,11 @@ rc=0
 
 FILES=(
   "index.html:www/index.html"
-  "bootstrap.sh:setup/bootstrap.sh"
-  "debian.sh:setup/debian.sh"
-  "metal.sh:setup/metal.sh"
-  "release.common.sh:setup/release.common.sh"
-  "setup.cli.codex.sh:setup/cli.codex.sh"
+  "setup/bootstrap.sh:setup/bootstrap.sh"
+  "setup/debian.sh:setup/debian.sh"
+  "setup/metal.sh:setup/metal.sh"
+  "setup/release.common.sh:setup/release.common.sh"
+  "setup/cli/codex.sh:setup/cli/codex.sh"
   "readme.md:readme.md"
   "ansible/install.playbooks.txt:ansible/install.playbooks.txt"
   "ansible/bootstrap.yml:ansible/bootstrap.yml"
@@ -141,6 +141,6 @@ check_playlist_refs() {
 }
 
 check_playlist_refs
-check_setup_feature_refs "setup/cli.codex.sh"
+check_setup_feature_refs "setup/cli/codex.sh"
 
 exit "${rc}"

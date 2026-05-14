@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
+# Published path: https://devs-guide.github.io/debian/setup/cli/codex.sh
 ## Manual Debian Node + Codex setup runner.
 ## Local usage:
-##   ./setup/cli.codex.sh [preflight|apply]
+##   ./setup/cli/codex.sh [preflight|apply]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup.cli.codex.sh | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/codex.sh | bash
 
 set -euo pipefail
 
@@ -14,9 +15,9 @@ TMP_DIR="${TMP_DIR:-/tmp/devsguide-cli-codex}"
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
 PLAYBOOK_ROOT="${TMP_DIR}/ansible"
 PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
-LOCAL_COMMON_HELPER="release.common.sh"
+LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
-COMMON_HELPER_URL="${PAGES_BASE_URL}/${COMMON_HELPER_NAME}"
+COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=(
@@ -225,7 +226,7 @@ run.preflight() {
   fi
 
   log "Apply command:"
-  log "  wget -qO- ${PAGES_BASE_URL}/setup.cli.codex.sh | bash"
+  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/codex.sh | bash"
 }
 
 run.cli.codex.feature() {
