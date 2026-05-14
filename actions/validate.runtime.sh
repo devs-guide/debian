@@ -91,6 +91,14 @@ if ! grep -q '"/usr/bin/python3"' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must probe /usr/bin/python3 explicitly before source builds"
   rc=1
 fi
+if ! grep -q 'ensure.python.venv.support' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must install Debian venv support before creating managed target Python"
+  rc=1
+fi
+if ! grep -q 'python3-venv' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must ensure python3-venv package support for distro Python"
+  rc=1
+fi
 if ! grep -q 'PYTHON_MIN_VERSION' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must define PYTHON_MIN_VERSION"
   rc=1

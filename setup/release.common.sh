@@ -123,6 +123,17 @@ python.version.from.bin() {
   printf '%s\n' "${version_line#Python }"
 }
 
+python.major.minor.from.version() {
+  local version="$1"
+  local major=""
+  local minor=""
+
+  major="${version%%.*}"
+  minor="${version#*.}"
+  minor="${minor%%.*}"
+  printf '%s.%s\n' "${major}" "${minor}"
+}
+
 resolve.python.candidate.bin() {
   local candidate="$1"
 
@@ -137,6 +148,11 @@ resolve.python.candidate.bin() {
   fi
 
   return 1
+}
+
+package.installed() {
+  local package_name="$1"
+  dpkg-query -W -f='${Status}' "${package_name}" 2>/dev/null | grep -q 'install ok installed'
 }
 
 log.python.candidate.result() {
@@ -193,6 +209,45 @@ select.python.bootstrap.bin() {
   done
 
   return 1
+}
+
+ensure.python.venv.support() {
+  local version_minor=""
+  local package_name=""
+  local -a candidate_packages=()
+  local -a missing_packages=()
+
+  if ! dpkg-query -S "${PYTHON_BOOTSTRAP_BIN}" >/dev/null 2>&1; then
+    log "Skipping Debian venv package install for non-distro Python: ${PYTHON_BOOTSTRAP_BIN}"
+    return 0
+  fi
+
+  if [[ -z "${PYTHON_BOOTSTRAP_VERSION}" ]]; then
+    PYTHON_BOOTSTRAP_VERSION="$(python.version.from.bin "${PYTHON_BOOTSTRAP_BIN}")"
+  fi
+
+  version_minor="$(python.major.minor.from.version "${PYTHON_BOOTSTRAP_VERSION}")"
+  candidate_packages=(
+    "python${version_minor}-venv"
+    "python3-venv"
+  )
+
+  for package_name in "${candidate_packages[@]}"; do
+    if package.installed "${package_name}"; then
+      log "Python venv package already installed: ${package_name}"
+      continue
+    fi
+    missing_packages+=("${package_name}")
+  done
+
+  if ((${#missing_packages[@]} == 0)); then
+    return 0
+  fi
+
+  export DEBIAN_FRONTEND=noninteractive
+  log "Installing Python venv support packages: ${missing_packages[*]}"
+  apt-get update -y
+  apt-get install -y --no-install-recommends "${missing_packages[@]}"
 }
 
 prepare.runtime.tree() {
@@ -359,6 +414,7 @@ ensure.managed.target.python() {
   fi
 
   ensure.python312
+  ensure.python.venv.support
   mkdir -p "$(dirname "${MANAGED_TARGET_PYTHON_HOME}")"
   "${PYTHON_BOOTSTRAP_BIN}" -m venv "${MANAGED_TARGET_PYTHON_HOME}"
   managed_version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1)"
