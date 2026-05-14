@@ -17,7 +17,8 @@ set -euo pipefail
 : "${MANAGED_TARGET_PYTHON_HOME:=/opt/ansible/py312}"
 : "${MANAGED_TARGET_PYTHON_PATH:=${MANAGED_TARGET_PYTHON_HOME}/bin/python}"
 : "${MANAGED_TARGET_HANDOFF_MARKER:=${MANAGED_TARGET_PYTHON_HOME}/.handoff-ready}"
-: "${TMP_DIR:=/tmp/devsguide-debian}"
+: "${TMP_ROOT_DIR:=/tmp/ansible/debian}"
+: "${TMP_DIR:=${TMP_ROOT_DIR}}"
 : "${PAGES_BASE_URL:=https://devs-guide.github.io/debian}"
 : "${PLAYLIST_REL:=ansible/install.playbooks.txt}"
 : "${BASE_GROUP_VARS_FILE:=all.yml}"
@@ -25,7 +26,7 @@ set -euo pipefail
 : "${RELEASE_GROUP_VARS_FILE:=}"
 : "${PYTHON_MIN_VERSION:=3.12.3}"
 
-PLAYBOOK_TMP_ROOT="${TMP_DIR}/ansible"
+PLAYBOOK_TMP_ROOT="${TMP_DIR}/runtime"
 PLAYBOOK_DIR="${PLAYBOOK_TMP_ROOT}"
 GROUP_VARS_DIR="${PLAYBOOK_TMP_ROOT}/group_vars"
 PLAYLIST_PATH="${PLAYBOOK_DIR}/install.playbooks.txt"

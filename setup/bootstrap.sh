@@ -7,12 +7,23 @@ set -euo pipefail
 log() { printf '[debian.bootstrap] %s\n' "$*" >&2; }
 log.error() { printf '[debian.bootstrap][error] %s\n' "$*" >&2; }
 
-TMP_DIR="${TMP_DIR:-/tmp/devsguide-debian-bootstrap}"
+TMP_ROOT_DIR="${TMP_ROOT_DIR:-/tmp/ansible/debian}"
+TMP_DIR="${TMP_DIR:-${TMP_ROOT_DIR}/bootstrap}"
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
 RELEASE_GROUP_VARS_FILE="${DEBIAN_RELEASE_GROUP_VARS_FILE:-}"
+REFRESH="${REFRESH:-0}"
+
+reset.bootstrap.tmp.cache() {
+  case "${REFRESH,,}" in
+    1|true|yes|y|on)
+      log "REFRESH=1; clearing bootstrap temp cache under ${TMP_ROOT_DIR}"
+      rm -rf "${TMP_DIR}" "${TMP_ROOT_DIR}"
+      ;;
+  esac
+}
 
 source.release.common() {
   local script_dir=""
@@ -30,7 +41,7 @@ source.release.common() {
     log.error "Failed to fetch ${COMMON_HELPER_URL}"
     exit 1
   fi
-  # shellcheck source=/tmp/devsguide-debian-bootstrap/release.common.sh
+  # shellcheck source=/tmp/ansible/debian/bootstrap/release.common.sh
   source "${COMMON_HELPER_PATH}"
 }
 
@@ -54,6 +65,7 @@ use.local.runtime.files() {
 }
 
 main() {
+  reset.bootstrap.tmp.cache
   source.release.common
   require.root
   require.apt

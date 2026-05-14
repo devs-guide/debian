@@ -91,6 +91,18 @@ if ! grep -q 'Bootstrap selection marker' "${ROOT}/setup/release.common.sh"; the
   echo "[validate.runtime][error] setup/release.common.sh must record bootstrap selection details"
   rc=1
 fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/bootstrap.sh"; then
+  echo "[validate.runtime][error] setup/bootstrap.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'REFRESH' "${ROOT}/setup/bootstrap.sh"; then
+  echo "[validate.runtime][error] setup/bootstrap.sh must support REFRESH"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must use neutral /tmp/ansible/debian runtime paths"
+  rc=1
+fi
 
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
 if ! grep -q '"node.yml"' "${ROOT}/setup/cli/codex.sh"; then
@@ -107,6 +119,10 @@ if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli/codex.sh"; then
 fi
 if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/codex.sh"; then
   echo "[validate.runtime][error] setup/cli/codex.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must use neutral /tmp/ansible/debian cache paths"
   rc=1
 fi
 

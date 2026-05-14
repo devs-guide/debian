@@ -11,9 +11,10 @@ set -euo pipefail
 log() { printf '[setup.cli.codex] %s\n' "$*" >&2; }
 log.error() { printf '[setup.cli.codex][error] %s\n' "$*" >&2; }
 
-TMP_DIR="${TMP_DIR:-/tmp/devsguide-cli-codex}"
+TMP_ROOT_DIR="${TMP_ROOT_DIR:-/tmp/ansible/debian}"
+TMP_DIR="${TMP_DIR:-${TMP_ROOT_DIR}/cli.codex}"
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
-PLAYBOOK_ROOT="${TMP_DIR}/ansible"
+PLAYBOOK_ROOT="${TMP_DIR}/runtime"
 PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
 LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
@@ -39,8 +40,18 @@ CODEX_DOCS_MCP_NAME="${DEBIAN_CLI_CODEX_DOCS_MCP_NAME:-openaiDeveloperDocs}"
 CODEX_DOCS_MCP_URL="${DEBIAN_CLI_CODEX_DOCS_MCP_URL:-https://developers.openai.com/mcp}"
 FACTS_DIR="${DEBIAN_CLI_CODEX_FACTS_DIR:-/etc/ansible/debian/facts}"
 CODEX_RUNTIME_FACTS_PATH="${DEBIAN_CLI_CODEX_RUNTIME_FACTS_PATH:-${FACTS_DIR}/cli.codex.yml}"
+REFRESH="${REFRESH:-0}"
 declare -a FEATURE_GROUP_VARS_ARGS
 FEATURE_GROUP_VARS_ARGS=()
+
+reset.feature.tmp.cache() {
+  case "${REFRESH,,}" in
+    1|true|yes|y|on)
+      log "REFRESH=1; clearing feature temp cache under ${TMP_DIR}"
+      rm -rf "${TMP_DIR}"
+      ;;
+  esac
+}
 
 source.release.common() {
   local script_dir=""
@@ -58,7 +69,7 @@ source.release.common() {
     log.error "Failed to fetch shared helper: ${COMMON_HELPER_URL}"
     exit 1
   fi
-  # shellcheck source=/tmp/devsguide-cli-codex/release.common.sh
+  # shellcheck source=/tmp/ansible/debian/cli.codex/release.common.sh
   source "${COMMON_HELPER_PATH}"
 }
 
@@ -238,6 +249,7 @@ run.cli.codex.feature() {
 }
 
 main() {
+  reset.feature.tmp.cache
   source.release.common
   require.root
   require.apt
