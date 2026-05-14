@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Published path: https://devs-guide.github.io/debian/setup/bootstrap.sh
+# Published path:
+# wget -qO- https://devs-guide.github.io/debian/setup/bootstrap.sh | bash
 
 set -euo pipefail
 
