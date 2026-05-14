@@ -437,6 +437,7 @@ ensure.managed.ansible() {
   fi
 
   ensure.managed.target.python
+  ensure.python.venv.support
   mkdir -p "${ANSIBLE_VENV}"
   "${PYTHON_BOOTSTRAP_BIN}" -m venv "${ANSIBLE_VENV}"
   "${ANSIBLE_VENV}/bin/pip" install --upgrade pip setuptools wheel

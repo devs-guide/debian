@@ -127,6 +127,10 @@ if ! grep -q 'runtime_helper_sha256=' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must persist helper revision details in the selection marker"
   rc=1
 fi
+if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'ensure.python.venv.support'; then
+  echo "[validate.runtime][error] ensure.managed.ansible() must enforce Debian venv support before creating /opt/ansible-venv"
+  rc=1
+fi
 
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
 if ! grep -q '"node.yml"' "${ROOT}/setup/cli/codex.sh"; then
