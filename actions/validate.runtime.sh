@@ -74,6 +74,24 @@ if grep -q 'allow_rdp:[[:space:]]*true' "${ROOT}/ansible/lan.yml"; then
   rc=1
 fi
 
+echo "[validate.runtime] checking bootstrap resolver contract..."
+if ! grep -q 'resolve.release.groupvars.file' "${ROOT}/setup/bootstrap.sh"; then
+  echo "[validate.runtime][error] setup/bootstrap.sh must resolve Debian release lanes explicitly"
+  rc=1
+fi
+if ! grep -q 'select.python.bootstrap.bin' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must detect compatible system python3"
+  rc=1
+fi
+if ! grep -q 'PYTHON_MIN_VERSION' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must define PYTHON_MIN_VERSION"
+  rc=1
+fi
+if ! grep -q 'Bootstrap selection marker' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must record bootstrap selection details"
+  rc=1
+fi
+
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
 if ! grep -q '"node.yml"' "${ROOT}/setup/cli/codex.sh"; then
   echo "[validate.runtime][error] setup/cli/codex.sh must reference node.yml"

@@ -34,17 +34,7 @@ source.release.common() {
 }
 
 detect.release.groupvars() {
-  if [[ -n "${RELEASE_GROUP_VARS_FILE}" ]]; then
-    return
-  fi
-
-  if [[ -r /etc/os-release ]]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    if [[ -n "${VERSION_CODENAME:-}" ]]; then
-      RELEASE_GROUP_VARS_FILE="${VERSION_CODENAME}.yml"
-    fi
-  fi
+  resolve.release.groupvars.file
 }
 
 use.local.runtime.files() {
@@ -76,6 +66,7 @@ main() {
   fi
 
   ensure.managed.ansible
+  write.bootstrap.selection.marker
   run.playlist
   log "Bootstrap finished successfully."
 }

@@ -23,6 +23,7 @@ set -euo pipefail
 : "${BASE_GROUP_VARS_FILE:=all.yml}"
 : "${PLATFORM_GROUP_VARS_FILE:=debian.yml}"
 : "${RELEASE_GROUP_VARS_FILE:=}"
+: "${PYTHON_MIN_VERSION:=3.12.3}"
 
 PLAYBOOK_TMP_ROOT="${TMP_DIR}/ansible"
 PLAYBOOK_DIR="${PLAYBOOK_TMP_ROOT}"
@@ -32,6 +33,10 @@ BASE_GROUP_VARS_PATH="${GROUP_VARS_DIR}/${BASE_GROUP_VARS_FILE}"
 PLATFORM_GROUP_VARS_PATH="${GROUP_VARS_DIR}/${PLATFORM_GROUP_VARS_FILE}"
 RELEASE_GROUP_VARS_PATH=""
 PYTHON_BOOTSTRAP_BIN=""
+PYTHON_BOOTSTRAP_VERSION=""
+HOST_DEBIAN_CODENAME=""
+RESOLVED_RELEASE_LANE=""
+BOOTSTRAP_SELECTION_MARKER="${TMP_DIR}/bootstrap.selection.env"
 declare -a ANSIBLE_EXTRA_VARS_ARGS
 ANSIBLE_EXTRA_VARS_ARGS=()
 
@@ -62,6 +67,53 @@ require.debian() {
     log.error "This bootstrap expects a Debian host."
     exit 1
   fi
+}
+
+version.ge() {
+  local left="$1"
+  local right="$2"
+  [[ "$(printf '%s\n%s\n' "${right}" "${left}" | sort -V | tail -n1)" == "${left}" ]]
+}
+
+python.version.from.bin() {
+  local bin="$1"
+  local version_line=""
+
+  version_line="$("${bin}" --version 2>&1)" || return 1
+  printf '%s\n' "${version_line#Python }"
+}
+
+select.python.bootstrap.bin() {
+  local candidate=""
+  local resolved=""
+  local version=""
+  local -a candidates=(
+    "python3"
+    "python${PYTHON_MAJOR_MINOR}"
+    "${PYTHON_BIN}"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    if command -v "${candidate}" >/dev/null 2>&1; then
+      resolved="$(command -v "${candidate}")"
+    elif [[ -x "${candidate}" ]]; then
+      resolved="${candidate}"
+    else
+      continue
+    fi
+
+    version="$(python.version.from.bin "${resolved}" 2>/dev/null || true)"
+    [[ -n "${version}" ]] || continue
+
+    if version.ge "${version}" "${PYTHON_MIN_VERSION}"; then
+      PYTHON_BOOTSTRAP_BIN="${resolved}"
+      PYTHON_BOOTSTRAP_VERSION="${version}"
+      log "Using compatible system Python: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 prepare.runtime.tree() {
@@ -101,19 +153,11 @@ fetch.optional.file() {
 ensure.python312() {
   export DEBIAN_FRONTEND=noninteractive
 
-  if command -v "python${PYTHON_MAJOR_MINOR}" >/dev/null 2>&1; then
-    PYTHON_BOOTSTRAP_BIN="$(command -v "python${PYTHON_MAJOR_MINOR}")"
-    log "Using existing Python: $("${PYTHON_BOOTSTRAP_BIN}" --version 2>&1)"
+  if select.python.bootstrap.bin; then
     return
   fi
 
-  if [[ -x "${PYTHON_BIN}" ]]; then
-    PYTHON_BOOTSTRAP_BIN="${PYTHON_BIN}"
-    log "Using local Python: $("${PYTHON_BOOTSTRAP_BIN}" --version 2>&1)"
-    return
-  fi
-
-  log "Installing Python ${PYTHON_VERSION} build prerequisites..."
+  log "No compatible system Python found; building Python ${PYTHON_VERSION} from source..."
   apt-get update -y
   apt-get install -y --no-install-recommends \
     build-essential \
@@ -152,6 +196,70 @@ ensure.python312() {
   )
 
   PYTHON_BOOTSTRAP_BIN="${PYTHON_BIN}"
+  PYTHON_BOOTSTRAP_VERSION="$(python.version.from.bin "${PYTHON_BOOTSTRAP_BIN}")"
+  log "Built Python ready: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
+}
+
+resolve.release.groupvars.file() {
+  local candidate="${RELEASE_GROUP_VARS_FILE:-}"
+
+  if [[ -n "${candidate}" ]]; then
+    candidate="${candidate##*/}"
+    case "${candidate}" in
+      buster.yml|trixie.yml) ;;
+      *)
+        log.error "Unsupported explicit DEBIAN_RELEASE_GROUP_VARS_FILE: ${candidate}"
+        log.error "Supported release overlays: buster.yml, trixie.yml"
+        exit 1
+        ;;
+    esac
+    RELEASE_GROUP_VARS_FILE="${candidate}"
+    RESOLVED_RELEASE_LANE="${candidate%.yml}"
+    log "Using explicit Debian release lane override: ${RELEASE_GROUP_VARS_FILE}"
+    return
+  fi
+
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    HOST_DEBIAN_CODENAME="${VERSION_CODENAME:-}"
+  fi
+
+  case "${HOST_DEBIAN_CODENAME}" in
+    buster)
+      RELEASE_GROUP_VARS_FILE="buster.yml"
+      RESOLVED_RELEASE_LANE="buster"
+      ;;
+    trixie)
+      RELEASE_GROUP_VARS_FILE="trixie.yml"
+      RESOLVED_RELEASE_LANE="trixie"
+      ;;
+    "")
+      log.error "Unable to detect Debian VERSION_CODENAME from /etc/os-release."
+      log.error "Set DEBIAN_RELEASE_GROUP_VARS_FILE explicitly."
+      exit 1
+      ;;
+    *)
+      log.error "Unsupported Debian release codename: ${HOST_DEBIAN_CODENAME}"
+      log.error "Supported release overlays: buster, trixie"
+      log.error "Set DEBIAN_RELEASE_GROUP_VARS_FILE explicitly if needed."
+      exit 1
+      ;;
+  esac
+
+  log "Resolved Debian release lane: ${RESOLVED_RELEASE_LANE} (${RELEASE_GROUP_VARS_FILE})"
+}
+
+write.bootstrap.selection.marker() {
+  mkdir -p "${TMP_DIR}"
+  cat > "${BOOTSTRAP_SELECTION_MARKER}" <<EOF
+python_bootstrap_bin=${PYTHON_BOOTSTRAP_BIN}
+python_bootstrap_version=${PYTHON_BOOTSTRAP_VERSION}
+host_debian_codename=${HOST_DEBIAN_CODENAME}
+resolved_release_lane=${RESOLVED_RELEASE_LANE}
+release_group_vars_file=${RELEASE_GROUP_VARS_FILE}
+EOF
+  log "Bootstrap selection marker: ${BOOTSTRAP_SELECTION_MARKER}"
 }
 
 ensure.managed.target.python() {
@@ -173,6 +281,7 @@ ensure.managed.target.python() {
   managed_version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1)"
   printf '%s\n' "${managed_version}" > "${MANAGED_TARGET_HANDOFF_MARKER}"
   PYTHON_BOOTSTRAP_BIN="${MANAGED_TARGET_PYTHON_PATH}"
+  PYTHON_BOOTSTRAP_VERSION="${managed_version#Python }"
   log "Managed target Python ready: ${managed_version}"
 }
 
