@@ -87,6 +87,10 @@ if ! grep -q 'select.python.bootstrap.bin' "${ROOT}/setup/release.common.sh"; th
   echo "[validate.runtime][error] setup/release.common.sh must detect compatible system python3"
   rc=1
 fi
+if ! grep -q '"/usr/bin/python3"' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must probe /usr/bin/python3 explicitly before source builds"
+  rc=1
+fi
 if ! grep -q 'PYTHON_MIN_VERSION' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must define PYTHON_MIN_VERSION"
   rc=1

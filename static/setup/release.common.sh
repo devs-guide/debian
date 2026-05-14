@@ -123,34 +123,73 @@ python.version.from.bin() {
   printf '%s\n' "${version_line#Python }"
 }
 
+resolve.python.candidate.bin() {
+  local candidate="$1"
+
+  if [[ -x "${candidate}" ]]; then
+    printf '%s\n' "${candidate}"
+    return 0
+  fi
+
+  if command -v "${candidate}" >/dev/null 2>&1; then
+    command -v "${candidate}"
+    return 0
+  fi
+
+  return 1
+}
+
+log.python.candidate.result() {
+  local resolved="$1"
+  local version="$2"
+  local status="$3"
+
+  case "${status}" in
+    accepted)
+      log "Python candidate accepted: ${resolved} (${version}) >= ${PYTHON_MIN_VERSION}"
+      ;;
+    rejected)
+      log "Python candidate rejected: ${resolved} (${version}) < ${PYTHON_MIN_VERSION}"
+      ;;
+    unreadable)
+      log "Python candidate unreadable: ${resolved}"
+      ;;
+  esac
+}
+
 select.python.bootstrap.bin() {
   local candidate=""
   local resolved=""
   local version=""
   local -a candidates=(
+    "/usr/bin/python3"
     "python3"
+    "/usr/local/bin/python3"
     "python${PYTHON_MAJOR_MINOR}"
     "${PYTHON_BIN}"
   )
 
   for candidate in "${candidates[@]}"; do
-    if command -v "${candidate}" >/dev/null 2>&1; then
-      resolved="$(command -v "${candidate}")"
-    elif [[ -x "${candidate}" ]]; then
-      resolved="${candidate}"
-    else
+    resolved="$(resolve.python.candidate.bin "${candidate}" 2>/dev/null || true)"
+    if [[ -z "${resolved}" ]]; then
       continue
     fi
 
     version="$(python.version.from.bin "${resolved}" 2>/dev/null || true)"
-    [[ -n "${version}" ]] || continue
+    if [[ -z "${version}" ]]; then
+      log.python.candidate.result "${resolved}" "" "unreadable"
+      continue
+    fi
 
     if version.ge "${version}" "${PYTHON_MIN_VERSION}"; then
       PYTHON_BOOTSTRAP_BIN="${resolved}"
       PYTHON_BOOTSTRAP_VERSION="${version}"
+      log.python.candidate.result "${resolved}" "${version}" "accepted"
       log "Using compatible system Python: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
       return 0
     fi
+
+    log.python.candidate.result "${resolved}" "${version}" "rejected"
   done
 
   return 1
