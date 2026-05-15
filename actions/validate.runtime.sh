@@ -79,36 +79,64 @@ if ! grep -q 'resolve.release.groupvars.file' "${ROOT}/setup/bootstrap.sh"; then
   echo "[validate.runtime][error] setup/bootstrap.sh must resolve Debian release lanes explicitly"
   rc=1
 fi
+if ! grep -q 'resolve.controller.python.policy' "${ROOT}/setup/bootstrap.sh"; then
+  echo "[validate.runtime][error] setup/bootstrap.sh must resolve controller Python policy before Ansible setup"
+  rc=1
+fi
 if ! grep -q 'Bootstrap entry sha256' "${ROOT}/setup/bootstrap.sh"; then
   echo "[validate.runtime][error] setup/bootstrap.sh must log a bootstrap entry revision marker"
   rc=1
 fi
 if ! grep -q 'select.python.bootstrap.bin' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must detect compatible system python3"
+  echo "[validate.runtime][error] setup/release.common.sh must route controller Python selection through policy-aware provider logic"
   rc=1
 fi
-if ! grep -q 'python.version.matches.managed.contract' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must enforce managed Python version contract matching"
+if ! grep -q 'debian.native.python.version.hint' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must contain Debian native Python policy map"
+  rc=1
+fi
+if ! grep -q 'CONTROLLER_PYTHON_PROVIDER' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must use release-aware controller Python provider"
+  rc=1
+fi
+if ! grep -q 'select.system.controller.python' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must support distro Python controller selection"
+  rc=1
+fi
+if ! grep -q 'ensure.managed.fallback.python.build' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must support managed fallback Python builds for legacy releases"
+  rc=1
+fi
+if ! grep -q 'python.version.matches.controller.minimum' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must enforce controller minimum Python version checks"
   rc=1
 fi
 if ! grep -q 'python.can.create.venv' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must validate Python venv capability before reusing managed runtimes"
+  echo "[validate.runtime][error] setup/release.common.sh must probe venv capability before creating /opt/ansible-venv"
   rc=1
 fi
-if ! grep -q 'Existing managed target Python violates contract' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must reject stale managed Python that violates the 3.12 contract"
+if ! grep -q 'Existing managed fallback Python violates fallback contract' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must reject stale /opt/ansible/py312 that violates fallback contract"
   rc=1
 fi
-if ! grep -q 'Existing managed target Python cannot create venvs' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must reject managed Python that cannot create venvs"
+if ! grep -q 'ansible.venv.python.matches.controller.minimum' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must validate existing /opt/ansible-venv Python version"
   rc=1
 fi
-if ! grep -q 'ansible.venv.python.matches.contract' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must validate managed Ansible venv Python version before reuse"
+if ! grep -q 'controller_python_provider' "${ROOT}/ansible/group_vars/trixie.yml"; then
+  echo "[validate.runtime][error] trixie.yml must declare controller_python_provider"
   rc=1
 fi
-if ! grep -q 'Existing managed Ansible venv violates contract' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must rebuild managed Ansible venv when core/Python contract is violated"
+if ! grep -q 'controller_python_provider' "${ROOT}/ansible/group_vars/buster.yml"; then
+  echo "[validate.runtime][error] buster.yml must declare controller_python_provider"
+  rc=1
+fi
+if ! grep -q 'controller_python_provider: "system"' "${ROOT}/ansible/group_vars/trixie.yml"; then
+  echo "[validate.runtime][error] trixie.yml must select system controller Python"
+  rc=1
+fi
+if ! grep -q 'controller_python_provider: "managed_source"' "${ROOT}/ansible/group_vars/buster.yml"; then
+  echo "[validate.runtime][error] buster.yml must select managed_source controller Python"
   rc=1
 fi
 if ! grep -q 'PYTHON_MIN_VERSION' "${ROOT}/setup/release.common.sh"; then
@@ -139,7 +167,7 @@ if ! grep -q 'runtime_helper_sha256=' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must persist helper revision details in the selection marker"
   rc=1
 fi
-if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'ansible.venv.python.matches.contract'; then
+if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'ansible.venv.python.matches.controller.minimum'; then
   echo "[validate.runtime][error] ensure.managed.ansible() must verify existing Ansible venv Python contract before reuse"
   rc=1
 fi

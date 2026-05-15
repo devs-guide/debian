@@ -5,15 +5,29 @@ set -euo pipefail
 
 : "${PYTHON_VERSION:=3.12.3}"
 : "${PYTHON_MAJOR_MINOR:=3.12}"
+: "${PYTHON_MIN_VERSION:=3.12.3}"
 : "${PYTHON_SOURCE_PREFIX:=/usr/local}"
 : "${PYTHON_BIN:=${PYTHON_SOURCE_PREFIX}/bin/python${PYTHON_MAJOR_MINOR}}"
 : "${PYTHON_SRC_DIR:=${PYTHON_SOURCE_PREFIX}/src/Python-${PYTHON_VERSION}}"
 : "${PYTHON_SRC_ARCHIVE:=${PYTHON_SRC_DIR}.tgz}"
 : "${PYTHON_SRC_URL:=https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz}"
+
+# Release-aware controller policy.
+: "${CONTROLLER_PYTHON_POLICY:=auto}"
+: "${CONTROLLER_PYTHON_PROVIDER:=auto}"
+: "${SYSTEM_PYTHON_BIN:=/usr/bin/python3}"
+: "${CONTROLLER_PYTHON_BIN:=}"
+: "${CONTROLLER_PYTHON_VERSION:=}"
+: "${CONTROLLER_PYTHON_NATIVE_MAJOR_MINOR:=}"
+: "${CONTROLLER_PYTHON_NATIVE_VERSION_HINT:=}"
+: "${CONTROLLER_PYTHON_REBUILD_FOR_LEGACY:=1}"
+
 : "${ANSIBLE_VENV:=/opt/ansible-venv}"
 : "${ANSIBLE_VENV_BIN:=${ANSIBLE_VENV}/bin/ansible-playbook}"
 : "${ANSIBLE_CORE_VERSION:=2.20.5}"
 : "${ANSIBLE_CORE_SPEC:=ansible-core==${ANSIBLE_CORE_VERSION}}"
+
+# Managed fallback Python. This path must only contain real Python ${PYTHON_MAJOR_MINOR}.x.
 : "${MANAGED_TARGET_PYTHON_HOME:=/opt/ansible/py312}"
 : "${MANAGED_TARGET_PYTHON_PATH:=${MANAGED_TARGET_PYTHON_HOME}/bin/python}"
 : "${MANAGED_TARGET_HANDOFF_MARKER:=${MANAGED_TARGET_PYTHON_HOME}/.handoff-ready}"
@@ -24,7 +38,6 @@ set -euo pipefail
 : "${BASE_GROUP_VARS_FILE:=all.yml}"
 : "${PLATFORM_GROUP_VARS_FILE:=debian.yml}"
 : "${RELEASE_GROUP_VARS_FILE:=}"
-: "${PYTHON_MIN_VERSION:=3.12.3}"
 
 PLAYBOOK_TMP_ROOT="${TMP_DIR}/runtime"
 PLAYBOOK_DIR="${PLAYBOOK_TMP_ROOT}"
@@ -85,7 +98,7 @@ log.runtime.helper.identity() {
   if [[ -n "${RUNTIME_HELPER_SHA256}" ]]; then
     log "Bootstrap helper sha256: ${RUNTIME_HELPER_SHA256}"
   fi
-  log "Bootstrap helper contract: python_min=${PYTHON_MIN_VERSION} ansible_core=${ANSIBLE_CORE_VERSION} managed_target=${MANAGED_TARGET_PYTHON_HOME}"
+  log "Bootstrap helper contract: python_min=${PYTHON_MIN_VERSION} ansible_core=${ANSIBLE_CORE_VERSION} policy=${CONTROLLER_PYTHON_POLICY} managed_fallback=${MANAGED_TARGET_PYTHON_HOME}"
 }
 
 require.root() {
@@ -139,7 +152,15 @@ python.major.minor.from.version() {
   printf '%s.%s\n' "${major}" "${minor}"
 }
 
-python.version.matches.managed.contract() {
+python.version.matches.controller.minimum() {
+  local version="$1"
+
+  version="$(python.version.normalized "${version}")"
+  [[ -n "${version}" ]] || return 1
+  version.ge "${version}" "${PYTHON_MIN_VERSION}" || return 1
+}
+
+python.version.matches.managed.fallback.contract() {
   local version="$1"
   local version_minor=""
 
@@ -152,11 +173,9 @@ python.version.matches.managed.contract() {
 
 python.can.create.venv() {
   local bin="$1"
-  local probe_parent="${TMP_DIR:-/tmp}"
   local probe_root=""
 
-  mkdir -p "${probe_parent}"
-  probe_root="$(mktemp -d "${probe_parent}/python-venv-probe.XXXXXX")"
+  probe_root="$(mktemp -d "${TMP_DIR:-/tmp}/python-venv-probe.XXXXXX")"
   if "${bin}" -m venv "${probe_root}/venv" >/dev/null 2>&1; then
     rm -rf "${probe_root}"
     return 0
@@ -187,9 +206,44 @@ package.installed() {
   dpkg-query -W -f='${Status}' "${package_name}" 2>/dev/null | grep -q 'install ok installed'
 }
 
-package.available() {
-  local package_name="$1"
-  apt-cache show "${package_name}" >/dev/null 2>&1
+python.is.dpkg.owned() {
+  local bin="$1"
+  dpkg-query -S "${bin}" >/dev/null 2>&1
+}
+
+debian.native.python.major_minor() {
+  local codename="$1"
+
+  case "${codename}" in
+    jessie) printf '%s\n' '3.4' ;;
+    stretch) printf '%s\n' '3.5' ;;
+    buster) printf '%s\n' '3.7' ;;
+    bullseye) printf '%s\n' '3.9' ;;
+    bookworm) printf '%s\n' '3.11' ;;
+    trixie) printf '%s\n' '3.13' ;;
+    forky|sid) printf '%s\n' '3.13' ;;
+    *) return 1 ;;
+  esac
+}
+
+debian.native.python.version.hint() {
+  local codename="$1"
+
+  case "${codename}" in
+    jessie) printf '%s\n' '3.4.2' ;;
+    stretch) printf '%s\n' '3.5.3' ;;
+    buster) printf '%s\n' '3.7.3' ;;
+    bullseye) printf '%s\n' '3.9.2' ;;
+    bookworm) printf '%s\n' '3.11.2' ;;
+    trixie) printf '%s\n' '3.13.5' ;;
+    forky|sid) printf '%s\n' '3.13' ;;
+    *) return 1 ;;
+  esac
+}
+
+release.native.python.satisfies.controller.minimum() {
+  local version_hint="$1"
+  version.ge "${version_hint}" "${PYTHON_MIN_VERSION}"
 }
 
 log.python.candidate.result() {
@@ -199,10 +253,10 @@ log.python.candidate.result() {
 
   case "${status}" in
     accepted)
-      log "Python candidate accepted: ${resolved} (${version}) matches Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}"
+      log "Python candidate accepted: ${resolved} (${version})"
       ;;
-    rejected_contract)
-      log "Python candidate rejected: ${resolved} (${version}) violates managed contract Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}"
+    rejected)
+      log "Python candidate rejected: ${resolved} (${version})"
       ;;
     unreadable)
       log "Python candidate unreadable: ${resolved}"
@@ -210,17 +264,12 @@ log.python.candidate.result() {
   esac
 }
 
-select.python.bootstrap.bin() {
+select.system.controller.python() {
   local candidate=""
   local resolved=""
   local version=""
   local -a candidates=(
-    "${PYTHON_BIN}"
-    "/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
-    "/usr/bin/python${PYTHON_MAJOR_MINOR}"
-    "python${PYTHON_MAJOR_MINOR}"
-  )
-  local -a generic_candidates=(
+    "${SYSTEM_PYTHON_BIN}"
     "/usr/bin/python3"
     "python3"
   )
@@ -237,53 +286,86 @@ select.python.bootstrap.bin() {
       continue
     fi
 
-    if python.version.matches.managed.contract "${version}"; then
-      PYTHON_BOOTSTRAP_BIN="${resolved}"
-      PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${version}")"
-      log.python.candidate.result "${resolved}" "${version}" "accepted"
-      log "Using compatible system Python: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
-      return 0
-    fi
-
-    log.python.candidate.result "${resolved}" "${version}" "rejected_contract"
-  done
-
-  for candidate in "${generic_candidates[@]}"; do
-    resolved="$(resolve.python.candidate.bin "${candidate}" 2>/dev/null || true)"
-    if [[ -z "${resolved}" ]]; then
+    if ! python.version.matches.controller.minimum "${version}"; then
+      log.python.candidate.result "${resolved}" "${version}" "rejected"
       continue
     fi
 
-    version="$(python.version.from.bin "${resolved}" 2>/dev/null || true)"
-    if [[ -z "${version}" ]]; then
-      log.python.candidate.result "${resolved}" "" "unreadable"
+    if ! python.is.dpkg.owned "${resolved}"; then
+      log "Python candidate rejected: ${resolved} (${version}) is not dpkg-owned; system provider requires distro Python"
       continue
     fi
 
-    if python.version.matches.managed.contract "${version}"; then
-      PYTHON_BOOTSTRAP_BIN="${resolved}"
-      PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${version}")"
-      log.python.candidate.result "${resolved}" "${version}" "accepted"
-      log "Using compatible system Python: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
-      return 0
-    fi
-
-    log.python.candidate.result "${resolved}" "${version}" "rejected_contract"
+    PYTHON_BOOTSTRAP_BIN="${resolved}"
+    PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${version}")"
+    log.python.candidate.result "${resolved}" "${version}" "accepted"
+    log "Using distro controller Python: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
+    return 0
   done
 
   return 1
+}
+
+select.managed.fallback.python() {
+  local version=""
+
+  if [[ ! -x "${MANAGED_TARGET_PYTHON_PATH}" ]]; then
+    return 1
+  fi
+
+  version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1 || true)"
+  if [[ -z "${version}" ]]; then
+    log "Existing managed fallback Python is unreadable; rebuilding: ${MANAGED_TARGET_PYTHON_PATH}"
+    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    return 1
+  fi
+
+  if ! python.version.matches.managed.fallback.contract "${version}"; then
+    log "Existing managed fallback Python violates fallback contract: ${version}; expected Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}; rebuilding ${MANAGED_TARGET_PYTHON_HOME}"
+    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    return 1
+  fi
+
+  if ! python.can.create.venv "${MANAGED_TARGET_PYTHON_PATH}"; then
+    log "Existing managed fallback Python cannot create child venvs; rebuilding ${MANAGED_TARGET_PYTHON_HOME}"
+    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    return 1
+  fi
+
+  PYTHON_BOOTSTRAP_BIN="${MANAGED_TARGET_PYTHON_PATH}"
+  PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${version}")"
+  printf '%s\n' "${version}" > "${MANAGED_TARGET_HANDOFF_MARKER}"
+  log "Using existing managed fallback Python: ${version}"
+  return 0
+}
+
+select.python.bootstrap.bin() {
+  case "${CONTROLLER_PYTHON_PROVIDER}" in
+    system)
+      select.system.controller.python
+      return $?
+      ;;
+    managed_source)
+      select.managed.fallback.python
+      return $?
+      ;;
+    *)
+      log.error "Controller Python provider is unresolved: ${CONTROLLER_PYTHON_PROVIDER}"
+      log.error "resolve.controller.python.policy must run before select.python.bootstrap.bin."
+      exit 1
+      ;;
+  esac
 }
 
 ensure.python.venv.support() {
   local version_minor=""
   local package_name=""
   local -a candidate_packages=()
-  local -a attempted_packages=()
-  local -a missing_packages=()
+  local -a install_packages=()
 
-  if ! dpkg-query -S "${PYTHON_BOOTSTRAP_BIN}" >/dev/null 2>&1; then
-    log "Debian venv package install not applicable for non-distro Python: ${PYTHON_BOOTSTRAP_BIN}"
-    return 0
+  if [[ -z "${PYTHON_BOOTSTRAP_BIN}" ]]; then
+    log.error "PYTHON_BOOTSTRAP_BIN is empty; cannot ensure venv support."
+    exit 1
   fi
 
   if [[ -z "${PYTHON_BOOTSTRAP_VERSION}" ]]; then
@@ -291,41 +373,39 @@ ensure.python.venv.support() {
   fi
 
   version_minor="$(python.major.minor.from.version "${PYTHON_BOOTSTRAP_VERSION}")"
-  candidate_packages=(
-    "python${version_minor}-venv"
-    "python3-venv"
-  )
 
-  for package_name in "${candidate_packages[@]}"; do
-    if package.installed "${package_name}"; then
-      log "Python venv package already installed: ${package_name}"
-      continue
-    fi
-    if ! package.available "${package_name}"; then
-      log "Python venv package not available in apt sources: ${package_name}"
-      continue
-    fi
-    missing_packages+=("${package_name}")
-  done
+  if python.is.dpkg.owned "${PYTHON_BOOTSTRAP_BIN}"; then
+    candidate_packages=(
+      "python${version_minor}-venv"
+      "python3-venv"
+      "python3-apt"
+    )
 
-  if ((${#missing_packages[@]} == 0)); then
-    if ! python.can.create.venv "${PYTHON_BOOTSTRAP_BIN}"; then
-      log.error "Python cannot create venvs: ${PYTHON_BOOTSTRAP_BIN}"
-      log.error "Install matching pythonX.Y-venv packages or rebuild source Python with --with-ensurepip=install."
-      exit 1
+    for package_name in "${candidate_packages[@]}"; do
+      if package.installed "${package_name}"; then
+        log "Python support package already installed: ${package_name}"
+      else
+        install_packages+=("${package_name}")
+      fi
+    done
+
+    if ((${#install_packages[@]} > 0)); then
+      export DEBIAN_FRONTEND=noninteractive
+      log "Installing Python support packages for ${PYTHON_BOOTSTRAP_BIN}: ${install_packages[*]}"
+      apt-get update -y
+      apt-get install -y --no-install-recommends "${install_packages[@]}"
     fi
-    return 0
+  else
+    log "Non-distro Python selected; Debian package install is not applicable: ${PYTHON_BOOTSTRAP_BIN}"
   fi
 
-  export DEBIAN_FRONTEND=noninteractive
-  log "Installing Python venv support packages: ${missing_packages[*]}"
-  apt-get update -y
-  apt-get install -y --no-install-recommends "${missing_packages[@]}"
-  attempted_packages=("${missing_packages[@]}")
-
   if ! python.can.create.venv "${PYTHON_BOOTSTRAP_BIN}"; then
-    log.error "Python still cannot create venvs after package install: ${PYTHON_BOOTSTRAP_BIN}"
-    log.error "Attempted Debian venv packages: ${attempted_packages[*]}"
+    log.error "Selected controller Python cannot create venvs: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
+    if python.is.dpkg.owned "${PYTHON_BOOTSTRAP_BIN}"; then
+      log.error "Expected Debian venv support package: python${version_minor}-venv or python3-venv"
+    else
+      log.error "For source Python, rebuild with --with-ensurepip=install."
+    fi
     exit 1
   fi
 }
@@ -364,14 +444,15 @@ fetch.optional.file() {
   return 0
 }
 
-ensure.python312() {
+ensure.managed.fallback.python.build() {
+  local managed_version=""
   export DEBIAN_FRONTEND=noninteractive
 
-  if select.python.bootstrap.bin; then
-    return
+  if select.managed.fallback.python; then
+    return 0
   fi
 
-  log "No usable Python ${PYTHON_MAJOR_MINOR} interpreter found; building Python ${PYTHON_VERSION} from source..."
+  log "No valid managed fallback Python found; building Python ${PYTHON_VERSION} from source for legacy controller runtime..."
   apt-get update -y
   apt-get install -y --no-install-recommends \
     build-essential \
@@ -411,7 +492,39 @@ ensure.python312() {
 
   PYTHON_BOOTSTRAP_BIN="${PYTHON_BIN}"
   PYTHON_BOOTSTRAP_VERSION="$(python.version.from.bin "${PYTHON_BOOTSTRAP_BIN}")"
-  log "Built Python ready: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
+
+  if ! python.version.matches.managed.fallback.contract "${PYTHON_BOOTSTRAP_VERSION}"; then
+    log.error "Built Python does not satisfy managed fallback contract: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
+    exit 1
+  fi
+
+  ensure.python.venv.support
+
+  mkdir -p "$(dirname "${MANAGED_TARGET_PYTHON_HOME}")"
+  rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+  "${PYTHON_BOOTSTRAP_BIN}" -m venv "${MANAGED_TARGET_PYTHON_HOME}"
+
+  managed_version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1)"
+  if ! python.version.matches.managed.fallback.contract "${managed_version}"; then
+    log.error "Managed fallback Python was created with wrong version: ${managed_version}; expected Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}"
+    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    exit 1
+  fi
+
+  if ! python.can.create.venv "${MANAGED_TARGET_PYTHON_PATH}"; then
+    log.error "Managed fallback Python was created but cannot create child venvs: ${MANAGED_TARGET_PYTHON_PATH}"
+    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    exit 1
+  fi
+
+  printf '%s\n' "${managed_version}" > "${MANAGED_TARGET_HANDOFF_MARKER}"
+  PYTHON_BOOTSTRAP_BIN="${MANAGED_TARGET_PYTHON_PATH}"
+  PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${managed_version}")"
+  log "Managed fallback Python ready: ${managed_version}"
+}
+
+ensure.python312() {
+  ensure.managed.fallback.python.build
 }
 
 resolve.release.groupvars.file() {
@@ -456,6 +569,7 @@ resolve.release.groupvars.file() {
     *)
       log.error "Unsupported Debian release codename: ${HOST_DEBIAN_CODENAME}"
       log.error "Supported release overlays: buster, trixie"
+      log.error "Native Python policy map knows additional Debian releases, but this repo currently only ships buster/trixie release overlays."
       log.error "Set DEBIAN_RELEASE_GROUP_VARS_FILE explicitly if needed."
       exit 1
       ;;
@@ -464,12 +578,70 @@ resolve.release.groupvars.file() {
   log "Resolved Debian release lane: ${RESOLVED_RELEASE_LANE} (${RELEASE_GROUP_VARS_FILE})"
 }
 
+resolve.controller.python.policy() {
+  local codename="${RESOLVED_RELEASE_LANE:-${HOST_DEBIAN_CODENAME:-}}"
+  local native_minor=""
+  local native_hint=""
+
+  if [[ -z "${codename}" ]]; then
+    log.error "Cannot resolve controller Python policy before Debian release lane is known."
+    exit 1
+  fi
+
+  native_minor="$(debian.native.python.major_minor "${codename}" 2>/dev/null || true)"
+  native_hint="$(debian.native.python.version.hint "${codename}" 2>/dev/null || true)"
+
+  if [[ -z "${native_minor}" || -z "${native_hint}" ]]; then
+    log.error "No native Python policy mapping for Debian release: ${codename}"
+    log.error "Add ${codename} to debian.native.python.major_minor() and debian.native.python.version.hint()."
+    exit 1
+  fi
+
+  CONTROLLER_PYTHON_NATIVE_MAJOR_MINOR="${native_minor}"
+  CONTROLLER_PYTHON_NATIVE_VERSION_HINT="${native_hint}"
+
+  case "${CONTROLLER_PYTHON_POLICY}" in
+    auto)
+      if release.native.python.satisfies.controller.minimum "${native_hint}"; then
+        CONTROLLER_PYTHON_PROVIDER="system"
+        CONTROLLER_PYTHON_REBUILD_FOR_LEGACY=0
+      else
+        CONTROLLER_PYTHON_PROVIDER="managed_source"
+        CONTROLLER_PYTHON_REBUILD_FOR_LEGACY=1
+      fi
+      ;;
+    system)
+      CONTROLLER_PYTHON_PROVIDER="system"
+      CONTROLLER_PYTHON_REBUILD_FOR_LEGACY=0
+      ;;
+    managed_source)
+      CONTROLLER_PYTHON_PROVIDER="managed_source"
+      CONTROLLER_PYTHON_REBUILD_FOR_LEGACY=1
+      ;;
+    *)
+      log.error "Unsupported CONTROLLER_PYTHON_POLICY=${CONTROLLER_PYTHON_POLICY}; expected auto, system, or managed_source."
+      exit 1
+      ;;
+  esac
+
+  log "Controller Python policy: release=${codename} native_python=${native_hint} minimum=${PYTHON_MIN_VERSION} provider=${CONTROLLER_PYTHON_PROVIDER}"
+}
+
 write.bootstrap.selection.marker() {
   mkdir -p "${TMP_DIR}"
   resolve.runtime.helper.sha256
   cat > "${BOOTSTRAP_SELECTION_MARKER}" <<EOF
 python_bootstrap_bin=${PYTHON_BOOTSTRAP_BIN}
 python_bootstrap_version=${PYTHON_BOOTSTRAP_VERSION}
+controller_python_policy=${CONTROLLER_PYTHON_POLICY}
+controller_python_provider=${CONTROLLER_PYTHON_PROVIDER}
+controller_python_bin=${CONTROLLER_PYTHON_BIN}
+controller_python_version=${CONTROLLER_PYTHON_VERSION}
+controller_python_native_major_minor=${CONTROLLER_PYTHON_NATIVE_MAJOR_MINOR}
+controller_python_native_version_hint=${CONTROLLER_PYTHON_NATIVE_VERSION_HINT}
+controller_python_rebuild_for_legacy=${CONTROLLER_PYTHON_REBUILD_FOR_LEGACY}
+managed_target_python_home=${MANAGED_TARGET_PYTHON_HOME}
+managed_target_python_path=${MANAGED_TARGET_PYTHON_PATH}
 host_debian_codename=${HOST_DEBIAN_CODENAME}
 resolved_release_lane=${RESOLVED_RELEASE_LANE}
 release_group_vars_file=${RELEASE_GROUP_VARS_FILE}
@@ -480,94 +652,98 @@ EOF
   log "Bootstrap selection marker: ${BOOTSTRAP_SELECTION_MARKER}"
 }
 
-ensure.managed.target.python() {
-  local managed_version=""
-
-  if [[ -x "${MANAGED_TARGET_PYTHON_PATH}" ]]; then
-    managed_version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1 || true)"
-
-    if [[ -z "${managed_version}" ]]; then
-      log "Existing managed target Python is unreadable; rebuilding: ${MANAGED_TARGET_PYTHON_PATH}"
-      rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
-    elif ! python.version.matches.managed.contract "${managed_version}"; then
-      log "Existing managed target Python violates contract: ${managed_version}; expected Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}; rebuilding ${MANAGED_TARGET_PYTHON_HOME}"
-      rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
-    elif ! python.can.create.venv "${MANAGED_TARGET_PYTHON_PATH}"; then
-      log "Existing managed target Python cannot create venvs; rebuilding ${MANAGED_TARGET_PYTHON_HOME}"
-      rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
-    else
-      PYTHON_BOOTSTRAP_BIN="${MANAGED_TARGET_PYTHON_PATH}"
-      PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${managed_version}")"
-      printf '%s\n' "${managed_version}" > "${MANAGED_TARGET_HANDOFF_MARKER}"
-      log "Using existing managed target Python: ${managed_version}"
-      return
-    fi
-  fi
-
-  ensure.python312
-  ensure.python.venv.support
-  if ! python.can.create.venv "${PYTHON_BOOTSTRAP_BIN}"; then
-    log.error "Selected Python cannot create venvs: ${PYTHON_BOOTSTRAP_BIN}"
-    log.error "For distro Python, install matching pythonX.Y-venv packages. For source Python, rebuild with --with-ensurepip=install."
-    exit 1
-  fi
-  mkdir -p "$(dirname "${MANAGED_TARGET_PYTHON_HOME}")"
-  "${PYTHON_BOOTSTRAP_BIN}" -m venv "${MANAGED_TARGET_PYTHON_HOME}"
-  managed_version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1)"
-  if ! python.version.matches.managed.contract "${managed_version}"; then
-    log.error "Managed target Python was created with wrong version: ${managed_version}; expected Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}"
-    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
-    exit 1
-  fi
-  if ! python.can.create.venv "${MANAGED_TARGET_PYTHON_PATH}"; then
-    log.error "Managed target Python was created but cannot create child venvs: ${MANAGED_TARGET_PYTHON_PATH}"
-    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
-    exit 1
-  fi
-  printf '%s\n' "${managed_version}" > "${MANAGED_TARGET_HANDOFF_MARKER}"
-  PYTHON_BOOTSTRAP_BIN="${MANAGED_TARGET_PYTHON_PATH}"
-  PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${managed_version}")"
-  log "Managed target Python ready: ${managed_version}"
+ensure.controller.python() {
+  case "${CONTROLLER_PYTHON_PROVIDER}" in
+    system)
+      if ! select.system.controller.python; then
+        log.error "Release policy requires system Python, but no valid distro Python >= ${PYTHON_MIN_VERSION} was found."
+        log.error "Detected release=${RESOLVED_RELEASE_LANE:-unknown} native_python_hint=${CONTROLLER_PYTHON_NATIVE_VERSION_HINT:-unknown}"
+        exit 1
+      fi
+      ensure.python.venv.support
+      CONTROLLER_PYTHON_BIN="${PYTHON_BOOTSTRAP_BIN}"
+      CONTROLLER_PYTHON_VERSION="${PYTHON_BOOTSTRAP_VERSION}"
+      log "Controller Python ready from system: ${CONTROLLER_PYTHON_BIN} (${CONTROLLER_PYTHON_VERSION})"
+      ;;
+    managed_source)
+      ensure.managed.fallback.python.build
+      CONTROLLER_PYTHON_BIN="${PYTHON_BOOTSTRAP_BIN}"
+      CONTROLLER_PYTHON_VERSION="${PYTHON_BOOTSTRAP_VERSION}"
+      log "Controller Python ready from managed fallback: ${CONTROLLER_PYTHON_BIN} (${CONTROLLER_PYTHON_VERSION})"
+      ;;
+    *)
+      log.error "Controller Python provider is unresolved: ${CONTROLLER_PYTHON_PROVIDER}"
+      exit 1
+      ;;
+  esac
 }
 
-ansible.venv.python.matches.contract() {
-  local version=""
+ensure.managed.target.python() {
+  ensure.controller.python
+}
+
+ansible.venv.python.version() {
   [[ -x "${ANSIBLE_VENV}/bin/python" ]] || return 1
-  version="$("${ANSIBLE_VENV}/bin/python" --version 2>&1 || true)"
+  "${ANSIBLE_VENV}/bin/python" --version 2>&1 | sed 's/^Python //'
+}
+
+ansible.venv.python.matches.controller.minimum() {
+  local version=""
+  version="$(ansible.venv.python.version 2>/dev/null || true)"
   [[ -n "${version}" ]] || return 1
-  python.version.matches.managed.contract "${version}"
+  python.version.matches.controller.minimum "${version}"
+}
+
+ansible.venv.core.matches.contract() {
+  [[ -x "${ANSIBLE_VENV_BIN}" ]] || return 1
+  "${ANSIBLE_VENV_BIN}" --version 2>/dev/null | head -n1 | grep -q "core ${ANSIBLE_CORE_VERSION}\$"
 }
 
 ensure.managed.ansible() {
-  local current_core=""
   export DEBIAN_FRONTEND=noninteractive
+  ensure.controller.python
 
   if [[ -x "${ANSIBLE_VENV_BIN}" ]]; then
-    current_core="$("${ANSIBLE_VENV_BIN}" --version 2>/dev/null | head -n1 || true)"
-    if [[ "${current_core}" == *"core ${ANSIBLE_CORE_VERSION}" ]] && ansible.venv.python.matches.contract; then
-      ensure.managed.target.python
-      log "Using existing managed Ansible: $("${ANSIBLE_VENV_BIN}" --version | head -n1)"
+    if ansible.venv.core.matches.contract && ansible.venv.python.matches.controller.minimum; then
+      log "Using existing managed Ansible: $("${ANSIBLE_VENV_BIN}" --version | head -n1) with Python $(ansible.venv.python.version)"
       return
     fi
-    log "Existing managed Ansible venv violates contract (core or Python version); rebuilding ${ANSIBLE_VENV}"
+
+    log "Existing managed Ansible venv is stale or incompatible; rebuilding ${ANSIBLE_VENV}"
+    log "Existing Ansible check: $("${ANSIBLE_VENV_BIN}" --version 2>/dev/null | head -n1 || true)"
+    log "Existing Python check: $(ansible.venv.python.version 2>/dev/null || true)"
     rm -rf "${ANSIBLE_VENV}"
   fi
 
-  ensure.managed.target.python
   ensure.python.venv.support
-  if ! python.can.create.venv "${PYTHON_BOOTSTRAP_BIN}"; then
-    log.error "Managed target Python cannot create Ansible venv: ${PYTHON_BOOTSTRAP_BIN}"
+  if ! python.can.create.venv "${CONTROLLER_PYTHON_BIN}"; then
+    log.error "Controller Python cannot create Ansible venv: ${CONTROLLER_PYTHON_BIN}"
     exit 1
   fi
   mkdir -p "${ANSIBLE_VENV}"
-  "${PYTHON_BOOTSTRAP_BIN}" -m venv "${ANSIBLE_VENV}"
+  "${CONTROLLER_PYTHON_BIN}" -m venv "${ANSIBLE_VENV}"
   "${ANSIBLE_VENV}/bin/pip" install --upgrade pip setuptools wheel
   "${ANSIBLE_VENV}/bin/pip" install --upgrade "${ANSIBLE_CORE_SPEC}" passlib
   "${ANSIBLE_VENV}/bin/ansible-galaxy" collection install community.general:8.6.0
-  log "Managed Ansible ready: $("${ANSIBLE_VENV_BIN}" --version | head -n1)"
+
+  if ! ansible.venv.core.matches.contract; then
+    log.error "Managed Ansible venv was created, but Ansible core version does not match ${ANSIBLE_CORE_VERSION}."
+    "${ANSIBLE_VENV_BIN}" --version || true
+    exit 1
+  fi
+
+  if ! ansible.venv.python.matches.controller.minimum; then
+    log.error "Managed Ansible venv was created, but its Python does not satisfy ${PYTHON_MIN_VERSION}."
+    "${ANSIBLE_VENV}/bin/python" --version || true
+    exit 1
+  fi
+
+  log "Managed Ansible ready: $("${ANSIBLE_VENV_BIN}" --version | head -n1) with Python $(ansible.venv.python.version)"
 }
 
 ensure.local.ansible() {
+  local local_python=""
+  local local_python_version=""
   export DEBIAN_FRONTEND=noninteractive
 
   apt-get update -y
@@ -579,20 +755,33 @@ ensure.local.ansible() {
     curl \
     wget
 
+  local_python="$(command -v python3)"
+  local_python_version="$(python.version.from.bin "${local_python}")"
+  if ! python.version.matches.controller.minimum "${local_python_version}"; then
+    log.error "Local system python3 (${local_python_version}) is below controller minimum ${PYTHON_MIN_VERSION}. Use managed bootstrap path instead."
+    exit 1
+  fi
+
+  PYTHON_BOOTSTRAP_BIN="${local_python}"
+  PYTHON_BOOTSTRAP_VERSION="${local_python_version}"
+  CONTROLLER_PYTHON_BIN="${local_python}"
+  CONTROLLER_PYTHON_VERSION="${local_python_version}"
+  ensure.python.venv.support
+
   if [[ -x "${ANSIBLE_VENV_BIN}" ]]; then
-    if "${ANSIBLE_VENV_BIN}" --version 2>/dev/null | head -n1 | grep -q "core ${ANSIBLE_CORE_VERSION}\$"; then
-      log "Using existing local Ansible: $("${ANSIBLE_VENV_BIN}" --version | head -n1)"
+    if ansible.venv.core.matches.contract && ansible.venv.python.matches.controller.minimum; then
+      log "Using existing local Ansible: $("${ANSIBLE_VENV_BIN}" --version | head -n1) with Python $(ansible.venv.python.version)"
       return
     fi
     rm -rf "${ANSIBLE_VENV}"
   fi
 
   mkdir -p "${ANSIBLE_VENV}"
-  python3 -m venv "${ANSIBLE_VENV}"
+  "${local_python}" -m venv "${ANSIBLE_VENV}"
   "${ANSIBLE_VENV}/bin/pip" install --upgrade pip setuptools wheel
   "${ANSIBLE_VENV}/bin/pip" install --upgrade "${ANSIBLE_CORE_SPEC}" passlib
   "${ANSIBLE_VENV}/bin/ansible-galaxy" collection install community.general:8.6.0
-  log "Local Ansible ready: $("${ANSIBLE_VENV_BIN}" --version | head -n1)"
+  log "Local Ansible ready: $("${ANSIBLE_VENV_BIN}" --version | head -n1) with Python $(ansible.venv.python.version)"
 }
 
 reset.ansible.extra.vars() {

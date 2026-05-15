@@ -13,13 +13,22 @@ apt_cache_valid_time: 86400
 apt_skip_cache_refresh: false
 
 # Shared Python / Ansible bootstrap contract.
+# controller_python_version is the minimum controller Python version for this repo.
+# It is not an exact-version requirement on releases whose native Python is newer.
 controller_python_version: "3.12.3"
 controller_python_major_minor: "3.12"
+controller_python_min_version: "{{ controller_python_version }}"
+controller_python_policy: "auto"
+controller_python_system_path: "/usr/bin/python3"
+controller_python_provider: "auto"
+controller_python_rebuild_for_legacy: true
 controller_python_prefix: "/usr/local"
 controller_ansible_venv: "/opt/ansible-venv"
 controller_ansible_core_version: "2.20.5"
 controller_ansible_core_spec: "ansible-core=={{ controller_ansible_core_version }}"
 controller_ansible_core_min: "{{ controller_ansible_core_version }}"
+
+# Managed fallback Python used only when distro system Python is below controller_python_min_version.
 managed_target_python_version: "3.12.3"
 managed_target_python_major_minor: "3.12"
 managed_target_python_source_prefix: "/usr/local"

@@ -1,3 +1,9 @@
 ---
 debian_release: "buster"
+debian_major_version: 10
 debian_components: "main contrib non-free"
+debian_native_python_major_minor: "3.7"
+debian_native_python_version_hint: "3.7.3"
+controller_python_provider: "managed_source"
+controller_python_rebuild_for_legacy: true
+controller_python_expected_path: "/opt/ansible/py312/bin/python"

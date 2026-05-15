@@ -107,6 +107,7 @@ main() {
   require.apt
   require.debian
   detect.release.groupvars
+  resolve.controller.python.policy
 
   if ! use.local.runtime.files; then
     use.remote.runtime.tree
