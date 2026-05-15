@@ -7,3 +7,5 @@ debian_native_python_version_hint: "3.7.3"
 controller_python_provider: "managed_source"
 controller_python_rebuild_for_legacy: true
 controller_python_expected_path: "/opt/ansible/py312/bin/python"
+ansible_python_interpreter_controller: "/opt/ansible/py312/bin/python"
+ansible_python_interpreter_managed: "/opt/ansible/py312/bin/python"

@@ -65,8 +65,24 @@ if ! grep -qx 'users.yml' "${ROOT}/ansible/install.playbooks.txt"; then
   echo "[validate.runtime][error] bootstrap playlist must include users.yml"
   rc=1
 fi
+if ! grep -qx 'security.yml' "${ROOT}/ansible/install.playbooks.txt"; then
+  echo "[validate.runtime][error] bootstrap playlist must include security.yml"
+  rc=1
+fi
+if ! grep -qx 'sysctl.yml' "${ROOT}/ansible/install.playbooks.txt"; then
+  echo "[validate.runtime][error] bootstrap playlist must include sysctl.yml"
+  rc=1
+fi
 if ! grep -qx 'network.yml' "${ROOT}/ansible/install.playbooks.txt"; then
   echo "[validate.runtime][error] bootstrap playlist must include network.yml"
+  rc=1
+fi
+if ! grep -qx 'logging.yml' "${ROOT}/ansible/install.playbooks.txt"; then
+  echo "[validate.runtime][error] bootstrap playlist must include logging.yml"
+  rc=1
+fi
+if grep -qx 'ssh.yml' "${ROOT}/ansible/install.playbooks.txt"; then
+  echo "[validate.runtime][error] ssh.yml is a runtime vars/support file and must not be listed as a playlist playbook"
   rc=1
 fi
 if grep -q 'allow_rdp:[[:space:]]*true' "${ROOT}/ansible/lan.yml"; then
@@ -89,6 +105,14 @@ if ! grep -q 'Bootstrap entry sha256' "${ROOT}/setup/bootstrap.sh"; then
 fi
 if ! grep -q 'select.python.bootstrap.bin' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must route controller Python selection through policy-aware provider logic"
+  rc=1
+fi
+if ! grep -q 'RUNTIME_SUPPORT_REFS=(packages.yml ssh.yml)' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must fetch runtime support refs including packages.yml and ssh.yml"
+  rc=1
+fi
+if ! grep -q 'fetch.runtime.support.files' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must fetch runtime support files before playlist execution"
   rc=1
 fi
 if ! grep -q 'debian.native.python.version.hint' "${ROOT}/setup/release.common.sh"; then
@@ -121,6 +145,10 @@ if ! grep -q 'Existing managed fallback Python violates fallback contract' "${RO
 fi
 if ! grep -q 'ansible.venv.python.matches.controller.minimum' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must validate existing /opt/ansible-venv Python version"
+  rc=1
+fi
+if ! grep -q 'ansible.venv.core.version' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must parse ansible-playbook core version from bracketed output"
   rc=1
 fi
 if ! grep -q 'controller_python_provider' "${ROOT}/ansible/group_vars/trixie.yml"; then
@@ -171,8 +199,24 @@ if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh"
   echo "[validate.runtime][error] ensure.managed.ansible() must verify existing Ansible venv Python contract before reuse"
   rc=1
 fi
+if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'ansible.venv.core.matches.contract'; then
+  echo "[validate.runtime][error] ensure.managed.ansible() must use non-brittle ansible core contract checks compatible with bracketed output"
+  rc=1
+fi
 if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'python.can.create.venv'; then
   echo "[validate.runtime][error] ensure.managed.ansible() must validate managed Python can create Ansible venvs"
+  rc=1
+fi
+if ! sed -n '/run.playlist()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'playbook_paths'; then
+  echo "[validate.runtime][error] run.playlist() must execute playlist entries in a single ansible invocation"
+  rc=1
+fi
+if ! grep -q 'ansible_python_interpreter_managed: "/usr/bin/python3"' "${ROOT}/ansible/group_vars/trixie.yml"; then
+  echo "[validate.runtime][error] trixie.yml must force managed/module interpreter to /usr/bin/python3"
+  rc=1
+fi
+if ! grep -q 'ansible_python_interpreter_managed: "/opt/ansible/py312/bin/python"' "${ROOT}/ansible/group_vars/buster.yml"; then
+  echo "[validate.runtime][error] buster.yml must force managed/module interpreter to /opt/ansible/py312/bin/python"
   rc=1
 fi
 

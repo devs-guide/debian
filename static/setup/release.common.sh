@@ -46,6 +46,7 @@ PLAYLIST_PATH="${PLAYBOOK_DIR}/install.playbooks.txt"
 BASE_GROUP_VARS_PATH="${GROUP_VARS_DIR}/${BASE_GROUP_VARS_FILE}"
 PLATFORM_GROUP_VARS_PATH="${GROUP_VARS_DIR}/${PLATFORM_GROUP_VARS_FILE}"
 RELEASE_GROUP_VARS_PATH=""
+RUNTIME_SUPPORT_REFS=(packages.yml ssh.yml)
 PYTHON_BOOTSTRAP_BIN=""
 PYTHON_BOOTSTRAP_VERSION=""
 HOST_DEBIAN_CODENAME=""
@@ -649,6 +650,7 @@ runtime_helper_published_url=${RUNTIME_HELPER_PUBLISHED_URL}
 runtime_helper_source_path=${RUNTIME_HELPER_SOURCE_PATH}
 runtime_helper_sha256=${RUNTIME_HELPER_SHA256}
 EOF
+  reset.ansible.extra.vars
   log "Bootstrap selection marker: ${BOOTSTRAP_SELECTION_MARKER}"
 }
 
@@ -694,9 +696,23 @@ ansible.venv.python.matches.controller.minimum() {
   python.version.matches.controller.minimum "${version}"
 }
 
-ansible.venv.core.matches.contract() {
+ansible.venv.core.version() {
+  local header=""
+  local parsed=""
   [[ -x "${ANSIBLE_VENV_BIN}" ]] || return 1
-  "${ANSIBLE_VENV_BIN}" --version 2>/dev/null | head -n1 | grep -q "core ${ANSIBLE_CORE_VERSION}\$"
+  header="$("${ANSIBLE_VENV_BIN}" --version 2>/dev/null | head -n1 || true)"
+  [[ -n "${header}" ]] || return 1
+  parsed="$(printf '%s\n' "${header}" | sed -nE 's/.*\[core ([^]]+)\].*/\1/p')"
+  [[ -n "${parsed}" ]] || return 1
+  printf '%s\n' "${parsed}"
+}
+
+ansible.venv.core.matches.contract() {
+  local current_core=""
+  [[ -x "${ANSIBLE_VENV_BIN}" ]] || return 1
+  current_core="$(ansible.venv.core.version 2>/dev/null || true)"
+  [[ -n "${current_core}" ]] || return 1
+  [[ "${current_core}" == "${ANSIBLE_CORE_VERSION}" ]]
 }
 
 ensure.managed.ansible() {
@@ -798,6 +814,20 @@ reset.ansible.extra.vars() {
   if [[ -n "${RELEASE_GROUP_VARS_PATH}" && -f "${RELEASE_GROUP_VARS_PATH}" ]]; then
     ANSIBLE_EXTRA_VARS_ARGS+=(-e "@${RELEASE_GROUP_VARS_PATH}")
   fi
+
+  if [[ -n "${CONTROLLER_PYTHON_BIN}" ]]; then
+    ANSIBLE_EXTRA_VARS_ARGS+=(-e "controller_python_bin=${CONTROLLER_PYTHON_BIN}")
+    ANSIBLE_EXTRA_VARS_ARGS+=(-e "ansible_python_interpreter_controller=${CONTROLLER_PYTHON_BIN}")
+    ANSIBLE_EXTRA_VARS_ARGS+=(-e "ansible_python_interpreter_managed=${CONTROLLER_PYTHON_BIN}")
+  fi
+
+  if [[ -n "${CONTROLLER_PYTHON_VERSION}" ]]; then
+    ANSIBLE_EXTRA_VARS_ARGS+=(-e "controller_python_version=${CONTROLLER_PYTHON_VERSION}")
+  fi
+
+  if [[ -n "${CONTROLLER_PYTHON_PROVIDER}" ]]; then
+    ANSIBLE_EXTRA_VARS_ARGS+=(-e "bootstrap_controller_python_provider=${CONTROLLER_PYTHON_PROVIDER}")
+  fi
 }
 
 use.local.runtime.tree() {
@@ -856,21 +886,43 @@ fetch.playbook() {
   printf '%s\n' "${dest}"
 }
 
-run.playbook() {
-  local playbook_path="$1"
-  shift || true
-  "${ANSIBLE_VENV_BIN}" -i localhost, -c local "${ANSIBLE_EXTRA_VARS_ARGS[@]}" "$@" "${playbook_path}"
+fetch.runtime.support.files() {
+  local ref=""
+  local dest=""
+
+  for ref in "${RUNTIME_SUPPORT_REFS[@]}"; do
+    dest="${PLAYBOOK_TMP_ROOT}/${ref}"
+    if [[ -f "${dest}" ]]; then
+      continue
+    fi
+    fetch.file "${PAGES_BASE_URL}/ansible/${ref}" "${dest}"
+  done
+}
+
+run.playbooks() {
+  local -a playbook_paths=("$@")
+  "${ANSIBLE_VENV_BIN}" -i localhost, -c local "${ANSIBLE_EXTRA_VARS_ARGS[@]}" "${playbook_paths[@]}"
 }
 
 run.playlist() {
   local ref=""
   local playbook_path=""
+  local -a playbook_paths=()
+
+  fetch.runtime.support.files
 
   while IFS= read -r ref; do
     ref="${ref%%$'\r'}"
     ref="$(printf '%s' "${ref}" | sed 's/[[:space:]]*$//')"
     [[ -z "${ref}" || "${ref}" =~ ^[[:space:]]*# ]] && continue
     playbook_path="$(fetch.playbook "${ref}")"
-    run.playbook "${playbook_path}"
+    playbook_paths+=("${playbook_path}")
   done < "${PLAYLIST_PATH}"
+
+  if ((${#playbook_paths[@]} == 0)); then
+    log.error "Playlist is empty: ${PLAYLIST_PATH}"
+    exit 1
+  fi
+
+  run.playbooks "${playbook_paths[@]}"
 }

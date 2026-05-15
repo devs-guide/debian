@@ -4,5 +4,8 @@ bootstrap.yml
 sources.yml
 install.packages.yml
 users.yml
+security.yml
+sysctl.yml
 lan.yml
 network.yml
+logging.yml

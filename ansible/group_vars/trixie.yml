@@ -7,3 +7,5 @@ debian_native_python_version_hint: "3.13.5"
 controller_python_provider: "system"
 controller_python_rebuild_for_legacy: false
 controller_python_expected_path: "/usr/bin/python3"
+ansible_python_interpreter_controller: "/usr/bin/python3"
+ansible_python_interpreter_managed: "/usr/bin/python3"
