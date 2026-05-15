@@ -87,16 +87,28 @@ if ! grep -q 'select.python.bootstrap.bin' "${ROOT}/setup/release.common.sh"; th
   echo "[validate.runtime][error] setup/release.common.sh must detect compatible system python3"
   rc=1
 fi
-if ! grep -q '"/usr/bin/python3"' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must probe /usr/bin/python3 explicitly before source builds"
+if ! grep -q 'python.version.matches.managed.contract' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must enforce managed Python version contract matching"
   rc=1
 fi
-if ! grep -q 'ensure.python.venv.support' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must install Debian venv support before creating managed target Python"
+if ! grep -q 'python.can.create.venv' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must validate Python venv capability before reusing managed runtimes"
   rc=1
 fi
-if ! grep -q 'python3-venv' "${ROOT}/setup/release.common.sh"; then
-  echo "[validate.runtime][error] setup/release.common.sh must ensure python3-venv package support for distro Python"
+if ! grep -q 'Existing managed target Python violates contract' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must reject stale managed Python that violates the 3.12 contract"
+  rc=1
+fi
+if ! grep -q 'Existing managed target Python cannot create venvs' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must reject managed Python that cannot create venvs"
+  rc=1
+fi
+if ! grep -q 'ansible.venv.python.matches.contract' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must validate managed Ansible venv Python version before reuse"
+  rc=1
+fi
+if ! grep -q 'Existing managed Ansible venv violates contract' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must rebuild managed Ansible venv when core/Python contract is violated"
   rc=1
 fi
 if ! grep -q 'PYTHON_MIN_VERSION' "${ROOT}/setup/release.common.sh"; then
@@ -127,8 +139,12 @@ if ! grep -q 'runtime_helper_sha256=' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must persist helper revision details in the selection marker"
   rc=1
 fi
-if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'ensure.python.venv.support'; then
-  echo "[validate.runtime][error] ensure.managed.ansible() must enforce Debian venv support before creating /opt/ansible-venv"
+if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'ansible.venv.python.matches.contract'; then
+  echo "[validate.runtime][error] ensure.managed.ansible() must verify existing Ansible venv Python contract before reuse"
+  rc=1
+fi
+if ! sed -n '/ensure.managed.ansible()/,/^}/p' "${ROOT}/setup/release.common.sh" | grep -q 'python.can.create.venv'; then
+  echo "[validate.runtime][error] ensure.managed.ansible() must validate managed Python can create Ansible venvs"
   rc=1
 fi
 

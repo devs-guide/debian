@@ -120,6 +120,11 @@ python.version.from.bin() {
   local version_line=""
 
   version_line="$("${bin}" --version 2>&1)" || return 1
+  python.version.normalized "${version_line}"
+}
+
+python.version.normalized() {
+  local version_line="$1"
   printf '%s\n' "${version_line#Python }"
 }
 
@@ -132,6 +137,33 @@ python.major.minor.from.version() {
   minor="${version#*.}"
   minor="${minor%%.*}"
   printf '%s.%s\n' "${major}" "${minor}"
+}
+
+python.version.matches.managed.contract() {
+  local version="$1"
+  local version_minor=""
+
+  version="$(python.version.normalized "${version}")"
+  version_minor="$(python.major.minor.from.version "${version}")"
+
+  [[ "${version_minor}" == "${PYTHON_MAJOR_MINOR}" ]] || return 1
+  version.ge "${version}" "${PYTHON_MIN_VERSION}" || return 1
+}
+
+python.can.create.venv() {
+  local bin="$1"
+  local probe_parent="${TMP_DIR:-/tmp}"
+  local probe_root=""
+
+  mkdir -p "${probe_parent}"
+  probe_root="$(mktemp -d "${probe_parent}/python-venv-probe.XXXXXX")"
+  if "${bin}" -m venv "${probe_root}/venv" >/dev/null 2>&1; then
+    rm -rf "${probe_root}"
+    return 0
+  fi
+
+  rm -rf "${probe_root}"
+  return 1
 }
 
 resolve.python.candidate.bin() {
@@ -155,6 +187,11 @@ package.installed() {
   dpkg-query -W -f='${Status}' "${package_name}" 2>/dev/null | grep -q 'install ok installed'
 }
 
+package.available() {
+  local package_name="$1"
+  apt-cache show "${package_name}" >/dev/null 2>&1
+}
+
 log.python.candidate.result() {
   local resolved="$1"
   local version="$2"
@@ -162,10 +199,10 @@ log.python.candidate.result() {
 
   case "${status}" in
     accepted)
-      log "Python candidate accepted: ${resolved} (${version}) >= ${PYTHON_MIN_VERSION}"
+      log "Python candidate accepted: ${resolved} (${version}) matches Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}"
       ;;
-    rejected)
-      log "Python candidate rejected: ${resolved} (${version}) < ${PYTHON_MIN_VERSION}"
+    rejected_contract)
+      log "Python candidate rejected: ${resolved} (${version}) violates managed contract Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}"
       ;;
     unreadable)
       log "Python candidate unreadable: ${resolved}"
@@ -178,11 +215,14 @@ select.python.bootstrap.bin() {
   local resolved=""
   local version=""
   local -a candidates=(
+    "${PYTHON_BIN}"
+    "/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
+    "/usr/bin/python${PYTHON_MAJOR_MINOR}"
+    "python${PYTHON_MAJOR_MINOR}"
+  )
+  local -a generic_candidates=(
     "/usr/bin/python3"
     "python3"
-    "/usr/local/bin/python3"
-    "python${PYTHON_MAJOR_MINOR}"
-    "${PYTHON_BIN}"
   )
 
   for candidate in "${candidates[@]}"; do
@@ -197,15 +237,38 @@ select.python.bootstrap.bin() {
       continue
     fi
 
-    if version.ge "${version}" "${PYTHON_MIN_VERSION}"; then
+    if python.version.matches.managed.contract "${version}"; then
       PYTHON_BOOTSTRAP_BIN="${resolved}"
-      PYTHON_BOOTSTRAP_VERSION="${version}"
+      PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${version}")"
       log.python.candidate.result "${resolved}" "${version}" "accepted"
       log "Using compatible system Python: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
       return 0
     fi
 
-    log.python.candidate.result "${resolved}" "${version}" "rejected"
+    log.python.candidate.result "${resolved}" "${version}" "rejected_contract"
+  done
+
+  for candidate in "${generic_candidates[@]}"; do
+    resolved="$(resolve.python.candidate.bin "${candidate}" 2>/dev/null || true)"
+    if [[ -z "${resolved}" ]]; then
+      continue
+    fi
+
+    version="$(python.version.from.bin "${resolved}" 2>/dev/null || true)"
+    if [[ -z "${version}" ]]; then
+      log.python.candidate.result "${resolved}" "" "unreadable"
+      continue
+    fi
+
+    if python.version.matches.managed.contract "${version}"; then
+      PYTHON_BOOTSTRAP_BIN="${resolved}"
+      PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${version}")"
+      log.python.candidate.result "${resolved}" "${version}" "accepted"
+      log "Using compatible system Python: ${PYTHON_BOOTSTRAP_BIN} (${PYTHON_BOOTSTRAP_VERSION})"
+      return 0
+    fi
+
+    log.python.candidate.result "${resolved}" "${version}" "rejected_contract"
   done
 
   return 1
@@ -215,10 +278,11 @@ ensure.python.venv.support() {
   local version_minor=""
   local package_name=""
   local -a candidate_packages=()
+  local -a attempted_packages=()
   local -a missing_packages=()
 
   if ! dpkg-query -S "${PYTHON_BOOTSTRAP_BIN}" >/dev/null 2>&1; then
-    log "Skipping Debian venv package install for non-distro Python: ${PYTHON_BOOTSTRAP_BIN}"
+    log "Debian venv package install not applicable for non-distro Python: ${PYTHON_BOOTSTRAP_BIN}"
     return 0
   fi
 
@@ -237,10 +301,19 @@ ensure.python.venv.support() {
       log "Python venv package already installed: ${package_name}"
       continue
     fi
+    if ! package.available "${package_name}"; then
+      log "Python venv package not available in apt sources: ${package_name}"
+      continue
+    fi
     missing_packages+=("${package_name}")
   done
 
   if ((${#missing_packages[@]} == 0)); then
+    if ! python.can.create.venv "${PYTHON_BOOTSTRAP_BIN}"; then
+      log.error "Python cannot create venvs: ${PYTHON_BOOTSTRAP_BIN}"
+      log.error "Install matching pythonX.Y-venv packages or rebuild source Python with --with-ensurepip=install."
+      exit 1
+    fi
     return 0
   fi
 
@@ -248,6 +321,13 @@ ensure.python.venv.support() {
   log "Installing Python venv support packages: ${missing_packages[*]}"
   apt-get update -y
   apt-get install -y --no-install-recommends "${missing_packages[@]}"
+  attempted_packages=("${missing_packages[@]}")
+
+  if ! python.can.create.venv "${PYTHON_BOOTSTRAP_BIN}"; then
+    log.error "Python still cannot create venvs after package install: ${PYTHON_BOOTSTRAP_BIN}"
+    log.error "Attempted Debian venv packages: ${attempted_packages[*]}"
+    exit 1
+  fi
 }
 
 prepare.runtime.tree() {
@@ -291,7 +371,7 @@ ensure.python312() {
     return
   fi
 
-  log "No compatible system Python found; building Python ${PYTHON_VERSION} from source..."
+  log "No usable Python ${PYTHON_MAJOR_MINOR} interpreter found; building Python ${PYTHON_VERSION} from source..."
   apt-get update -y
   apt-get install -y --no-install-recommends \
     build-essential \
@@ -404,40 +484,81 @@ ensure.managed.target.python() {
   local managed_version=""
 
   if [[ -x "${MANAGED_TARGET_PYTHON_PATH}" ]]; then
-    if managed_version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1)"; then
+    managed_version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1 || true)"
+
+    if [[ -z "${managed_version}" ]]; then
+      log "Existing managed target Python is unreadable; rebuilding: ${MANAGED_TARGET_PYTHON_PATH}"
+      rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    elif ! python.version.matches.managed.contract "${managed_version}"; then
+      log "Existing managed target Python violates contract: ${managed_version}; expected Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}; rebuilding ${MANAGED_TARGET_PYTHON_HOME}"
+      rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    elif ! python.can.create.venv "${MANAGED_TARGET_PYTHON_PATH}"; then
+      log "Existing managed target Python cannot create venvs; rebuilding ${MANAGED_TARGET_PYTHON_HOME}"
+      rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    else
       PYTHON_BOOTSTRAP_BIN="${MANAGED_TARGET_PYTHON_PATH}"
+      PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${managed_version}")"
       printf '%s\n' "${managed_version}" > "${MANAGED_TARGET_HANDOFF_MARKER}"
       log "Using existing managed target Python: ${managed_version}"
       return
     fi
-    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
   fi
 
   ensure.python312
   ensure.python.venv.support
+  if ! python.can.create.venv "${PYTHON_BOOTSTRAP_BIN}"; then
+    log.error "Selected Python cannot create venvs: ${PYTHON_BOOTSTRAP_BIN}"
+    log.error "For distro Python, install matching pythonX.Y-venv packages. For source Python, rebuild with --with-ensurepip=install."
+    exit 1
+  fi
   mkdir -p "$(dirname "${MANAGED_TARGET_PYTHON_HOME}")"
   "${PYTHON_BOOTSTRAP_BIN}" -m venv "${MANAGED_TARGET_PYTHON_HOME}"
   managed_version="$("${MANAGED_TARGET_PYTHON_PATH}" --version 2>&1)"
+  if ! python.version.matches.managed.contract "${managed_version}"; then
+    log.error "Managed target Python was created with wrong version: ${managed_version}; expected Python ${PYTHON_MAJOR_MINOR}.x >= ${PYTHON_MIN_VERSION}"
+    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    exit 1
+  fi
+  if ! python.can.create.venv "${MANAGED_TARGET_PYTHON_PATH}"; then
+    log.error "Managed target Python was created but cannot create child venvs: ${MANAGED_TARGET_PYTHON_PATH}"
+    rm -rf "${MANAGED_TARGET_PYTHON_HOME}"
+    exit 1
+  fi
   printf '%s\n' "${managed_version}" > "${MANAGED_TARGET_HANDOFF_MARKER}"
   PYTHON_BOOTSTRAP_BIN="${MANAGED_TARGET_PYTHON_PATH}"
-  PYTHON_BOOTSTRAP_VERSION="${managed_version#Python }"
+  PYTHON_BOOTSTRAP_VERSION="$(python.version.normalized "${managed_version}")"
   log "Managed target Python ready: ${managed_version}"
 }
 
+ansible.venv.python.matches.contract() {
+  local version=""
+  [[ -x "${ANSIBLE_VENV}/bin/python" ]] || return 1
+  version="$("${ANSIBLE_VENV}/bin/python" --version 2>&1 || true)"
+  [[ -n "${version}" ]] || return 1
+  python.version.matches.managed.contract "${version}"
+}
+
 ensure.managed.ansible() {
+  local current_core=""
   export DEBIAN_FRONTEND=noninteractive
 
   if [[ -x "${ANSIBLE_VENV_BIN}" ]]; then
-    if "${ANSIBLE_VENV_BIN}" --version 2>/dev/null | head -n1 | grep -q "core ${ANSIBLE_CORE_VERSION}\$"; then
+    current_core="$("${ANSIBLE_VENV_BIN}" --version 2>/dev/null | head -n1 || true)"
+    if [[ "${current_core}" == *"core ${ANSIBLE_CORE_VERSION}" ]] && ansible.venv.python.matches.contract; then
       ensure.managed.target.python
       log "Using existing managed Ansible: $("${ANSIBLE_VENV_BIN}" --version | head -n1)"
       return
     fi
+    log "Existing managed Ansible venv violates contract (core or Python version); rebuilding ${ANSIBLE_VENV}"
     rm -rf "${ANSIBLE_VENV}"
   fi
 
   ensure.managed.target.python
   ensure.python.venv.support
+  if ! python.can.create.venv "${PYTHON_BOOTSTRAP_BIN}"; then
+    log.error "Managed target Python cannot create Ansible venv: ${PYTHON_BOOTSTRAP_BIN}"
+    exit 1
+  fi
   mkdir -p "${ANSIBLE_VENV}"
   "${PYTHON_BOOTSTRAP_BIN}" -m venv "${ANSIBLE_VENV}"
   "${ANSIBLE_VENV}/bin/pip" install --upgrade pip setuptools wheel
