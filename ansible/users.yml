@@ -29,7 +29,7 @@
             else false
           }}
         groups: "{{ (item.groups | default([])) | join(',') if (item.groups | default([]) | length > 0) else omit }}"
-        append: true
+        append: "{{ (item.groups | default([]) | length > 0) | bool }}"
         shell: "{{ item.shell | default('/bin/bash') }}"
         create_home: true
         state: present

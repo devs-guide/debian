@@ -89,6 +89,22 @@ if grep -q 'allow_rdp:[[:space:]]*true' "${ROOT}/ansible/lan.yml"; then
   echo "[validate.runtime][error] minimal bootstrap must not enable RDP by default"
   rc=1
 fi
+if sed -n '/^[[:space:]]*handlers:/,$p' "${ROOT}/ansible/network.yml" | grep -q '^[[:space:]]*block:'; then
+  echo "[validate.runtime][error] ansible/network.yml handlers must not use block; use concrete handlers with listen topics"
+  rc=1
+fi
+if ! grep -q 'listen: Validate and reload ssh' "${ROOT}/ansible/network.yml"; then
+  echo "[validate.runtime][error] ansible/network.yml must use listen handlers for SSH validate/reload"
+  rc=1
+fi
+if ! grep -q 'Resolve SSH service unit name' "${ROOT}/ansible/network.yml"; then
+  echo "[validate.runtime][error] ansible/network.yml must resolve the Debian SSH service unit before notifying reload handlers"
+  rc=1
+fi
+if ! grep -q 'append: "{{ (item.groups | default(\[\]) | length > 0) | bool }}"' "${ROOT}/ansible/users.yml"; then
+  echo "[validate.runtime][error] ansible/users.yml must not set append=true when no groups are defined"
+  rc=1
+fi
 
 echo "[validate.runtime] checking bootstrap resolver contract..."
 if ! grep -q 'resolve.release.groupvars.file' "${ROOT}/setup/bootstrap.sh"; then

@@ -53,6 +53,19 @@
     - name: Collect service facts
       ansible.builtin.service_facts:
 
+    - name: Resolve SSH service unit name
+      ansible.builtin.set_fact:
+        ssh_service_name: >-
+          {{
+            'ssh'
+            if ('ssh.service' in ansible_facts.services or 'ssh' in ansible_facts.services)
+            else (
+              'sshd'
+              if ('sshd.service' in ansible_facts.services or 'sshd' in ansible_facts.services)
+              else 'ssh'
+            )
+          }}
+
   tasks:
     - name: Ensure SSH include directory exists
       ansible.builtin.file:
@@ -118,16 +131,16 @@
       notify: Reload ufw
 
   handlers:
-    - name: Validate and reload ssh
-      block:
-        - name: Validate sshd configuration
-          ansible.builtin.command: sshd -t
-          changed_when: false
+    - name: Validate SSH daemon configuration
+      ansible.builtin.command: sshd -t
+      changed_when: false
+      listen: Validate and reload ssh
 
-        - name: Reload SSH service
-          ansible.builtin.service:
-            name: "{{ 'ssh' if ('ssh.service' in ansible_facts.services or 'ssh' in ansible_facts.services) else 'sshd' }}"
-            state: reloaded
+    - name: Reload SSH service
+      ansible.builtin.service:
+        name: "{{ ssh_service_name | default('ssh') }}"
+        state: reloaded
+      listen: Validate and reload ssh
 
     - name: Reload ufw
       community.general.ufw:
