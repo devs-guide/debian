@@ -83,16 +83,26 @@
       ansible.builtin.command: "id -nG {{ item.name }}"
       register: managed_user_groups
       changed_when: false
-      loop: "{{ user_defs }}"
+      loop: "{{ user_defs | rejectattr('name', 'equalto', 'root') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
       when:
-        - item.name != 'root'
         - bootstrap_managed_users_require_sudo | default(true) | bool
 
     - name: Assert managed non-root users can use sudo group
       ansible.builtin.assert:
         that:
-          - "(bootstrap_default_sudo_group | default('sudo')) in item.stdout.split()"
-        fail_msg: "Managed user {{ item.item.name }} is missing sudo group membership."
-      loop: "{{ managed_user_groups.results | default([]) }}"
+          - item.rc | default(1) == 0
+          - "(bootstrap_default_sudo_group | default('sudo')) in ((item.stdout | default('')).split())"
+        fail_msg: "Managed user {{ item.item.name | default('unknown') }} is missing sudo group membership."
+      loop: >-
+        {{
+          managed_user_groups.results | default([])
+          | rejectattr('skipped', 'defined')
+          | list
+        }}
+      loop_control:
+        label: "{{ item.item.name | default('unknown') }}"
       when:
         - bootstrap_managed_users_require_sudo | default(true) | bool
+        - item.stdout is defined

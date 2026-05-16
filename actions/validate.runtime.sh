@@ -121,6 +121,22 @@ if ! grep -q "item.groups is defined" "${ROOT}/ansible/users.yml"; then
   echo "[validate.runtime][error] users.yml must compute append/groups from explicit user group inputs"
   rc=1
 fi
+if ! grep -q "rejectattr('name', 'equalto', 'root')" "${ROOT}/ansible/users.yml"; then
+  echo "[validate.runtime][error] users.yml must verify sudo only for non-root managed users"
+  rc=1
+fi
+if ! grep -q "rejectattr('skipped', 'defined')" "${ROOT}/ansible/users.yml"; then
+  echo "[validate.runtime][error] users.yml sudo assertion must reject skipped registered loop results"
+  rc=1
+fi
+if grep -q "item.stdout.split()" "${ROOT}/ansible/users.yml"; then
+  echo "[validate.runtime][error] users.yml must not dereference item.stdout without a default/defined guard"
+  rc=1
+fi
+if ! grep -q "item.stdout is defined" "${ROOT}/ansible/users.yml"; then
+  echo "[validate.runtime][error] users.yml sudo assertion must guard item.stdout"
+  rc=1
+fi
 if ! grep -q 'Ensure sshd_config loads managed drop-ins' "${ROOT}/ansible/network.yml"; then
   echo "[validate.runtime][error] network.yml must enforce sshd_config Include for managed drop-ins"
   rc=1
