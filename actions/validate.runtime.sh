@@ -101,8 +101,48 @@ if ! grep -q 'Resolve SSH service unit name' "${ROOT}/ansible/network.yml"; then
   echo "[validate.runtime][error] ansible/network.yml must resolve the Debian SSH service unit before notifying reload handlers"
   rc=1
 fi
-if ! grep -q 'append: "{{ (item.groups | default(\[\]) | length > 0) | bool }}"' "${ROOT}/ansible/users.yml"; then
-  echo "[validate.runtime][error] ansible/users.yml must not set append=true when no groups are defined"
+if ! grep -q 'bootstrap_default_user_update_password: "always"' "${ROOT}/ansible/group_vars/all.yml"; then
+  echo "[validate.runtime][error] default bootstrap users must refresh passwords on repeat bootstrap runs"
+  rc=1
+fi
+if ! grep -A12 'name: app' "${ROOT}/ansible/group_vars/all.yml" | grep -q 'sudo'; then
+  echo "[validate.runtime][error] default app user must have sudo group membership"
+  rc=1
+fi
+if ! grep -q 'update_password: "{{ item.update_password | default(bootstrap_default_user_update_password' "${ROOT}/ansible/users.yml"; then
+  echo "[validate.runtime][error] users.yml must use bootstrap_default_user_update_password, not hard-coded on_create"
+  rc=1
+fi
+if grep -q 'update_password: on_create' "${ROOT}/ansible/users.yml"; then
+  echo "[validate.runtime][error] users.yml must not hard-code update_password: on_create for bootstrap accounts"
+  rc=1
+fi
+if ! grep -q "item.groups is defined" "${ROOT}/ansible/users.yml"; then
+  echo "[validate.runtime][error] users.yml must compute append/groups from explicit user group inputs"
+  rc=1
+fi
+if ! grep -q 'Ensure sshd_config loads managed drop-ins' "${ROOT}/ansible/network.yml"; then
+  echo "[validate.runtime][error] network.yml must enforce sshd_config Include for managed drop-ins"
+  rc=1
+fi
+if ! grep -q 'Apply SSH policy before firewall changes' "${ROOT}/ansible/network.yml"; then
+  echo "[validate.runtime][error] network.yml must flush SSH handlers before enabling UFW"
+  rc=1
+fi
+if ! grep -q 'Allow all TCP from permitted LAN subnets for bootstrap access' "${ROOT}/ansible/network.yml"; then
+  echo "[validate.runtime][error] network.yml must add broad LAN TCP bootstrap UFW allow rule"
+  rc=1
+fi
+if ! grep -q 'ufw allow from {{ item }} to any proto tcp' "${ROOT}/ansible/network.yml"; then
+  echo "[validate.runtime][error] network.yml must create exact UFW LAN TCP allow rule"
+  rc=1
+fi
+if ! grep -q 'Assert SSH password and root bootstrap access is active' "${ROOT}/ansible/network.yml"; then
+  echo "[validate.runtime][error] network.yml must validate effective SSH bootstrap access"
+  rc=1
+fi
+if ! grep -q 'Assert permitted LAN subnet appears in UFW rules' "${ROOT}/ansible/network.yml"; then
+  echo "[validate.runtime][error] network.yml must validate UFW LAN subnet rules"
   rc=1
 fi
 

@@ -39,16 +39,33 @@ managed_target_handoff_marker: "{{ managed_target_python_home }}/.handoff-ready"
 ansible_python_interpreter_system: "/usr/bin/python3"
 ansible_python_interpreter_managed: "{{ managed_target_python_path }}"
 
+# Bootstrap access policy.
+# These defaults are intentionally permissive for first-boot LAN access.
+# Harden them in downstream group_vars after initial bootstrap if required.
+bootstrap_default_user_update_password: "always"
+bootstrap_default_nonroot_sudo: true
+bootstrap_default_sudo_group: "sudo"
+bootstrap_passwordless_sudo: false
+bootstrap_managed_users_require_sudo: true
+
 # Shared account and network policy defaults.
 user_defs:
   - name: root
     password: root
+    update_password: "{{ bootstrap_default_user_update_password }}"
+    password_lock: false
   - name: agent
     password: agent
+    update_password: "{{ bootstrap_default_user_update_password }}"
+    password_lock: false
     groups:
       - sudo
   - name: app
     password: app
+    update_password: "{{ bootstrap_default_user_update_password }}"
+    password_lock: false
+    groups:
+      - sudo
 
 ssh_allowed_users: []
 ssh_default_include_dir: "/etc/ssh/sshd_config.d"
@@ -58,6 +75,7 @@ network_defaults:
   allowed_users: []
   allow_subnets:
     - 10.0.0.0/24
+  allow_lan_tcp: true
   allow_rdp: false
   manage_ufw: true
   ssh_port: 22

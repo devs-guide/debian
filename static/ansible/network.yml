@@ -67,6 +67,16 @@
           }}
 
   tasks:
+    - name: Ensure sshd_config loads managed drop-ins
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^Include\s+/etc/ssh/sshd_config\.d/\*\.conf$'
+        line: 'Include /etc/ssh/sshd_config.d/*.conf'
+        insertbefore: BOF
+        create: false
+        mode: "0644"
+      notify: Validate and reload ssh
+
     - name: Ensure SSH include directory exists
       ansible.builtin.file:
         path: "{{ debian_ssh_defaults.server.include_dir }}"
@@ -78,14 +88,26 @@
         dest: "{{ debian_ssh_defaults.server.include_path }}"
         mode: "0644"
         content: |
+          # Ansible managed: Debian bootstrap SSH baseline.
           Port {{ network_config.ssh_port | default(debian_ssh_defaults.server.port) }}
           PermitRootLogin {{ debian_ssh_defaults.server.permit_root_login }}
           PasswordAuthentication {{ debian_ssh_defaults.server.password_authentication }}
+          PubkeyAuthentication {{ debian_ssh_defaults.server.pubkey_authentication }}
           KbdInteractiveAuthentication {{ debian_ssh_defaults.server.kbd_interactive_authentication }}
+          PermitEmptyPasswords {{ debian_ssh_defaults.server.permit_empty_passwords }}
           UsePAM {{ debian_ssh_defaults.server.use_pam }}
           X11Forwarding {{ debian_ssh_defaults.server.x11_forwarding }}
           AllowUsers {{ network_allowed_users | join(' ') }}
       notify: Validate and reload ssh
+
+    - name: Apply SSH policy before firewall changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Ensure SSH service is enabled and running
+      ansible.builtin.service:
+        name: "{{ ssh_service_name | default('ssh') }}"
+        state: started
+        enabled: true
 
     - name: Ensure UFW is installed
       ansible.builtin.apt:
@@ -123,6 +145,32 @@
         - network_config.manage_ufw | default(true)
         - network_config.allow_rdp | default(false) | bool
 
+    - name: Allow all TCP from permitted LAN subnets for bootstrap access
+      ansible.builtin.command: >
+        ufw allow from {{ item }} to any proto tcp
+      register: ufw_lan_tcp_allow
+      changed_when: >-
+        'Rule added' in ufw_lan_tcp_allow.stdout
+        or 'Rules updated' in ufw_lan_tcp_allow.stdout
+      failed_when: ufw_lan_tcp_allow.rc != 0
+      loop: "{{ network_allow_subnets }}"
+      when:
+        - network_config.manage_ufw | default(true)
+        - network_config.allow_lan_tcp | default(true) | bool
+        - debian_ssh_defaults.firewall.manage_ufw_lan_tcp_rules | default(true) | bool
+
+    - name: Set UFW default incoming policy
+      community.general.ufw:
+        direction: incoming
+        policy: deny
+      when: network_config.manage_ufw | default(true)
+
+    - name: Set UFW default outgoing policy
+      community.general.ufw:
+        direction: outgoing
+        policy: allow
+      when: network_config.manage_ufw | default(true)
+
     - name: Ensure UFW is enabled with low logging
       community.general.ufw:
         state: enabled
@@ -130,9 +178,47 @@
       when: network_config.manage_ufw | default(true)
       notify: Reload ufw
 
+    - name: Read effective sshd configuration
+      ansible.builtin.command: /usr/sbin/sshd -T
+      register: sshd_effective_config
+      changed_when: false
+
+    - name: Assert SSH password and root bootstrap access is active
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin yes' in sshd_effective_config.stdout"
+          - "'passwordauthentication yes' in sshd_effective_config.stdout"
+          - "'allowusers' in sshd_effective_config.stdout"
+          - "'root' in sshd_effective_config.stdout"
+        fail_msg: "Effective sshd config does not permit expected bootstrap root/password access."
+
+    - name: Read UFW status
+      ansible.builtin.command: ufw status verbose
+      register: ufw_status_verbose
+      changed_when: false
+      when: network_config.manage_ufw | default(true)
+
+    - name: Assert permitted LAN subnet appears in UFW rules
+      ansible.builtin.assert:
+        that:
+          - "item in ufw_status_verbose.stdout"
+        fail_msg: "UFW does not contain expected LAN subnet rule for {{ item }}."
+      loop: "{{ network_allow_subnets }}"
+      when: network_config.manage_ufw | default(true)
+
+    - name: Assert UFW has broad LAN TCP bootstrap allow
+      ansible.builtin.assert:
+        that:
+          - "'ALLOW IN' in ufw_status_verbose.stdout"
+          - "'10.0.0.0/24' in ufw_status_verbose.stdout"
+        fail_msg: "UFW is missing the broad LAN TCP bootstrap allow rule."
+      when:
+        - network_config.manage_ufw | default(true)
+        - network_config.allow_lan_tcp | default(true) | bool
+
   handlers:
     - name: Validate SSH daemon configuration
-      ansible.builtin.command: sshd -t
+      ansible.builtin.command: /usr/sbin/sshd -t
       changed_when: false
       listen: Validate and reload ssh
 

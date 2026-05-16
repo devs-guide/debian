@@ -6,10 +6,13 @@ debian_ssh_defaults:
     include_path: "{{ ssh_default_include_path | default('/etc/ssh/sshd_config.d/90-debian-baseline.conf') }}"
     permit_root_login: "yes"
     password_authentication: "yes"
+    pubkey_authentication: "yes"
     kbd_interactive_authentication: "no"
+    permit_empty_passwords: "no"
     use_pam: "yes"
     x11_forwarding: "no"
   access:
     allow_users: []
   firewall:
     manage_ufw_ssh_rules: true
+    manage_ufw_lan_tcp_rules: true
