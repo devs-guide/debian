@@ -56,7 +56,6 @@ groups:
       - lm-sensors
       - fancontrol
       - i2c-tools
-      - radeontop
       - fio
       - bonnie++
   networking:
@@ -84,9 +83,10 @@ groups:
       - hdparm
       - openssh-client
   gpu_vendor_optional:
-    description: Optional GPU vendor helpers.
+    description: Optional GPU vendor and telemetry helpers.
     packages:
       - intel-gpu-tools
+      - radeontop
       - nvidia-detect
       - firmware-amd-graphics
   dev_tools:

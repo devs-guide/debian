@@ -10,6 +10,7 @@ files=(
   "setup/debian.sh"
   "setup/metal.sh"
   "setup/hardware.sh"
+  "setup/cli/node.sh"
   "setup/release.common.sh"
   "setup/cli/codex.sh"
   "actions/www.pages.sh"
@@ -24,7 +25,7 @@ files=(
   "ansible/lan.yml"
   "ansible/ssh.yml"
   "ansible/sources.yml"
-  "ansible/node.yml"
+  "ansible/cli/node.yml"
   "ansible/cli/codex.yml"
   "ansible/group_vars/all.yml"
   "ansible/group_vars/debian.yml"
@@ -293,9 +294,77 @@ if ! grep -q 'ansible_python_interpreter_managed: "/opt/ansible/py312/bin/python
   rc=1
 fi
 
+echo "[validate.runtime] checking setup/cli/node.sh runner contract..."
+if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must reference cli/node.yml"
+  rc=1
+fi
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must define GROUP_VARS_FILES"
+  rc=1
+fi
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_NODE_MODE' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must support DEBIAN_NODE_MODE"
+  rc=1
+fi
+if ! grep -Fq 'DEBIAN_NODE_VERSION:-lts/*' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must default DEBIAN_NODE_VERSION to lts/*"
+  rc=1
+fi
+if ! grep -Fq 'DEBIAN_NODE_NPM_POLICY:-bundled' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must default npm policy to bundled"
+  rc=1
+fi
+if ! grep -q 'preflight|apply|upgrade' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must support preflight, apply, and upgrade modes"
+  rc=1
+fi
+if rg -n 'codex|tauri' "${ROOT}/setup/cli/node.sh" >/dev/null; then
+  echo "[validate.runtime][error] setup/cli/node.sh must not install codex or tauri directly"
+  rc=1
+fi
+
+echo "[validate.runtime] checking ansible/cli/node.yml contract..."
+if [[ -e "${ROOT}/ansible/node.yml" ]]; then
+  echo "[validate.runtime][error] ansible/node.yml must not exist; cli/node.yml is the canonical node feature path"
+  rc=1
+fi
+if ! grep -q 'node_version: "lts/\*"' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must default node_version to lts/*"
+  rc=1
+fi
+if ! grep -q 'node_npm_policy: "bundled"' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must default npm policy to bundled"
+  rc=1
+fi
+if ! grep -q '/usr/local/bin/node' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must manage /usr/local/bin/node symlink"
+  rc=1
+fi
+if ! grep -q '/usr/local/bin/npm' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must manage /usr/local/bin/npm symlink"
+  rc=1
+fi
+if ! grep -q '/usr/local/bin/npx' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must manage /usr/local/bin/npx symlink"
+  rc=1
+fi
+if ! grep -q 'node_runtime_facts_path' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must write node runtime facts"
+  rc=1
+fi
+
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
-if ! grep -q '"node.yml"' "${ROOT}/setup/cli/codex.sh"; then
-  echo "[validate.runtime][error] setup/cli/codex.sh must reference node.yml"
+if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must reference cli/node.yml"
   rc=1
 fi
 if ! grep -q '"cli/codex.yml"' "${ROOT}/setup/cli/codex.sh"; then
@@ -388,6 +457,54 @@ if ! grep -q 'preflight|apply' "${ROOT}/setup/hardware.sh"; then
   echo "[validate.runtime][error] setup/hardware.sh must support preflight and apply modes"
   rc=1
 fi
+if ! grep -q 'package_group_allowlist' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must pass package_group_allowlist"
+  rc=1
+fi
+if grep -q 'gpu_vendor_optional:[[:space:]]*true' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must not enable gpu_vendor_optional"
+  rc=1
+fi
+if ! grep -q 'exclude_packages:' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must define exclude_packages safety guards"
+  rc=1
+fi
+if awk '
+  $0 ~ /^  monitoring_benchmark:/ { in_block=1; next }
+  in_block && $0 ~ /^  [a-z0-9_]+:/ { in_block=0 }
+  in_block { print }
+' "${ROOT}/ansible/packages.yml" | grep -q 'radeontop'; then
+  echo "[validate.runtime][error] radeontop must not be in monitoring_benchmark; reserve it for setup/gpu"
+  rc=1
+fi
+if ! sed -n '/gpu_vendor_optional:/,/^[^[:space:]]/p' "${ROOT}/ansible/packages.yml" | grep -q 'radeontop'; then
+  echo "[validate.runtime][error] gpu_vendor_optional must own radeontop"
+  rc=1
+fi
+if ! grep -q 'package_group_allowlist_effective' "${ROOT}/ansible/install.packages.yml"; then
+  echo "[validate.runtime][error] install.packages.yml must support feature-scoped package_group_allowlist"
+  rc=1
+fi
+if ! grep -q 'effective_catalog_scoped' "${ROOT}/ansible/install.packages.yml"; then
+  echo "[validate.runtime][error] install.packages.yml must scope effective catalog for feature runners"
+  rc=1
+fi
+if ! grep -q 'enabled_package_group_items' "${ROOT}/ansible/install.packages.yml"; then
+  echo "[validate.runtime][error] install.packages.yml must build an enabled package group list"
+  rc=1
+fi
+if ! grep -q 'repair.debian.apt.sources.duplicates' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must repair duplicate apt sources before direct apt-get update"
+  rc=1
+fi
+if ! grep -q 'Disable legacy apt sources list when using deb822 sources' "${ROOT}/ansible/sources.yml"; then
+  echo "[validate.runtime][error] sources.yml must disable legacy /etc/apt/sources.list on deb822 releases"
+  rc=1
+fi
+if ! grep -q 'Disable legacy apt sources list when using deb822 sources' "${ROOT}/ansible/sources.trixie.yml"; then
+  echo "[validate.runtime][error] sources.trixie.yml must disable legacy /etc/apt/sources.list on deb822 releases"
+  rc=1
+fi
 
 echo "[validate.runtime] checking for active Proxmox residue in runtime files..."
 if rg -n 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guide.github.io/proxmox' \
@@ -395,6 +512,7 @@ if rg -n 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guide.githu
   "${ROOT}/setup/debian.sh" \
   "${ROOT}/setup/metal.sh" \
   "${ROOT}/setup/hardware.sh" \
+  "${ROOT}/setup/cli/node.sh" \
   "${ROOT}/setup/release.common.sh" \
   "${ROOT}/setup/cli/codex.sh" \
   "${ROOT}/actions/www.pages.sh" \

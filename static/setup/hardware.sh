@@ -207,6 +207,22 @@ write.hardware.extra.vars.file() {
   cat > "${HARDWARE_EXTRA_VARS_PATH}" <<EOF
 ---
 ansible_python_interpreter_managed: "/usr/bin/python3"
+package_feature_profile: "hardware"
+package_show_disabled_groups: false
+package_group_allowlist:
+  - base
+  - storage
+  - hardware_info
+  - monitoring_benchmark
+  - performance_power
+  - archive_iso_tools
+  - firmware
+  - dev_tools
+exclude_packages:
+  - radeontop
+  - intel-gpu-tools
+  - nvidia-detect
+  - firmware-amd-graphics
 package_group_overrides:
   base: true
   storage: true
@@ -218,6 +234,7 @@ package_group_overrides:
   dev_tools: ${dev_tools}
   desktop_rdp_optional: false
   apple_media_optional: false
+  gpu_vendor_optional: false
   security: false
   networking: false
   time_sync: false
@@ -231,6 +248,7 @@ EOF
 run.preflight() {
   log "Feature mode: ${FEATURE_MODE}"
   log "Package groups default: base, storage, hardware_info, monitoring_benchmark, performance_power"
+  log "GPU packages are intentionally excluded; use future setup/gpu for GPU drivers, passthrough, and telemetry"
   log "Package groups optional: archive_iso_tools=${DEBIAN_HARDWARE_ARCHIVE_TOOLS}, firmware=${DEBIAN_HARDWARE_FIRMWARE}, dev_tools=${DEBIAN_HARDWARE_DEV_TOOLS}"
   log "Optional playbooks: performance.yml=${DEBIAN_HARDWARE_APPLY_PERFORMANCE}, power.yml=${DEBIAN_HARDWARE_POWER_POLICY}"
 

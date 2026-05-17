@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Published path: https://devs-guide.github.io/debian/setup/cli/codex.sh
-## Manual Debian Node + Codex setup runner.
+# Published path: https://devs-guide.github.io/debian/setup/cli/node.sh
+## Manual Debian Node setup runner.
 ## Local usage:
-##   ./setup/cli/codex.sh [preflight|apply]
+##   ./setup/cli/node.sh [preflight|apply|upgrade]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/codex.sh | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/node | bash
 
 set -euo pipefail
 
-log() { printf '[setup.cli.codex] %s\n' "$*" >&2; }
-log.error() { printf '[setup.cli.codex][error] %s\n' "$*" >&2; }
+log() { printf '[setup.cli.node] %s\n' "$*" >&2; }
+log.error() { printf '[setup.cli.node][error] %s\n' "$*" >&2; }
 
 TMP_ROOT_DIR="${TMP_ROOT_DIR:-/tmp/ansible/debian}"
-TMP_DIR="${TMP_DIR:-${TMP_ROOT_DIR}/cli.codex}"
+TMP_DIR="${TMP_DIR:-${TMP_ROOT_DIR}/cli.node}"
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
 PLAYBOOK_ROOT="${TMP_DIR}/runtime"
 PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
@@ -21,25 +21,24 @@ COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
+RELEASE_GROUP_VARS_FILE="${DEBIAN_NODE_RELEASE_GROUP_VARS_FILE:-}"
 FEATURE_PLAYBOOKS=(
   "cli/node.yml"
-  "cli/codex.yml"
 )
 NODE_PLAYBOOK_REL="${FEATURE_PLAYBOOKS[0]}"
-CODEX_PLAYBOOK_REL="${FEATURE_PLAYBOOKS[1]}"
 NODE_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NODE_PLAYBOOK_REL}"
-CODEX_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${CODEX_PLAYBOOK_REL}"
-CLI_CODEX_EXTRA_VARS_PATH="${TMP_DIR}/cli.codex.extra-vars.yml"
-FEATURE_MODE="${1:-${DEBIAN_CLI_CODEX_MODE:-apply}}"
-NODE_NVM_VERSION="${DEBIAN_CLI_CODEX_NVM_VERSION:-v0.39.7}"
-NODE_VERSION="${DEBIAN_CLI_CODEX_NODE_VERSION:-lts/*}"
-CODEX_NPM_PACKAGE="${DEBIAN_CLI_CODEX_PACKAGE:-@openai/codex}"
-CODEX_VERSION="${DEBIAN_CLI_CODEX_VERSION:-latest}"
-CODEX_INSTALL_DOCS_MCP="${DEBIAN_CLI_CODEX_INSTALL_DOCS_MCP:-1}"
-CODEX_DOCS_MCP_NAME="${DEBIAN_CLI_CODEX_DOCS_MCP_NAME:-openaiDeveloperDocs}"
-CODEX_DOCS_MCP_URL="${DEBIAN_CLI_CODEX_DOCS_MCP_URL:-https://developers.openai.com/mcp}"
-FACTS_DIR="${DEBIAN_CLI_CODEX_FACTS_DIR:-/etc/ansible/debian/facts}"
-CODEX_RUNTIME_FACTS_PATH="${DEBIAN_CLI_CODEX_RUNTIME_FACTS_PATH:-${FACTS_DIR}/cli.codex.yml}"
+NODE_EXTRA_VARS_PATH="${TMP_DIR}/cli.node.extra-vars.yml"
+FEATURE_MODE="${1:-${DEBIAN_NODE_MODE:-apply}}"
+NODE_VERSION="${DEBIAN_NODE_VERSION:-lts/*}"
+NODE_NVM_VERSION="${DEBIAN_NODE_NVM_VERSION:-v0.40.4}"
+NODE_NVM_DIR="${DEBIAN_NODE_NVM_DIR:-/root/.nvm}"
+NODE_NPM_POLICY="${DEBIAN_NODE_NPM_POLICY:-bundled}"
+NODE_NPM_VERSION="${DEBIAN_NODE_NPM_VERSION:-}"
+NODE_GLOBAL_PACKAGES="${DEBIAN_NODE_GLOBAL_PACKAGES:-}"
+NODE_CREATE_SYSTEM_SYMLINKS="${DEBIAN_NODE_CREATE_SYSTEM_SYMLINKS:-1}"
+NODE_ENABLE_COREPACK="${DEBIAN_NODE_ENABLE_COREPACK:-0}"
+FACTS_DIR="${DEBIAN_NODE_FACTS_DIR:-/etc/ansible/debian/facts}"
+NODE_RUNTIME_FACTS_PATH="${DEBIAN_NODE_RUNTIME_FACTS_PATH:-${FACTS_DIR}/node.yml}"
 REFRESH="${REFRESH:-0}"
 declare -a FEATURE_GROUP_VARS_ARGS
 FEATURE_GROUP_VARS_ARGS=()
@@ -69,7 +68,7 @@ source.release.common() {
     log.error "Failed to fetch shared helper: ${COMMON_HELPER_URL}"
     exit 1
   fi
-  # shellcheck source=/tmp/ansible/debian/cli.codex/release.common.sh
+  # shellcheck source=/tmp/ansible/debian/cli.node/release.common.sh
   source "${COMMON_HELPER_PATH}"
 }
 
@@ -96,12 +95,30 @@ bool.yaml() {
   fi
 }
 
+yaml.string.list() {
+  local raw="${1:-}"
+  local item=""
+  local -a values=()
+
+  read -r -a values <<< "${raw}"
+  if ((${#values[@]} == 0)); then
+    printf '[]'
+    return 0
+  fi
+
+  printf '['
+  for item in "${values[@]}"; do
+    printf '%s, ' "$(yaml.quote "${item}")"
+  done
+  printf '\b\b]'
+}
+
 require.valid.mode() {
   case "${FEATURE_MODE}" in
-    preflight|apply) ;;
+    preflight|apply|upgrade) ;;
     *)
       log.error "Unsupported mode: ${FEATURE_MODE}"
-      log.error "Use one of: preflight, apply"
+      log.error "Use one of: preflight, apply, upgrade"
       exit 1
       ;;
   esac
@@ -124,11 +141,32 @@ reset.feature.extra.vars.args() {
   done
 }
 
+resolve.release.group.vars.file() {
+  local codename=""
+
+  if [[ -n "${RELEASE_GROUP_VARS_FILE}" ]]; then
+    RELEASE_GROUP_VARS_FILE="${RELEASE_GROUP_VARS_FILE##*/}"
+    return
+  fi
+
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    codename="${VERSION_CODENAME:-}"
+  fi
+
+  case "${codename}" in
+    buster) RELEASE_GROUP_VARS_FILE="buster.yml" ;;
+    trixie) RELEASE_GROUP_VARS_FILE="trixie.yml" ;;
+    *) RELEASE_GROUP_VARS_FILE="" ;;
+  esac
+}
+
 use.local.feature.files() {
   local script_dir repo_root file
 
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  repo_root="$(cd "${script_dir}/.." && pwd)"
+  repo_root="$(cd "${script_dir}/../.." && pwd)"
 
   for file in "${GROUP_VARS_FILES[@]}"; do
     if [[ ! -r "${repo_root}/ansible/group_vars/${file}" ]]; then
@@ -136,11 +174,17 @@ use.local.feature.files() {
     fi
   done
 
-  if [[ -r "${repo_root}/ansible/${NODE_PLAYBOOK_REL}" && -r "${repo_root}/ansible/${CODEX_PLAYBOOK_REL}" ]]; then
+  if [[ -n "${RELEASE_GROUP_VARS_FILE}" && ! -r "${repo_root}/ansible/group_vars/${RELEASE_GROUP_VARS_FILE}" ]]; then
+    RELEASE_GROUP_VARS_FILE=""
+  fi
+
+  if [[ -r "${repo_root}/ansible/${NODE_PLAYBOOK_REL}" ]]; then
     PLAYBOOK_ROOT="${repo_root}/ansible"
     PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
     NODE_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NODE_PLAYBOOK_REL}"
-    CODEX_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${CODEX_PLAYBOOK_REL}"
+    if [[ -n "${RELEASE_GROUP_VARS_FILE}" ]]; then
+      GROUP_VARS_FILES+=("${RELEASE_GROUP_VARS_FILE}")
+    fi
     reset.feature.extra.vars.args
     log "Using local feature files from ${repo_root}"
     return 0
@@ -164,22 +208,48 @@ fetch.feature.file() {
   fi
 }
 
+fetch.optional.feature.file() {
+  local url="$1"
+  local dest="$2"
+  mkdir -p "$(dirname "${dest}")"
+  if ! wget -qO "${dest}" "${url}"; then
+    rm -f "${dest}"
+    return 1
+  fi
+  if [[ ! -s "${dest}" ]]; then
+    rm -f "${dest}"
+    return 1
+  fi
+  return 0
+}
+
 prepare.feature.files() {
   local file=""
+
+  resolve.release.group.vars.file
 
   if use.local.feature.files; then
     return
   fi
 
   mkdir -p "${PLAYBOOK_GROUP_VARS_DIR}"
-  for file in "${GROUP_VARS_FILES[@]}"; do
+  for file in all.yml debian.yml; do
     fetch.feature.file \
       "${PAGES_BASE_URL}/ansible/group_vars/${file}" \
       "${PLAYBOOK_GROUP_VARS_DIR}/${file}"
   done
+  if [[ -n "${RELEASE_GROUP_VARS_FILE}" ]]; then
+    fetch.optional.feature.file \
+      "${PAGES_BASE_URL}/ansible/group_vars/${RELEASE_GROUP_VARS_FILE}" \
+      "${PLAYBOOK_GROUP_VARS_DIR}/${RELEASE_GROUP_VARS_FILE}" || true
+    if [[ -f "${PLAYBOOK_GROUP_VARS_DIR}/${RELEASE_GROUP_VARS_FILE}" ]]; then
+      GROUP_VARS_FILES+=("${RELEASE_GROUP_VARS_FILE}")
+    else
+      RELEASE_GROUP_VARS_FILE=""
+    fi
+  fi
 
   fetch.feature.file "${PAGES_BASE_URL}/ansible/${NODE_PLAYBOOK_REL}" "${NODE_PLAYBOOK_PATH}"
-  fetch.feature.file "${PAGES_BASE_URL}/ansible/${CODEX_PLAYBOOK_REL}" "${CODEX_PLAYBOOK_PATH}"
   reset.feature.extra.vars.args
 }
 
@@ -189,37 +259,33 @@ run.feature.playbook() {
   "${ANSIBLE_VENV_BIN}" -i localhost, -c local "${FEATURE_GROUP_VARS_ARGS[@]}" "$@" "${playbook_path}"
 }
 
-write.cli.codex.extra.vars.file() {
+write.node.extra.vars.file() {
   mkdir -p "${TMP_DIR}"
-  cat > "${CLI_CODEX_EXTRA_VARS_PATH}" <<EOF
+  cat > "${NODE_EXTRA_VARS_PATH}" <<EOF
 ---
 ansible_python_interpreter_managed: "/usr/bin/python3"
-debian_runtime_facts_dir: $(yaml.quote "${FACTS_DIR}")
 node_enable: true
+node_mode: $(yaml.quote "${FEATURE_MODE}")
+node_version: $(yaml.quote "${NODE_VERSION}")
 node_nvm_version: $(yaml.quote "${NODE_NVM_VERSION}")
 nvm_version: $(yaml.quote "${NODE_NVM_VERSION}")
-node_version: $(yaml.quote "${NODE_VERSION}")
-node_npm_policy: "bundled"
-node_create_system_symlinks: true
-codex_enable: true
-codex_mode: $(yaml.quote "${FEATURE_MODE}")
-codex_npm_package: $(yaml.quote "${CODEX_NPM_PACKAGE}")
-codex_version: $(yaml.quote "${CODEX_VERSION}")
-codex_install_docs_mcp: $(bool.yaml "${CODEX_INSTALL_DOCS_MCP}")
-codex_docs_mcp_name: $(yaml.quote "${CODEX_DOCS_MCP_NAME}")
-codex_docs_mcp_url: $(yaml.quote "${CODEX_DOCS_MCP_URL}")
-codex_runtime_facts_path: $(yaml.quote "${CODEX_RUNTIME_FACTS_PATH}")
+node_nvm_dir: $(yaml.quote "${NODE_NVM_DIR}")
+nvm_dir: $(yaml.quote "${NODE_NVM_DIR}")
+node_npm_policy: $(yaml.quote "${NODE_NPM_POLICY}")
+node_npm_version: $(yaml.quote "${NODE_NPM_VERSION}")
+node_global_packages: $(yaml.string.list "${NODE_GLOBAL_PACKAGES}")
+node_create_system_symlinks: $(bool.yaml "${NODE_CREATE_SYSTEM_SYMLINKS}")
+node_enable_corepack: $(bool.yaml "${NODE_ENABLE_COREPACK}")
+node_runtime_facts_path: $(yaml.quote "${NODE_RUNTIME_FACTS_PATH}")
 EOF
-  log "Prepared CLI/Codex extra-vars: ${CLI_CODEX_EXTRA_VARS_PATH}"
+  log "Prepared Node extra-vars: ${NODE_EXTRA_VARS_PATH}"
 }
 
 run.preflight() {
   log "Feature mode: ${FEATURE_MODE}"
-  log "Target runtime: Debian host"
-  log "Desired Node version: ${NODE_VERSION}"
-  log "Desired Codex package: ${CODEX_NPM_PACKAGE}"
-  log "Desired Codex version: ${CODEX_VERSION}"
-  log "OpenAI docs MCP bootstrap: ${CODEX_INSTALL_DOCS_MCP}"
+  log "Desired Node selector: ${NODE_VERSION}"
+  log "NVM release: ${NODE_NVM_VERSION}"
+  log "npm policy: ${NODE_NPM_POLICY}"
 
   if command -v node >/dev/null 2>&1; then
     log "Existing node: $(node --version 2>/dev/null)"
@@ -233,22 +299,20 @@ run.preflight() {
     log "Existing npm: not installed"
   fi
 
-  if command -v codex >/dev/null 2>&1; then
-    log "Existing codex: $(codex --version 2>/dev/null)"
+  if command -v npx >/dev/null 2>&1; then
+    log "Existing npx: $(npx --version 2>/dev/null)"
   else
-    log "Existing codex: not installed"
+    log "Existing npx: not installed"
   fi
 
   log "Apply command:"
-  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/codex.sh | bash"
+  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/node | bash"
 }
 
-run.cli.codex.feature() {
-  write.cli.codex.extra.vars.file
+run.node.feature() {
+  write.node.extra.vars.file
   log "Running Debian Node feature..."
-  run.feature.playbook "${NODE_PLAYBOOK_PATH}" -e "@${CLI_CODEX_EXTRA_VARS_PATH}"
-  log "Running Debian Codex feature..."
-  run.feature.playbook "${CODEX_PLAYBOOK_PATH}" -e "@${CLI_CODEX_EXTRA_VARS_PATH}"
+  run.feature.playbook "${NODE_PLAYBOOK_PATH}" -e "@${NODE_EXTRA_VARS_PATH}"
 }
 
 main() {
@@ -266,7 +330,7 @@ main() {
 
   ensure.local.ansible
   prepare.feature.files
-  run.cli.codex.feature
+  run.node.feature
 }
 
 main "$@"

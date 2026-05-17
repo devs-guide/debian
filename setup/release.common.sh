@@ -212,6 +212,74 @@ python.is.dpkg.owned() {
   dpkg-query -S "${bin}" >/dev/null 2>&1
 }
 
+debian.host.codename() {
+  local codename=""
+
+  if [[ -r /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    codename="${VERSION_CODENAME:-}"
+  fi
+
+  printf '%s\n' "${codename}"
+}
+
+debian.sources.uses.deb822() {
+  local codename="${1:-}"
+
+  case "${codename}" in
+    buster|"")
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+apt.sources.list.has.active_deb_lines() {
+  local path="${1:-/etc/apt/sources.list}"
+
+  [[ -f "${path}" ]] || return 1
+  grep -Eq '^[[:space:]]*deb(-src)?[[:space:]]+' "${path}"
+}
+
+repair.debian.apt.sources.duplicates() {
+  local codename=""
+  local legacy_path="/etc/apt/sources.list"
+  local backup_path="/etc/apt/sources.list.debian-bootstrap.bak"
+
+  codename="$(debian.host.codename)"
+
+  if ! debian.sources.uses.deb822 "${codename}"; then
+    return 0
+  fi
+
+  if [[ ! -f /etc/apt/sources.list.d/debian.sources ]]; then
+    return 0
+  fi
+
+  if ! apt.sources.list.has.active_deb_lines "${legacy_path}"; then
+    return 0
+  fi
+
+  if [[ ! -f "${backup_path}" ]]; then
+    cp -a "${legacy_path}" "${backup_path}"
+    log "Backed up legacy APT sources to ${backup_path}"
+  fi
+
+  cat > "${legacy_path}" <<EOF
+# Managed by devs-guide Debian bootstrap.
+# Debian ${codename} uses deb822 sources in:
+#   /etc/apt/sources.list.d/debian.sources
+#
+# The previous active legacy file was backed up once to:
+#   ${backup_path}
+EOF
+
+  log "Disabled active legacy APT sources in ${legacy_path}; deb822 source file remains authoritative"
+}
+
 debian.native.python.major_minor() {
   local codename="$1"
 
@@ -393,6 +461,7 @@ ensure.python.venv.support() {
     if ((${#install_packages[@]} > 0)); then
       export DEBIAN_FRONTEND=noninteractive
       log "Installing Python support packages for ${PYTHON_BOOTSTRAP_BIN}: ${install_packages[*]}"
+      repair.debian.apt.sources.duplicates
       apt-get update -y
       apt-get install -y --no-install-recommends "${install_packages[@]}"
     fi
@@ -454,6 +523,7 @@ ensure.managed.fallback.python.build() {
   fi
 
   log "No valid managed fallback Python found; building Python ${PYTHON_VERSION} from source for legacy controller runtime..."
+  repair.debian.apt.sources.duplicates
   apt-get update -y
   apt-get install -y --no-install-recommends \
     build-essential \
@@ -762,6 +832,7 @@ ensure.local.ansible() {
   local local_python_version=""
   export DEBIAN_FRONTEND=noninteractive
 
+  repair.debian.apt.sources.duplicates
   apt-get update -y
   apt-get install -y --no-install-recommends \
     python3 \

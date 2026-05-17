@@ -34,6 +34,8 @@ main() {
     "setup/hardware.sh:setup/hardware.sh"
     "setup/hardware.sh:setup/hardware"
     "setup/release.common.sh:setup/release.common.sh"
+    "setup/cli/node.sh:setup/cli/node.sh"
+    "setup/cli/node.sh:setup/cli/node"
     "setup/cli/codex.sh:setup/cli/codex.sh"
     "readme.md:readme.md"
   )
@@ -44,6 +46,7 @@ main() {
   require_file "${ROOT}/setup/metal.sh"
   require_file "${ROOT}/setup/hardware.sh"
   require_file "${ROOT}/setup/release.common.sh"
+  require_file "${ROOT}/setup/cli/node.sh"
   require_file "${ROOT}/setup/cli/codex.sh"
   require_file "${ROOT}/ansible/install.playbooks.txt"
 

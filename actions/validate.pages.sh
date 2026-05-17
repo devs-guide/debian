@@ -15,6 +15,8 @@ FILES=(
   "setup/hardware.sh:setup/hardware.sh"
   "setup/hardware:setup/hardware.sh"
   "setup/release.common.sh:setup/release.common.sh"
+  "setup/cli/node.sh:setup/cli/node.sh"
+  "setup/cli/node:setup/cli/node.sh"
   "setup/cli/codex.sh:setup/cli/codex.sh"
   "readme.md:readme.md"
   "ansible/install.playbooks.txt:ansible/install.playbooks.txt"
@@ -143,6 +145,7 @@ check_playlist_refs() {
 }
 
 check_playlist_refs
+check_setup_feature_refs "setup/cli/node.sh"
 check_setup_feature_refs "setup/cli/codex.sh"
 check_setup_feature_refs "setup/hardware.sh"
 

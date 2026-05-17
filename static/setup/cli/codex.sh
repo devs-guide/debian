@@ -22,7 +22,7 @@ COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=(
-  "node.yml"
+  "cli/node.yml"
   "cli/codex.yml"
 )
 NODE_PLAYBOOK_REL="${FEATURE_PLAYBOOKS[0]}"
@@ -196,8 +196,11 @@ write.cli.codex.extra.vars.file() {
 ansible_python_interpreter_managed: "/usr/bin/python3"
 debian_runtime_facts_dir: $(yaml.quote "${FACTS_DIR}")
 node_enable: true
+node_nvm_version: $(yaml.quote "${NODE_NVM_VERSION}")
 nvm_version: $(yaml.quote "${NODE_NVM_VERSION}")
 node_version: $(yaml.quote "${NODE_VERSION}")
+node_npm_policy: "bundled"
+node_create_system_symlinks: true
 codex_enable: true
 codex_mode: $(yaml.quote "${FEATURE_MODE}")
 codex_npm_package: $(yaml.quote "${CODEX_NPM_PACKAGE}")

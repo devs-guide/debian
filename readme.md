@@ -26,6 +26,12 @@ wget -qO- https://devs-guide.github.io/debian/setup/metal.sh | bash
 
 ## Optional Setup Runner
 
+Node LTS installer:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/node | bash
+```
+
 Codex CLI installer:
 
 ```bash
@@ -43,6 +49,8 @@ Hardware preflight mode:
 ```bash
 DEBIAN_HARDWARE_MODE=preflight wget -qO- https://devs-guide.github.io/debian/setup/hardware | bash
 ```
+
+GPU packages and policy are intentionally excluded from `setup/hardware`.
 
 ## Layout
 

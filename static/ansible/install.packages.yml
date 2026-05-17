@@ -19,11 +19,15 @@
       - gpu_vendor_optional
       - performance_power
       - firmware
+    package_group_allowlist: []
+    package_show_disabled_groups: false
 
   pre_tasks:
     - name: Normalize package group override inputs
       ansible.builtin.set_fact:
         package_group_overrides_effective: "{{ package_group_overrides | default({}) }}"
+        package_group_allowlist_effective: "{{ package_group_allowlist | default([]) }}"
+        package_show_disabled_groups_effective: "{{ package_show_disabled_groups | default(false) }}"
         package_overrides_effective: "{{ package_overrides | default({}) }}"
         exclude_packages_effective: "{{ exclude_packages | default([]) }}"
 
@@ -47,6 +51,21 @@
       ansible.builtin.set_fact:
         effective_catalog: "{{ package_catalog.groups | combine(package_overrides_effective, recursive=True) }}"
 
+    - name: Scope package catalog for feature runner
+      ansible.builtin.set_fact:
+        effective_catalog_scoped: >-
+          {{
+            (
+              effective_catalog
+              | dict2items
+              | selectattr('key', 'in', package_group_allowlist_effective)
+              | list
+              | items2dict
+            )
+            if (package_group_allowlist_effective | length > 0)
+            else effective_catalog
+          }}
+
     - name: Check whether udftools is available from configured repositories
       ansible.builtin.command:
         argv:
@@ -59,17 +78,17 @@
 
     - name: Remove udftools from archive_iso_tools when unavailable
       ansible.builtin.set_fact:
-        effective_catalog: >-
+        effective_catalog_scoped: >-
           {{
-            effective_catalog
+            effective_catalog_scoped
             | combine(
                 {
                   'archive_iso_tools': (
-                    effective_catalog.get('archive_iso_tools', {})
+                    effective_catalog_scoped.get('archive_iso_tools', {})
                     | combine(
                         {
                           'packages': (
-                            effective_catalog.get('archive_iso_tools', {}).get('packages', [])
+                            effective_catalog_scoped.get('archive_iso_tools', {}).get('packages', [])
                             | difference(['udftools'])
                           )
                         },
@@ -81,7 +100,7 @@
               )
           }}
       when:
-        - effective_catalog.get('archive_iso_tools') is mapping
+        - effective_catalog_scoped.get('archive_iso_tools') is mapping
         - udftools_package_check.rc != 0
 
     - name: Refresh apt cache
@@ -91,18 +110,31 @@
       when: not apt_skip_cache_refresh | default(false)
 
   tasks:
-    - name: Show effective package groups
+    - name: Build enabled package group list
+      ansible.builtin.set_fact:
+        enabled_package_group_items: >-
+          {{
+            effective_catalog_scoped
+            | dict2items
+            | selectattr('value.packages', 'defined')
+            | selectattr('value.packages', 'ne', [])
+            | list
+          }}
+
+    - name: Show selected package groups
       ansible.builtin.debug:
         msg: "Group {{ item.key }} packages: {{ item.value.packages | default([]) | difference(exclude_packages_effective) }}"
-      loop: "{{ effective_catalog | dict2items }}"
+      loop: "{{ enabled_package_group_items }}"
       loop_control:
         label: "{{ item.key }}"
+      when:
+        - package_show_disabled_groups_effective or package_group_overrides_effective.get(item.key, item.key not in default_disabled_groups)
 
-    - name: Install package groups
+    - name: Install selected package groups
       ansible.builtin.apt:
         name: "{{ item.value.packages | default([]) | difference(exclude_packages_effective) }}"
         state: present
-      loop: "{{ effective_catalog | dict2items }}"
+      loop: "{{ enabled_package_group_items }}"
       loop_control:
         label: "{{ item.key }}"
       when:
