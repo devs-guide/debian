@@ -513,6 +513,18 @@ if ! grep -q 'repair.debian.apt.sources.duplicates' "${ROOT}/setup/release.commo
   echo "[validate.runtime][error] setup/release.common.sh must repair duplicate apt sources before direct apt-get update"
   rc=1
 fi
+if ! grep -q 'apt.update.with.source.repair' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must wrap apt-get update with duplicate-source detection and retry"
+  rc=1
+fi
+if [[ "$(grep -c 'apt-get update -y' "${ROOT}/setup/release.common.sh")" -ne 2 ]]; then
+  echo "[validate.runtime][error] setup/release.common.sh must keep apt-get update calls contained in apt.update.with.source.repair"
+  rc=1
+fi
+if ! grep -q 'disable.legacy.debian.sources.file' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must disable duplicate legacy Debian .list sources, not only /etc/apt/sources.list"
+  rc=1
+fi
 if ! grep -q 'Disable legacy apt sources list when using deb822 sources' "${ROOT}/ansible/sources.yml"; then
   echo "[validate.runtime][error] sources.yml must disable legacy /etc/apt/sources.list on deb822 releases"
   rc=1
