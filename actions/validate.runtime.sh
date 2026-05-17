@@ -361,6 +361,22 @@ if ! grep -q 'node_runtime_facts_path' "${ROOT}/ansible/cli/node.yml"; then
   echo "[validate.runtime][error] ansible/cli/node.yml must write node runtime facts"
   rc=1
 fi
+if sed -n '/Write node runtime facts/,/^      when:/p' "${ROOT}/ansible/cli/node.yml" | grep -q 'regex_search'; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must not use regex_search directly inside the node facts writer"
+  rc=1
+fi
+if ! grep -q 'Validate final Node runtime details' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must validate captured Node/npm/npx details before writing facts"
+  rc=1
+fi
+if ! grep -q 'Normalize final Node runtime facts' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must normalize runtime facts before writing node facts"
+  rc=1
+fi
+if ! grep -q 'regex_findall' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must use list-safe regex_findall/default parsing for runtime facts"
+  rc=1
+fi
 
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
 if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/codex.sh"; then

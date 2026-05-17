@@ -315,6 +315,36 @@
         - (nvm_sh_after.stat.exists | default(nvm_sh.stat.exists))
         - node_mode_effective in ['apply', 'upgrade']
 
+    - name: Validate final Node runtime details
+      ansible.builtin.assert:
+        that:
+          - node_runtime_info.stdout | default('') is search('(?m)^resolved_node=.+')
+          - node_runtime_info.stdout | default('') is search('(?m)^node_version=v[0-9]+')
+          - node_runtime_info.stdout | default('') is search('(?m)^npm_version=[0-9]+')
+          - node_runtime_info.stdout | default('') is search('(?m)^npx_version=[0-9]+')
+          - node_runtime_info.stdout | default('') is search('(?m)^node_path=/.+')
+          - node_runtime_info.stdout | default('') is search('(?m)^npm_path=/.+')
+          - node_runtime_info.stdout | default('') is search('(?m)^npx_path=/.+')
+        fail_msg: >-
+          Node install completed, but final runtime capture was incomplete.
+          stdout={{ node_runtime_info.stdout | default('') }}
+      when:
+        - node_enable | bool
+        - node_mode_effective in ['apply', 'upgrade']
+
+    - name: Normalize final Node runtime facts
+      ansible.builtin.set_fact:
+        node_runtime_fact_resolved_node: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^resolved_node=(.*)$') | first | default('unknown')) }}"
+        node_runtime_fact_node_version: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^node_version=(.*)$') | first | default('unknown')) }}"
+        node_runtime_fact_npm_version: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npm_version=(.*)$') | first | default('unknown')) }}"
+        node_runtime_fact_npx_version: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npx_version=(.*)$') | first | default('unknown')) }}"
+        node_runtime_fact_node_path: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^node_path=(.*)$') | first | default('')) }}"
+        node_runtime_fact_npm_path: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npm_path=(.*)$') | first | default('')) }}"
+        node_runtime_fact_npx_path: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npx_path=(.*)$') | first | default('')) }}"
+      when:
+        - node_enable | bool
+        - node_mode_effective in ['apply', 'upgrade']
+
     - name: Ensure node facts directory exists
       ansible.builtin.file:
         path: "{{ node_runtime_facts_path | dirname }}"
@@ -339,13 +369,13 @@
             install_method: "nvm"
             nvm_dir: "{{ node_nvm_dir }}"
             requested_version: "{{ node_version }}"
-            resolved_node_version: "{{ (node_runtime_info.stdout | regex_search('resolved_node=(.+)', '\\1') | first | default('unknown')) }}"
-            node_version: "{{ (node_runtime_info.stdout | regex_search('node_version=(.+)', '\\1') | first | default('unknown')) }}"
-            npm_version: "{{ (node_runtime_info.stdout | regex_search('npm_version=(.+)', '\\1') | first | default('unknown')) }}"
-            npx_version: "{{ (node_runtime_info.stdout | regex_search('npx_version=(.+)', '\\1') | first | default('unknown')) }}"
-            node_path: "{{ (node_runtime_info.stdout | regex_search('node_path=(.+)', '\\1') | first | default('')) }}"
-            npm_path: "{{ (node_runtime_info.stdout | regex_search('npm_path=(.+)', '\\1') | first | default('')) }}"
-            npx_path: "{{ (node_runtime_info.stdout | regex_search('npx_path=(.+)', '\\1') | first | default('')) }}"
+            resolved_node_version: "{{ node_runtime_fact_resolved_node }}"
+            node_version: "{{ node_runtime_fact_node_version }}"
+            npm_version: "{{ node_runtime_fact_npm_version }}"
+            npx_version: "{{ node_runtime_fact_npx_version }}"
+            node_path: "{{ node_runtime_fact_node_path }}"
+            npm_path: "{{ node_runtime_fact_npm_path }}"
+            npx_path: "{{ node_runtime_fact_npx_path }}"
             system_symlinks:
               node: "/usr/local/bin/node"
               npm: "/usr/local/bin/npm"
