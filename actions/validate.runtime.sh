@@ -9,6 +9,7 @@ files=(
   "setup/bootstrap.sh"
   "setup/debian.sh"
   "setup/metal.sh"
+  "setup/hardware.sh"
   "setup/release.common.sh"
   "setup/cli/codex.sh"
   "actions/www.pages.sh"
@@ -314,11 +315,86 @@ if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/codex.sh"; then
   rc=1
 fi
 
+echo "[validate.runtime] checking setup/hardware.sh runner contract..."
+if ! grep -q '"install.packages.yml"' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must reference install.packages.yml"
+  rc=1
+fi
+if ! grep -q '"performance.yml"' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must reference performance.yml"
+  rc=1
+fi
+if ! grep -q '"power.yml"' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must reference power.yml"
+  rc=1
+fi
+if ! grep -q 'RUNTIME_SUPPORT_REFS=(' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must define RUNTIME_SUPPORT_REFS"
+  rc=1
+fi
+if ! grep -q '"packages.yml"' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must fetch packages.yml support catalog"
+  rc=1
+fi
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must define GROUP_VARS_FILES"
+  rc=1
+fi
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'storage: true' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must enable storage group by default"
+  rc=1
+fi
+if ! grep -q 'hardware_info: true' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must enable hardware_info group by default"
+  rc=1
+fi
+if ! grep -q 'monitoring_benchmark: true' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must enable monitoring_benchmark group by default"
+  rc=1
+fi
+if ! grep -q 'performance_power: true' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must enable performance_power group by default"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_HARDWARE_FIRMWARE=.*:-0' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must default DEBIAN_HARDWARE_FIRMWARE to off"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_HARDWARE_DEV_TOOLS=.*:-0' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must default DEBIAN_HARDWARE_DEV_TOOLS to off"
+  rc=1
+fi
+if ! grep -q 'desktop_rdp_optional: false' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must keep desktop_rdp_optional disabled by default"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_HARDWARE_APPLY_PERFORMANCE=.*:-0' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must default DEBIAN_HARDWARE_APPLY_PERFORMANCE to off"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_HARDWARE_POWER_POLICY=.*:-0' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must default DEBIAN_HARDWARE_POWER_POLICY to off"
+  rc=1
+fi
+if ! grep -q 'preflight|apply' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must support preflight and apply modes"
+  rc=1
+fi
+
 echo "[validate.runtime] checking for active Proxmox residue in runtime files..."
 if rg -n 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guide.github.io/proxmox' \
   "${ROOT}/setup/bootstrap.sh" \
   "${ROOT}/setup/debian.sh" \
   "${ROOT}/setup/metal.sh" \
+  "${ROOT}/setup/hardware.sh" \
   "${ROOT}/setup/release.common.sh" \
   "${ROOT}/setup/cli/codex.sh" \
   "${ROOT}/actions/www.pages.sh" \

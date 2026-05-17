@@ -32,6 +32,18 @@ Codex CLI installer:
 wget -qO- https://devs-guide.github.io/debian/setup/cli/codex.sh | bash
 ```
 
+Hardware baseline runner:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/hardware | bash
+```
+
+Hardware preflight mode:
+
+```bash
+DEBIAN_HARDWARE_MODE=preflight wget -qO- https://devs-guide.github.io/debian/setup/hardware | bash
+```
+
 ## Layout
 
 - `setup/`: Debian entrypoints, shared bootstrap helper, and operator runners
