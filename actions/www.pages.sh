@@ -37,6 +37,8 @@ main() {
     "setup/cli/node.sh:setup/cli/node.sh"
     "setup/cli/node.sh:setup/cli/node"
     "setup/cli/codex.sh:setup/cli/codex.sh"
+    "setup/cli/tauri.sh:setup/cli/tauri.sh"
+    "setup/cli/tauri.sh:setup/cli/tauri"
     "readme.md:readme.md"
   )
 
@@ -48,6 +50,7 @@ main() {
   require_file "${ROOT}/setup/release.common.sh"
   require_file "${ROOT}/setup/cli/node.sh"
   require_file "${ROOT}/setup/cli/codex.sh"
+  require_file "${ROOT}/setup/cli/tauri.sh"
   require_file "${ROOT}/ansible/install.playbooks.txt"
 
   rm -rf "${PUBLISH_DIR}"

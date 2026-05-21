@@ -18,6 +18,8 @@ FILES=(
   "setup/cli/node.sh:setup/cli/node.sh"
   "setup/cli/node:setup/cli/node.sh"
   "setup/cli/codex.sh:setup/cli/codex.sh"
+  "setup/cli/tauri.sh:setup/cli/tauri.sh"
+  "setup/cli/tauri:setup/cli/tauri.sh"
   "readme.md:readme.md"
   "ansible/install.playbooks.txt:ansible/install.playbooks.txt"
   "ansible/bootstrap.yml:ansible/bootstrap.yml"
@@ -28,6 +30,7 @@ FILES=(
   "ansible/lan.yml:ansible/lan.yml"
   "ansible/ssh.yml:ansible/ssh.yml"
   "ansible/sources.yml:ansible/sources.yml"
+  "ansible/cli/tauri.yml:ansible/cli/tauri.yml"
   "ansible/group_vars/all.yml:ansible/group_vars/all.yml"
   "ansible/group_vars/debian.yml:ansible/group_vars/debian.yml"
   "ansible/group_vars/trixie.yml:ansible/group_vars/trixie.yml"
@@ -147,6 +150,7 @@ check_playlist_refs() {
 check_playlist_refs
 check_setup_feature_refs "setup/cli/node.sh"
 check_setup_feature_refs "setup/cli/codex.sh"
+check_setup_feature_refs "setup/cli/tauri.sh"
 check_setup_feature_refs "setup/hardware.sh"
 
 exit "${rc}"

@@ -13,6 +13,7 @@ files=(
   "setup/cli/node.sh"
   "setup/release.common.sh"
   "setup/cli/codex.sh"
+  "setup/cli/tauri.sh"
   "actions/www.pages.sh"
   "actions/validate.runtime.sh"
   "actions/validate.pages.sh"
@@ -27,6 +28,7 @@ files=(
   "ansible/sources.yml"
   "ansible/cli/node.yml"
   "ansible/cli/codex.yml"
+  "ansible/cli/tauri.yml"
   "ansible/group_vars/all.yml"
   "ansible/group_vars/debian.yml"
   "ansible/group_vars/trixie.yml"
@@ -400,6 +402,130 @@ if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/codex.sh"; then
   rc=1
 fi
 
+echo "[validate.runtime] checking setup/cli/tauri.sh runner contract..."
+if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must reference cli/node.yml"
+  rc=1
+fi
+if ! grep -q '"cli/tauri.yml"' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must reference cli/tauri.yml"
+  rc=1
+fi
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must define GROUP_VARS_FILES"
+  rc=1
+fi
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_TAURI_MODE' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must support DEBIAN_CLI_TAURI_MODE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_TAURI_PROFILE' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must support DEBIAN_CLI_TAURI_PROFILE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_TAURI_PROFILE:-runtime' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must default DEBIAN_CLI_TAURI_PROFILE to runtime"
+  rc=1
+fi
+if ! grep -q 'preflight|apply|upgrade' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must support preflight, apply, and upgrade modes"
+  rc=1
+fi
+if ! grep -q 'runtime|build' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must support runtime and build profiles"
+  rc=1
+fi
+if ! grep -q 'setup/release.common.sh' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must reference setup/release.common.sh"
+  rc=1
+fi
+if ! grep -q 'resolve.profile.defaults' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must compute runtime/build profile defaults"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_TAURI_CLI_METHOD:-npm' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must default DEBIAN_CLI_TAURI_CLI_METHOD to npm"
+  rc=1
+fi
+if rg -n 'codex' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must not install codex directly"
+  rc=1
+fi
+
+echo "[validate.runtime] checking ansible/cli/tauri.yml contract..."
+if ! grep -q 'tauri_mode: "apply"' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must default tauri_mode to apply"
+  rc=1
+fi
+if ! grep -q 'tauri_profile: "runtime"' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must default tauri_profile to runtime"
+  rc=1
+fi
+if ! grep -q 'tauri_cli_method: "npm"' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must default tauri_cli_method to npm"
+  rc=1
+fi
+if ! grep -q 'libwebkit2gtk-4.1-dev' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must include libwebkit2gtk-4.1-dev dependency"
+  rc=1
+fi
+if ! grep -q 'libayatana-appindicator3-dev' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must include libayatana-appindicator3-dev dependency"
+  rc=1
+fi
+if ! grep -q 'librsvg2-dev' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must include librsvg2-dev dependency"
+  rc=1
+fi
+if ! grep -q 'libwebkit2gtk-4.1-0' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must include libwebkit2gtk-4.1-0 runtime dependency"
+  rc=1
+fi
+if ! grep -q 'libgtk-3-0' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must include libgtk-3-0 runtime dependency"
+  rc=1
+fi
+if ! grep -q 'tauri_runtime_facts_path' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must write Tauri runtime facts"
+  rc=1
+fi
+if ! grep -q '/etc/ansible/debian/facts/cli.tauri.yml' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must write /etc/ansible/debian/facts/cli.tauri.yml"
+  rc=1
+fi
+if ! grep -q 'tauri_install_rust' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must support explicit Rust install toggle"
+  rc=1
+fi
+if rg -n 'npm create tauri-app|npx tauri init' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must not scaffold or initialize app source"
+  rc=1
+fi
+if rg -n 'Vue|Vite|Webpack|Phaser|ThreeJS|database|camera.py|hardware.py' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must stay platform-only and not include app/framework sidecars"
+  rc=1
+fi
+if grep -qx 'cli/tauri.yml' "${ROOT}/ansible/install.playbooks.txt"; then
+  echo "[validate.runtime][error] ansible/install.playbooks.txt must not include cli/tauri.yml"
+  rc=1
+fi
+if rg -n 'tauri' "${ROOT}/setup/hardware.sh" >/dev/null; then
+  echo "[validate.runtime][error] setup/hardware.sh must not include tauri feature logic"
+  rc=1
+fi
+if rg -n 'tauri' "${ROOT}/setup/cli/codex.sh" >/dev/null; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must not include tauri feature logic"
+  rc=1
+fi
+
 echo "[validate.runtime] checking setup/hardware.sh runner contract..."
 if ! grep -q '"install.packages.yml"' "${ROOT}/setup/hardware.sh"; then
   echo "[validate.runtime][error] setup/hardware.sh must reference install.packages.yml"
@@ -543,6 +669,7 @@ if rg -n 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guide.githu
   "${ROOT}/setup/cli/node.sh" \
   "${ROOT}/setup/release.common.sh" \
   "${ROOT}/setup/cli/codex.sh" \
+  "${ROOT}/setup/cli/tauri.sh" \
   "${ROOT}/actions/www.pages.sh" \
   "${ROOT}/actions/validate.pages.sh" \
   "${ROOT}/ansible" \

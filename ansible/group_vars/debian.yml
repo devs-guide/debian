@@ -6,6 +6,16 @@ debian_runtime_facts_dir: "/etc/ansible/debian/facts"
 codex_runtime_facts_path: "/etc/ansible/debian/facts/cli.codex.yml"
 node_enable: false
 codex_enable: false
+tauri_enable: false
+tauri_mode: "apply"
+tauri_profile: "runtime"
+tauri_install_runtime: true
+tauri_install_build_deps: false
+tauri_install_node: false
+tauri_install_rust: false
+tauri_install_cli: false
+tauri_cli_method: "npm"
+tauri_runtime_facts_path: "/etc/ansible/debian/facts/cli.tauri.yml"
 package_group_overrides:
   base: true
   time_sync: true

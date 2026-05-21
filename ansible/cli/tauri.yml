@@ -1,0 +1,495 @@
+---
+- name: "[debian]: tauri setup"
+  hosts: all
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed | default('/usr/bin/python3') }}"
+    tauri_enable: false
+    tauri_mode: "apply"               # preflight | apply | upgrade
+    tauri_profile: "runtime"          # runtime | build
+    tauri_install_runtime: true
+    tauri_install_build_deps: false
+    tauri_install_node: false
+    tauri_install_rust: false
+    tauri_install_cli: false
+    tauri_rust_toolchain: "stable"
+    tauri_rust_user: "root"
+    tauri_rustup_installer_path: "/tmp/rustup-init.sh"
+    tauri_cli_method: "npm"           # npm | cargo | none
+    tauri_npm_package: "@tauri-apps/cli"
+    tauri_npm_version: "latest"
+    tauri_enable_corepack: false
+    tauri_install_appimage_tools: false
+    tauri_install_test_tools: false
+    tauri_runtime_facts_path: "/etc/ansible/debian/facts/cli.tauri.yml"
+    tauri_runtime_packages:
+      - libwebkit2gtk-4.1-0
+      - libgtk-3-0
+    tauri_runtime_packages_optional:
+      appindicator:
+        - libappindicator3-1
+    tauri_build_packages:
+      - build-essential
+      - curl
+      - wget
+      - file
+      - pkg-config
+      - ca-certificates
+      - libssl-dev
+      - libwebkit2gtk-4.1-dev
+      - libxdo-dev
+      - libayatana-appindicator3-dev
+      - librsvg2-dev
+    tauri_optional_packages:
+      appimage:
+        - fuse
+        - libfuse2
+        - patchelf
+      test:
+        - xvfb
+        - dbus-x11
+
+  pre_tasks:
+    - name: Check Debian host marker
+      ansible.builtin.stat:
+        path: /etc/debian_version
+      register: debian_version_marker
+
+    - name: Assert Debian family host
+      ansible.builtin.assert:
+        that:
+          - debian_version_marker.stat.exists
+        fail_msg: "Tauri feature is supported only on Debian-family hosts."
+
+    - name: Normalize Tauri mode/profile/method
+      ansible.builtin.set_fact:
+        tauri_mode_effective: "{{ tauri_mode | default('apply') | lower }}"
+        tauri_profile_effective: "{{ tauri_profile | default('runtime') | lower }}"
+        tauri_cli_method_effective: "{{ tauri_cli_method | default('npm') | lower }}"
+
+    - name: Validate Tauri mode
+      ansible.builtin.assert:
+        that:
+          - tauri_mode_effective in ['preflight', 'apply', 'upgrade']
+        fail_msg: "Unsupported tauri_mode={{ tauri_mode_effective }}. Use preflight, apply, or upgrade."
+
+    - name: Validate Tauri profile
+      ansible.builtin.assert:
+        that:
+          - tauri_profile_effective in ['runtime', 'build']
+        fail_msg: "Unsupported tauri_profile={{ tauri_profile_effective }}. Use runtime or build."
+
+    - name: Validate Tauri CLI method
+      ansible.builtin.assert:
+        that:
+          - tauri_cli_method_effective in ['npm', 'cargo', 'none']
+        fail_msg: "Unsupported tauri_cli_method={{ tauri_cli_method_effective }}. Use npm, cargo, or none."
+
+    - name: Resolve build-dependency installation flag
+      ansible.builtin.set_fact:
+        tauri_install_build_deps_effective: >-
+          {{
+            (tauri_install_build_deps | bool)
+            or (tauri_profile_effective == 'build')
+          }}
+
+    - name: Check runtime package installability
+      ansible.builtin.command:
+        argv:
+          - apt-cache
+          - policy
+          - "{{ item }}"
+      register: tauri_runtime_pkg_policy
+      changed_when: false
+      loop: "{{ tauri_runtime_packages }}"
+      loop_control:
+        label: "{{ item }}"
+      when: tauri_install_runtime | bool
+
+    - name: Check build package installability
+      ansible.builtin.command:
+        argv:
+          - apt-cache
+          - policy
+          - "{{ item }}"
+      register: tauri_build_pkg_policy
+      changed_when: false
+      loop: "{{ tauri_build_packages }}"
+      loop_control:
+        label: "{{ item }}"
+      when: tauri_install_build_deps_effective | bool
+
+    - name: Capture Node/npm/npx versions
+      ansible.builtin.shell: |
+        set -e
+        node_v="$(node --version 2>/dev/null || true)"
+        npm_v="$(npm --version 2>/dev/null || true)"
+        npx_v="$(npx --version 2>/dev/null || true)"
+        printf 'node_version=%s\n' "${node_v:-missing}"
+        printf 'npm_version=%s\n' "${npm_v:-missing}"
+        printf 'npx_version=%s\n' "${npx_v:-missing}"
+      args:
+        executable: /bin/bash
+      register: tauri_node_preflight
+      changed_when: false
+
+    - name: Capture rustc/cargo/rustup versions
+      ansible.builtin.shell: |
+        set -e
+        rustc_v="$(rustc --version 2>/dev/null || true)"
+        cargo_v="$(cargo --version 2>/dev/null || true)"
+        rustup_v="$(rustup --version 2>/dev/null || true)"
+        printf 'rustc_version=%s\n' "${rustc_v:-missing}"
+        printf 'cargo_version=%s\n' "${cargo_v:-missing}"
+        printf 'rustup_version=%s\n' "${rustup_v:-missing}"
+      args:
+        executable: /bin/bash
+      register: tauri_rust_preflight
+      changed_when: false
+
+    - name: Capture npm-exec Tauri CLI version
+      ansible.builtin.shell: |
+        set -e
+        if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+          tauri_v="$(npm exec tauri -- --version 2>/dev/null || true)"
+        else
+          tauri_v=""
+        fi
+        printf 'tauri_cli_version=%s\n' "${tauri_v:-missing}"
+      args:
+        executable: /bin/bash
+      register: tauri_npm_cli_preflight
+      changed_when: false
+
+    - name: Capture cargo Tauri CLI version
+      ansible.builtin.shell: |
+        set -e
+        if command -v cargo >/dev/null 2>&1; then
+          cargo_tauri_v="$(cargo tauri --version 2>/dev/null || true)"
+        else
+          cargo_tauri_v=""
+        fi
+        printf 'cargo_tauri_version=%s\n' "${cargo_tauri_v:-missing}"
+      args:
+        executable: /bin/bash
+      register: tauri_cargo_cli_preflight
+      changed_when: false
+      when: tauri_cli_method_effective == 'cargo'
+
+    - name: Show Tauri preflight summary
+      ansible.builtin.debug:
+        msg:
+          mode: "{{ tauri_mode_effective }}"
+          profile: "{{ tauri_profile_effective }}"
+          install_runtime: "{{ tauri_install_runtime | bool }}"
+          install_build_deps: "{{ tauri_install_build_deps_effective | bool }}"
+          install_node: "{{ tauri_install_node | bool }}"
+          install_rust: "{{ tauri_install_rust | bool }}"
+          install_cli: "{{ tauri_install_cli | bool }}"
+          cli_method: "{{ tauri_cli_method_effective }}"
+          node: "{{ tauri_node_preflight.stdout_lines | default([]) }}"
+          rust: "{{ tauri_rust_preflight.stdout_lines | default([]) }}"
+          tauri_npm_exec: "{{ tauri_npm_cli_preflight.stdout_lines | default([]) }}"
+          tauri_cargo: "{{ (tauri_cargo_cli_preflight.stdout_lines | default([])) if tauri_cli_method_effective == 'cargo' else [] }}"
+
+    - name: End play in preflight mode
+      ansible.builtin.meta: end_play
+      when: tauri_mode_effective == 'preflight'
+
+  tasks:
+    - name: Install runtime packages for Tauri execution
+      ansible.builtin.apt:
+        name: "{{ tauri_runtime_packages }}"
+        state: present
+        update_cache: true
+        install_recommends: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_runtime | bool
+
+    - name: Install build dependencies for Tauri development/build hosts
+      ansible.builtin.apt:
+        name: "{{ tauri_build_packages }}"
+        state: present
+        update_cache: true
+        install_recommends: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_build_deps_effective | bool
+
+    - name: Install optional AppImage toolchain packages
+      ansible.builtin.apt:
+        name: "{{ tauri_optional_packages.appimage }}"
+        state: present
+        install_recommends: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_appimage_tools | bool
+
+    - name: Install optional test packages
+      ansible.builtin.apt:
+        name: "{{ tauri_optional_packages.test }}"
+        state: present
+        install_recommends: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_test_tools | bool
+
+    - name: Resolve Rust user identity
+      ansible.builtin.command:
+        argv:
+          - getent
+          - passwd
+          - "{{ tauri_rust_user }}"
+      register: tauri_rust_user_getent
+      changed_when: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_rust | bool or tauri_profile_effective == 'build' or tauri_cli_method_effective == 'cargo'
+
+    - name: Assert Rust user exists
+      ansible.builtin.assert:
+        that:
+          - tauri_rust_user_getent.stdout | default('') | length > 0
+        fail_msg: "Rust target user {{ tauri_rust_user }} was not found."
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_rust | bool or tauri_profile_effective == 'build' or tauri_cli_method_effective == 'cargo'
+
+    - name: Capture Rust user home path
+      ansible.builtin.set_fact:
+        tauri_rust_home_effective: "{{ (tauri_rust_user_getent.stdout | split(':'))[5] | default('/root', true) }}"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_rust | bool or tauri_profile_effective == 'build' or tauri_cli_method_effective == 'cargo'
+
+    - name: Download rustup installer
+      ansible.builtin.get_url:
+        url: "https://sh.rustup.rs"
+        dest: "{{ tauri_rustup_installer_path }}"
+        mode: "0755"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_rust | bool
+
+    - name: Install Rust with rustup
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if [ "{{ tauri_rust_user }}" = "root" ]; then
+          /bin/sh "{{ tauri_rustup_installer_path }}" -y --default-toolchain "{{ tauri_rust_toolchain }}"
+        else
+          su - "{{ tauri_rust_user }}" -c '/bin/sh "{{ tauri_rustup_installer_path }}" -y --default-toolchain "{{ tauri_rust_toolchain }}"'
+        fi
+      args:
+        executable: /bin/bash
+      register: tauri_rust_install_result
+      changed_when: true
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_rust | bool
+
+    - name: Validate rustc and cargo availability
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if [ "{{ tauri_rust_user }}" = "root" ]; then
+          if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+          rustc --version
+          cargo --version
+        else
+          su - "{{ tauri_rust_user }}" -c 'if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi; rustc --version; cargo --version'
+        fi
+      args:
+        executable: /bin/bash
+      register: tauri_rust_runtime_validation
+      changed_when: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_rust | bool or tauri_profile_effective == 'build'
+
+    - name: Validate Node/npm for npm-based Tauri CLI
+      ansible.builtin.assert:
+        that:
+          - tauri_node_preflight.stdout | default('') is search('(?m)^node_version=v[0-9]+')
+          - tauri_node_preflight.stdout | default('') is search('(?m)^npm_version=[0-9]+')
+        fail_msg: >-
+          Node/npm are required for tauri_cli_method=npm when tauri_install_cli=true.
+          Install Node first (for example via setup/cli/node) or set tauri_cli_method to cargo/none.
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_cli | bool
+        - tauri_cli_method_effective == 'npm'
+
+    - name: Install Tauri CLI through npm
+      ansible.builtin.shell: |
+        set -euo pipefail
+        pkg_root="$(npm root -g)"
+        pkg_json="${pkg_root}/{{ tauri_npm_package }}/package.json"
+        current_version=""
+        if [ -f "${pkg_json}" ]; then
+          current_version="$(node -p 'require(process.argv[1]).version' "${pkg_json}" 2>/dev/null || true)"
+        fi
+
+        install_spec="{{ tauri_npm_package }}"
+        desired_version="{{ tauri_npm_version }}"
+        if [ "{{ tauri_npm_version }}" = "latest" ]; then
+          desired_version="$(npm view "{{ tauri_npm_package }}" version)"
+          install_spec="{{ tauri_npm_package }}@${desired_version}"
+        else
+          install_spec="{{ tauri_npm_package }}@{{ tauri_npm_version }}"
+        fi
+
+        changed=0
+        if [ "${current_version}" != "${desired_version}" ]; then
+          npm install -g "${install_spec}" >/dev/null
+          changed=1
+        fi
+
+        tauri_v="$(npm exec tauri -- --version 2>/dev/null || true)"
+        printf 'current=%s\n' "${current_version:-missing}"
+        printf 'desired=%s\n' "${desired_version}"
+        printf 'changed=%s\n' "${changed}"
+        printf 'tauri_cli_version=%s\n' "${tauri_v:-missing}"
+      args:
+        executable: /bin/bash
+      register: tauri_npm_cli_install
+      changed_when: "'changed=1' in (tauri_npm_cli_install.stdout | default(''))"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_cli | bool
+        - tauri_cli_method_effective == 'npm'
+
+    - name: Install Tauri CLI through cargo
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if [ "{{ tauri_rust_user }}" = "root" ]; then
+          if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+          cargo install tauri-cli --version '^2.0.0' --locked
+        else
+          su - "{{ tauri_rust_user }}" -c 'if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi; cargo install tauri-cli --version "^2.0.0" --locked'
+        fi
+      args:
+        executable: /bin/bash
+      register: tauri_cargo_cli_install
+      changed_when: >-
+        (tauri_cargo_cli_install.stdout | default('')) is search('Installing|Updating|Compiling')
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_install_cli | bool
+        - tauri_cli_method_effective == 'cargo'
+
+    - name: Capture final runtime state
+      ansible.builtin.shell: |
+        set -euo pipefail
+        node_v="$(node --version 2>/dev/null || true)"
+        npm_v="$(npm --version 2>/dev/null || true)"
+        npx_v="$(npx --version 2>/dev/null || true)"
+        rustc_v="$(rustc --version 2>/dev/null || true)"
+        cargo_v="$(cargo --version 2>/dev/null || true)"
+        rustup_v="$(rustup --version 2>/dev/null || true)"
+        cargo_tauri_v="$(cargo tauri --version 2>/dev/null || true)"
+
+        tauri_cli_v="$(npm exec tauri -- --version 2>/dev/null || true)"
+
+        printf 'node_version=%s\n' "${node_v:-missing}"
+        printf 'npm_version=%s\n' "${npm_v:-missing}"
+        printf 'npx_version=%s\n' "${npx_v:-missing}"
+        printf 'rustc_version=%s\n' "${rustc_v:-missing}"
+        printf 'cargo_version=%s\n' "${cargo_v:-missing}"
+        printf 'rustup_version=%s\n' "${rustup_v:-missing}"
+        printf 'tauri_cli_version=%s\n' "${tauri_cli_v:-missing}"
+        printf 'cargo_tauri_version=%s\n' "${cargo_tauri_v:-missing}"
+      args:
+        executable: /bin/bash
+      register: tauri_runtime_info
+      changed_when: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+
+    - name: Normalize final runtime facts
+      ansible.builtin.set_fact:
+        tauri_fact_node_version: "{{ ((tauri_runtime_info.stdout | default('')) | regex_findall('(?m)^node_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_npm_version: "{{ ((tauri_runtime_info.stdout | default('')) | regex_findall('(?m)^npm_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_npx_version: "{{ ((tauri_runtime_info.stdout | default('')) | regex_findall('(?m)^npx_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_rustc_version: "{{ ((tauri_runtime_info.stdout | default('')) | regex_findall('(?m)^rustc_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_cargo_version: "{{ ((tauri_runtime_info.stdout | default('')) | regex_findall('(?m)^cargo_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_rustup_version: "{{ ((tauri_runtime_info.stdout | default('')) | regex_findall('(?m)^rustup_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_cli_version: "{{ ((tauri_runtime_info.stdout | default('')) | regex_findall('(?m)^tauri_cli_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_cargo_tauri_version: "{{ ((tauri_runtime_info.stdout | default('')) | regex_findall('(?m)^cargo_tauri_version=(.*)$') | first | default('missing')) }}"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+
+    - name: Ensure Tauri facts directory exists
+      ansible.builtin.file:
+        path: "{{ tauri_runtime_facts_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+
+    - name: Write Tauri runtime facts
+      ansible.builtin.copy:
+        dest: "{{ tauri_runtime_facts_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          ---
+          debian_cli_tauri_runtime:
+            enabled: true
+            mode: "{{ tauri_mode_effective }}"
+            profile: "{{ tauri_profile_effective }}"
+            runtime_packages_installed: {{ tauri_install_runtime | bool | lower }}
+            build_packages_installed: {{ tauri_install_build_deps_effective | bool | lower }}
+            node_version: "{{ tauri_fact_node_version }}"
+            npm_version: "{{ tauri_fact_npm_version }}"
+            npx_version: "{{ tauri_fact_npx_version }}"
+            rustc_version: "{{ tauri_fact_rustc_version }}"
+            cargo_version: "{{ tauri_fact_cargo_version }}"
+            rustup_version: "{{ tauri_fact_rustup_version }}"
+            rust_toolchain: "{{ tauri_rust_toolchain }}"
+            cli_method: "{{ tauri_cli_method_effective }}"
+            tauri_cli_version: "{{ tauri_fact_cli_version }}"
+            cargo_tauri_version: "{{ tauri_fact_cargo_tauri_version }}"
+            app_scaffolded: false
+            runtime_packages:
+          {% for pkg in tauri_runtime_packages %}
+              - "{{ pkg }}"
+          {% endfor %}
+            build_packages:
+          {% for pkg in tauri_build_packages %}
+              - "{{ pkg }}"
+          {% endfor %}
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+
+    - name: Print Tauri next steps
+      ansible.builtin.debug:
+        msg:
+          - "Tauri platform setup complete for profile={{ tauri_profile_effective }} mode={{ tauri_mode_effective }}"
+          - "Runtime facts: {{ tauri_runtime_facts_path }}"
+          - "Development/build should happen on a separate workstation; deploy built releases to runtime hosts."
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
