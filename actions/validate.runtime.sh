@@ -5,6 +5,44 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 rc=0
 
+validate_yaml_file() {
+  local f="$1"
+
+  if python3 -c 'import yaml' >/dev/null 2>&1; then
+    python3 - "$f" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+path = Path(sys.argv[1])
+try:
+    yaml.safe_load(path.read_text())
+except Exception as exc:
+    print(f"[validate.runtime][error] invalid YAML: {path}: {exc}")
+    raise SystemExit(1)
+PY
+    return
+  fi
+
+  if command -v ruby >/dev/null 2>&1; then
+    ruby - "$f" <<'RUBY'
+require "yaml"
+
+path = ARGV.fetch(0)
+begin
+  YAML.safe_load(File.read(path), permitted_classes: [], permitted_symbols: [], aliases: false)
+rescue => e
+  warn "[validate.runtime][error] invalid YAML: #{path}: #{e}"
+  exit 1
+end
+RUBY
+    return
+  fi
+
+  echo "[validate.runtime][error] no YAML parser available for ${f} (python3+pyyaml or ruby required)"
+  return 1
+}
+
 files=(
   "setup/bootstrap.sh"
   "setup/debian.sh"
@@ -501,6 +539,20 @@ if ! grep -q 'DEBIAN_CLI_TAURI_CLI_METHOD:-npm' "${ROOT}/setup/cli/tauri.sh"; th
 fi
 if rg -n 'codex' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must not install codex directly"
+  rc=1
+fi
+
+echo "[validate.runtime] checking Tauri playbook YAML syntax..."
+for f in \
+  "${ROOT}/ansible/cli/tauri.yml" \
+  "${ROOT}/static/ansible/cli/tauri.yml"; do
+  if ! validate_yaml_file "${f}"; then
+    rc=1
+  fi
+done
+
+if ! cmp -s "${ROOT}/ansible/cli/tauri.yml" "${ROOT}/static/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] static/ansible/cli/tauri.yml is out of sync with ansible/cli/tauri.yml"
   rc=1
 fi
 

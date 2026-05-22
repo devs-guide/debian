@@ -139,15 +139,15 @@
 
         version_ge() {
           python3 - "$1" "$2" <<'PY'
-import re
-import sys
+          import re
+          import sys
 
-def nums(v):
-    m = re.search(r'(\d+)\.(\d+)\.(\d+)', v or '')
-    return tuple(map(int, m.groups())) if m else (0, 0, 0)
+          def nums(v):
+              m = re.search(r'(\d+)\.(\d+)\.(\d+)', v or '')
+              return tuple(map(int, m.groups())) if m else (0, 0, 0)
 
-sys.exit(0 if nums(sys.argv[1]) >= nums(sys.argv[2]) else 1)
-PY
+          sys.exit(0 if nums(sys.argv[1]) >= nums(sys.argv[2]) else 1)
+          PY
         }
 
         semver_or_zero() {
@@ -395,15 +395,15 @@ PY
 
         version_ge() {
           python3 - "$1" "$2" <<'PY'
-import re
-import sys
+          import re
+          import sys
 
-def nums(v):
-    m = re.search(r'(\d+)\.(\d+)\.(\d+)', v or '')
-    return tuple(map(int, m.groups())) if m else (0, 0, 0)
+          def nums(v):
+              m = re.search(r'(\d+)\.(\d+)\.(\d+)', v or '')
+              return tuple(map(int, m.groups())) if m else (0, 0, 0)
 
-sys.exit(0 if nums(sys.argv[1]) >= nums(sys.argv[2]) else 1)
-PY
+          sys.exit(0 if nums(sys.argv[1]) >= nums(sys.argv[2]) else 1)
+          PY
         }
 
         if [ "{{ tauri_rust_user }}" = "root" ]; then
@@ -428,15 +428,15 @@ PY
             set -euo pipefail
             version_ge() {
               python3 - "$1" "$2" <<'"'"'PY'"'"'
-import re
-import sys
+              import re
+              import sys
 
-def nums(v):
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)", v or "")
-    return tuple(map(int, m.groups())) if m else (0, 0, 0)
+              def nums(v):
+                  m = re.search(r"(\d+)\.(\d+)\.(\d+)", v or "")
+                  return tuple(map(int, m.groups())) if m else (0, 0, 0)
 
-sys.exit(0 if nums(sys.argv[1]) >= nums(sys.argv[2]) else 1)
-PY
+              sys.exit(0 if nums(sys.argv[1]) >= nums(sys.argv[2]) else 1)
+              PY
             }
             if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
             if command -v rustc >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; then
