@@ -5,6 +5,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 rc=0
 
+search_regex() {
+  local pattern="$1"
+  shift
+
+  if command -v rg >/dev/null 2>&1; then
+    rg -n -- "${pattern}" "$@"
+    return
+  fi
+
+  grep -R -nE -- "${pattern}" "$@"
+}
+
 validate_yaml_file() {
   local f="$1"
 
@@ -39,7 +51,57 @@ RUBY
     return
   fi
 
-  echo "[validate.runtime][error] no YAML parser available for ${f} (python3+pyyaml or ruby required)"
+  if command -v python3 >/dev/null 2>&1; then
+    echo "[validate.runtime][warn] YAML parser unavailable; running heredoc indentation regression check: ${f}"
+    python3 - "$f" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+lines = path.read_text().splitlines()
+
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if "python3 -" not in line or "<<" not in line or "PY" not in line:
+        i += 1
+        continue
+
+    base_indent = len(line) - len(line.lstrip(" "))
+    j = i + 1
+    found_terminator = False
+
+    while j < len(lines):
+        candidate = lines[j]
+        candidate_indent = len(candidate) - len(candidate.lstrip(" "))
+        stripped = candidate.strip()
+
+        if stripped == "PY":
+            if candidate_indent < base_indent:
+                print(
+                    f"[validate.runtime][error] malformed heredoc terminator indentation in {path}: line {j + 1}"
+                )
+                raise SystemExit(1)
+            found_terminator = True
+            break
+
+        if stripped and candidate_indent < base_indent:
+            print(
+                f"[validate.runtime][error] malformed heredoc body indentation in {path}: line {j + 1}"
+            )
+            raise SystemExit(1)
+        j += 1
+
+    if not found_terminator:
+        print(f"[validate.runtime][error] unterminated heredoc block in {path}: line {i + 1}")
+        raise SystemExit(1)
+
+    i = j + 1
+PY
+    return
+  fi
+
+  echo "[validate.runtime][error] no YAML parser available for ${f} (python3+pyyaml, ruby, or python3 fallback required)"
   return 1
 }
 
@@ -367,7 +429,7 @@ if ! grep -q 'preflight|apply|upgrade' "${ROOT}/setup/cli/node.sh"; then
   echo "[validate.runtime][error] setup/cli/node.sh must support preflight, apply, and upgrade modes"
   rc=1
 fi
-if rg -n 'codex|tauri' "${ROOT}/setup/cli/node.sh" >/dev/null; then
+if search_regex 'codex|tauri' "${ROOT}/setup/cli/node.sh" >/dev/null; then
   echo "[validate.runtime][error] setup/cli/node.sh must not install codex or tauri directly"
   rc=1
 fi
@@ -537,7 +599,7 @@ if ! grep -q 'DEBIAN_CLI_TAURI_CLI_METHOD:-npm' "${ROOT}/setup/cli/tauri.sh"; th
   echo "[validate.runtime][error] setup/cli/tauri.sh must default DEBIAN_CLI_TAURI_CLI_METHOD to npm"
   rc=1
 fi
-if rg -n 'codex' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
+if search_regex 'codex' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must not install codex directly"
   rc=1
 fi
@@ -637,11 +699,11 @@ if ! grep -q 'tauri_cli_ok' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must emit tauri_cli_ok probe data"
   rc=1
 fi
-if rg -n 'npm create tauri-app|npx tauri init' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
+if search_regex 'npm create tauri-app|npx tauri init' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must not scaffold or initialize app source"
   rc=1
 fi
-if rg -n 'Vue|Vite|Webpack|Phaser|ThreeJS|database|camera.py|hardware.py' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
+if search_regex 'Vue|Vite|Webpack|Phaser|ThreeJS|database|camera.py|hardware.py' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must stay platform-only and not include app/framework sidecars"
   rc=1
 fi
@@ -649,11 +711,11 @@ if grep -qx 'cli/tauri.yml' "${ROOT}/ansible/install.playbooks.txt"; then
   echo "[validate.runtime][error] ansible/install.playbooks.txt must not include cli/tauri.yml"
   rc=1
 fi
-if rg -n 'tauri' "${ROOT}/setup/hardware.sh" >/dev/null; then
+if search_regex 'tauri' "${ROOT}/setup/hardware.sh" >/dev/null; then
   echo "[validate.runtime][error] setup/hardware.sh must not include tauri feature logic"
   rc=1
 fi
-if rg -n 'tauri' "${ROOT}/setup/cli/codex.sh" >/dev/null; then
+if search_regex 'tauri' "${ROOT}/setup/cli/codex.sh" >/dev/null; then
   echo "[validate.runtime][error] setup/cli/codex.sh must not include tauri feature logic"
   rc=1
 fi
@@ -793,7 +855,7 @@ if ! grep -q 'Disable legacy apt sources list when using deb822 sources' "${ROOT
 fi
 
 echo "[validate.runtime] checking for active Proxmox residue in runtime files..."
-if rg -n 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guide.github.io/proxmox' \
+if search_regex 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guide.github.io/proxmox' \
   "${ROOT}/setup/bootstrap.sh" \
   "${ROOT}/setup/debian.sh" \
   "${ROOT}/setup/metal.sh" \
