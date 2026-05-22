@@ -12,10 +12,19 @@ tauri_profile: "runtime"
 tauri_install_runtime: true
 tauri_install_build_deps: false
 tauri_install_node: false
+tauri_install_node_requested: false
+tauri_install_node_effective: false
+tauri_node_min_major: 20
+tauri_npm_min_major: 9
 tauri_install_rust: false
+tauri_rust_min_version: "1.77.2"
+tauri_cargo_min_version: "1.77.2"
 tauri_install_cli: false
 tauri_cli_method: "npm"
+tauri_cli_min_version: "2.0.0"
 tauri_runtime_facts_path: "/etc/ansible/debian/facts/cli.tauri.yml"
+node_min_major: 20
+node_install_policy: "if_missing_or_too_old"
 package_group_overrides:
   base: true
   time_sync: true

@@ -379,6 +379,18 @@ if ! grep -q 'regex_findall' "${ROOT}/ansible/cli/node.yml"; then
   echo "[validate.runtime][error] ansible/cli/node.yml must use list-safe regex_findall/default parsing for runtime facts"
   rc=1
 fi
+if ! grep -q 'node_min_major' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must define node_min_major"
+  rc=1
+fi
+if ! grep -q 'node_install_policy' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must define node_install_policy"
+  rc=1
+fi
+if ! grep -q 'node_install_needed' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must compute node_install_needed"
+  rc=1
+fi
 
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
 if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/codex.sh"; then
@@ -403,6 +415,10 @@ if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/codex.sh"; then
 fi
 
 echo "[validate.runtime] checking setup/cli/tauri.sh runner contract..."
+if ! bash -n "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must pass bash -n"
+  rc=1
+fi
 if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/tauri.sh"; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must reference cli/node.yml"
   rc=1
@@ -449,6 +465,34 @@ if ! grep -q 'setup/release.common.sh' "${ROOT}/setup/cli/tauri.sh"; then
 fi
 if ! grep -q 'resolve.profile.defaults' "${ROOT}/setup/cli/tauri.sh"; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must compute runtime/build profile defaults"
+  rc=1
+fi
+if grep -n '^  DEPS=' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh contains broken pasted one-liner"
+  rc=1
+fi
+if grep -n '^  LI=' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh contains broken pasted one-liner"
+  rc=1
+fi
+if ! grep -q 'TAURI_NODE_MIN_MAJOR' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must define TAURI_NODE_MIN_MAJOR"
+  rc=1
+fi
+if ! grep -q 'TAURI_NPM_MIN_MAJOR' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must define TAURI_NPM_MIN_MAJOR"
+  rc=1
+fi
+if ! grep -q 'resolve.node.install.effective' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must resolve effective Node install decisions"
+  rc=1
+fi
+if ! grep -q 'TAURI_INSTALL_NODE_EFFECTIVE' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must define TAURI_INSTALL_NODE_EFFECTIVE"
+  rc=1
+fi
+if ! grep -q 'TAURI_INSTALL_NODE_REQUESTED' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must define TAURI_INSTALL_NODE_REQUESTED"
   rc=1
 fi
 if ! grep -q 'DEBIAN_CLI_TAURI_CLI_METHOD:-npm' "${ROOT}/setup/cli/tauri.sh"; then
@@ -503,6 +547,42 @@ if ! grep -q '/etc/ansible/debian/facts/cli.tauri.yml' "${ROOT}/ansible/cli/taur
 fi
 if ! grep -q 'tauri_install_rust' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must support explicit Rust install toggle"
+  rc=1
+fi
+if ! grep -q 'tauri_install_rust_effective' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must compute tauri_install_rust_effective"
+  rc=1
+fi
+if ! grep -q 'tauri_install_cli_effective' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must compute tauri_install_cli_effective"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_min_version' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must define tauri_rust_min_version"
+  rc=1
+fi
+if ! grep -q 'tauri_cli_min_version' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must define tauri_cli_min_version"
+  rc=1
+fi
+if ! grep -q 'node_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit node_ok probe data"
+  rc=1
+fi
+if ! grep -q 'npm_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit npm_ok probe data"
+  rc=1
+fi
+if ! grep -q 'rustc_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit rustc_ok probe data"
+  rc=1
+fi
+if ! grep -q 'cargo_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit cargo_ok probe data"
+  rc=1
+fi
+if ! grep -q 'tauri_cli_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit tauri_cli_ok probe data"
   rc=1
 fi
 if rg -n 'npm create tauri-app|npx tauri init' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then

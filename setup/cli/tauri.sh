@@ -5,6 +5,26 @@
 ##   ./setup/cli/tauri.sh [preflight|apply|upgrade]
 ## Published usage:
 ##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash
+##
+## IMPORTANT:
+## Do not put DEBIAN_CLI_TAURI_* assignments before wget in a wget|bash pipeline.
+## That scopes the variables to wget, not to the downloaded script.
+##
+## Safe multi-line usage:
+##   export DEBIAN_CLI_TAURI_PROFILE=build
+##   export DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1
+##   export DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1
+##   export DEBIAN_CLI_TAURI_INSTALL_NODE=1
+##   export DEBIAN_CLI_TAURI_INSTALL_RUST=1
+##   export DEBIAN_CLI_TAURI_INSTALL_CLI=1
+##   export DEBIAN_CLI_TAURI_CLI_METHOD=npm
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash
+##
+## Correct one-liner usage:
+##   env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash -c 'wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash'
+##
+## Alternative right-side pipe usage:
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash
 
 set -euo pipefail
 
@@ -37,6 +57,14 @@ TAURI_INSTALL_RUNTIME="${DEBIAN_CLI_TAURI_INSTALL_RUNTIME:-}"
 TAURI_INSTALL_BUILD_DEPS="${DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS:-}"
 TAURI_INSTALL_NODE="${DEBIAN_CLI_TAURI_INSTALL_NODE:-}"
 TAURI_NODE_VERSION="${DEBIAN_CLI_TAURI_NODE_VERSION:-lts/*}"
+TAURI_NODE_MIN_MAJOR="${DEBIAN_CLI_TAURI_NODE_MIN_MAJOR:-20}"
+TAURI_NPM_MIN_MAJOR="${DEBIAN_CLI_TAURI_NPM_MIN_MAJOR:-9}"
+TAURI_INSTALL_NODE_REQUESTED="${TAURI_INSTALL_NODE:-}"
+TAURI_INSTALL_NODE_EFFECTIVE="${TAURI_INSTALL_NODE:-}"
+TAURI_NODE_CURRENT_VERSION="missing"
+TAURI_NPM_CURRENT_VERSION="missing"
+TAURI_NODE_MEETS_MINIMUM=0
+TAURI_NPM_MEETS_MINIMUM=0
 TAURI_ENABLE_COREPACK="${DEBIAN_CLI_TAURI_ENABLE_COREPACK:-0}"
 TAURI_INSTALL_RUST="${DEBIAN_CLI_TAURI_INSTALL_RUST:-}"
 TAURI_RUST_TOOLCHAIN="${DEBIAN_CLI_TAURI_RUST_TOOLCHAIN:-stable}"
@@ -124,6 +152,59 @@ bool.yaml() {
   else
     printf 'false'
   fi
+}
+
+version.major() {
+  local raw="${1:-}"
+  raw="${raw#v}"
+  raw="${raw%%.*}"
+  case "${raw}" in
+    ''|*[!0-9]*) printf '0' ;;
+    *) printf '%s' "${raw}" ;;
+  esac
+}
+
+major.ge() {
+  local current_major min_major
+  current_major="$(version.major "${1:-}")"
+  min_major="$(version.major "${2:-0}")"
+  [[ "${current_major}" -ge "${min_major}" ]]
+}
+
+detect.node.npm() {
+  TAURI_NODE_CURRENT_VERSION="$(node --version 2>/dev/null || true)"
+  TAURI_NPM_CURRENT_VERSION="$(npm --version 2>/dev/null || true)"
+  [[ -n "${TAURI_NODE_CURRENT_VERSION}" ]] || TAURI_NODE_CURRENT_VERSION="missing"
+  [[ -n "${TAURI_NPM_CURRENT_VERSION}" ]] || TAURI_NPM_CURRENT_VERSION="missing"
+
+  if [[ "${TAURI_NODE_CURRENT_VERSION}" != "missing" ]] && major.ge "${TAURI_NODE_CURRENT_VERSION}" "${TAURI_NODE_MIN_MAJOR}"; then
+    TAURI_NODE_MEETS_MINIMUM=1
+  else
+    TAURI_NODE_MEETS_MINIMUM=0
+  fi
+
+  if [[ "${TAURI_NPM_CURRENT_VERSION}" != "missing" ]] && major.ge "${TAURI_NPM_CURRENT_VERSION}" "${TAURI_NPM_MIN_MAJOR}"; then
+    TAURI_NPM_MEETS_MINIMUM=1
+  else
+    TAURI_NPM_MEETS_MINIMUM=0
+  fi
+}
+
+resolve.node.install.effective() {
+  detect.node.npm
+
+  TAURI_INSTALL_NODE_REQUESTED="${TAURI_INSTALL_NODE:-0}"
+  TAURI_INSTALL_NODE_EFFECTIVE="${TAURI_INSTALL_NODE_REQUESTED}"
+
+  if is.true "${TAURI_INSTALL_NODE_REQUESTED}"; then
+    if [[ "${TAURI_NODE_MEETS_MINIMUM}" -eq 1 && "${TAURI_NPM_MEETS_MINIMUM}" -eq 1 ]]; then
+      TAURI_INSTALL_NODE_EFFECTIVE=0
+    else
+      TAURI_INSTALL_NODE_EFFECTIVE=1
+    fi
+  fi
+
+  TAURI_INSTALL_NODE="${TAURI_INSTALL_NODE_EFFECTIVE}"
 }
 
 require.valid.mode() {
@@ -235,7 +316,7 @@ use.local.feature.files() {
   if [[ ! -r "${repo_root}/ansible/${TAURI_PLAYBOOK_REL}" ]]; then
     return 1
   fi
-  if is.true "${TAURI_INSTALL_NODE}" && [[ "${FEATURE_MODE}" != "preflight" ]] && [[ ! -r "${repo_root}/ansible/${NODE_PLAYBOOK_REL}" ]]; then
+  if is.true "${TAURI_INSTALL_NODE_EFFECTIVE}" && [[ "${FEATURE_MODE}" != "preflight" ]] && [[ ! -r "${repo_root}/ansible/${NODE_PLAYBOOK_REL}" ]]; then
     return 1
   fi
 
@@ -307,7 +388,7 @@ prepare.feature.files() {
     fi
   fi
 
-  if is.true "${TAURI_INSTALL_NODE}" && [[ "${FEATURE_MODE}" != "preflight" ]]; then
+  if is.true "${TAURI_INSTALL_NODE_EFFECTIVE}" && [[ "${FEATURE_MODE}" != "preflight" ]]; then
     fetch.feature.file "${PAGES_BASE_URL}/ansible/${NODE_PLAYBOOK_REL}" "${NODE_PLAYBOOK_PATH}"
   fi
   fetch.feature.file "${PAGES_BASE_URL}/ansible/${TAURI_PLAYBOOK_REL}" "${TAURI_PLAYBOOK_PATH}"
@@ -330,7 +411,13 @@ tauri_mode: $(yaml.quote "${FEATURE_MODE}")
 tauri_profile: $(yaml.quote "${TAURI_PROFILE}")
 tauri_install_runtime: $(bool.yaml "${TAURI_INSTALL_RUNTIME}")
 tauri_install_build_deps: $(bool.yaml "${TAURI_INSTALL_BUILD_DEPS}")
-tauri_install_node: $(bool.yaml "${TAURI_INSTALL_NODE}")
+tauri_install_node: $(bool.yaml "${TAURI_INSTALL_NODE_EFFECTIVE}")
+tauri_install_node_requested: $(bool.yaml "${TAURI_INSTALL_NODE_REQUESTED}")
+tauri_install_node_effective: $(bool.yaml "${TAURI_INSTALL_NODE_EFFECTIVE}")
+tauri_node_min_major: $(yaml.quote "${TAURI_NODE_MIN_MAJOR}")
+tauri_npm_min_major: $(yaml.quote "${TAURI_NPM_MIN_MAJOR}")
+tauri_node_current_version: $(yaml.quote "${TAURI_NODE_CURRENT_VERSION}")
+tauri_npm_current_version: $(yaml.quote "${TAURI_NPM_CURRENT_VERSION}")
 tauri_install_rust: $(bool.yaml "${TAURI_INSTALL_RUST}")
 tauri_rust_toolchain: $(yaml.quote "${TAURI_RUST_TOOLCHAIN}")
 tauri_rust_user: $(yaml.quote "${TAURI_RUST_USER}")
@@ -345,6 +432,8 @@ tauri_runtime_facts_path: $(yaml.quote "${TAURI_RUNTIME_FACTS_PATH}")
 node_enable: true
 node_mode: "apply"
 node_version: $(yaml.quote "${TAURI_NODE_VERSION}")
+node_min_major: $(yaml.quote "${TAURI_NODE_MIN_MAJOR}")
+node_install_policy: "if_missing_or_too_old"
 node_enable_corepack: $(bool.yaml "${TAURI_ENABLE_COREPACK}")
 node_create_system_symlinks: true
 EOF_VARS
@@ -353,7 +442,7 @@ EOF_VARS
 
 run.tauri.feature() {
   write.tauri.extra.vars.file
-  if is.true "${TAURI_INSTALL_NODE}" && [[ "${FEATURE_MODE}" != "preflight" ]]; then
+  if is.true "${TAURI_INSTALL_NODE_EFFECTIVE}" && [[ "${FEATURE_MODE}" != "preflight" ]]; then
     log "Running Debian Node feature for Tauri toolchain..."
     run.feature.playbook "${NODE_PLAYBOOK_PATH}" -e "@${TAURI_EXTRA_VARS_PATH}"
   fi
@@ -370,13 +459,17 @@ main() {
   require.valid.mode
   require.valid.profile
   resolve.profile.defaults
+  resolve.node.install.effective
   require.valid.cli.method
 
   log "Feature mode: ${FEATURE_MODE}"
   log "Tauri profile: ${TAURI_PROFILE}"
   log "Install runtime libs: ${TAURI_INSTALL_RUNTIME}"
   log "Install build deps: ${TAURI_INSTALL_BUILD_DEPS}"
-  log "Install Node playbook: ${TAURI_INSTALL_NODE}"
+  log "Install Node playbook requested: ${TAURI_INSTALL_NODE_REQUESTED:-0}"
+  log "Existing Node: ${TAURI_NODE_CURRENT_VERSION} (min major ${TAURI_NODE_MIN_MAJOR}; ok=${TAURI_NODE_MEETS_MINIMUM})"
+  log "Existing npm: ${TAURI_NPM_CURRENT_VERSION} (min major ${TAURI_NPM_MIN_MAJOR}; ok=${TAURI_NPM_MEETS_MINIMUM})"
+  log "Install Node playbook effective: ${TAURI_INSTALL_NODE_EFFECTIVE:-0}"
   log "Install Rust: ${TAURI_INSTALL_RUST}"
   log "Install Tauri CLI: ${TAURI_INSTALL_CLI}"
 
