@@ -24,6 +24,11 @@
     tauri_rust_min_version: "1.77.2"
     tauri_cargo_min_version: "1.77.2"
     tauri_rustup_installer_path: "/tmp/rustup-init.sh"
+    tauri_rust_create_system_symlinks: true
+    tauri_rust_symlink_dir: "/usr/local/bin"
+    tauri_rust_create_profile_hook: true
+    tauri_rust_profile_hook_path: "/etc/profile.d/tauri-rust.sh"
+    tauri_rust_shell_validate: true
     tauri_install_cli: false
     tauri_install_cli_effective: false
     tauri_cli_method: "npm"           # npm | cargo | none
@@ -182,42 +187,58 @@
           npm_ok=1
         fi
 
-        rustc_version="missing"
-        cargo_version="missing"
-        rustup_version="missing"
+        rustc_shell_path="$(command -v rustc 2>/dev/null || true)"
+        cargo_shell_path="$(command -v cargo 2>/dev/null || true)"
+        rustup_shell_path="$(command -v rustup 2>/dev/null || true)"
+        [[ -n "${rustc_shell_path}" ]] || rustc_shell_path="missing"
+        [[ -n "${cargo_shell_path}" ]] || cargo_shell_path="missing"
+        [[ -n "${rustup_shell_path}" ]] || rustup_shell_path="missing"
+        rustc_shell_ok=0
+        cargo_shell_ok=0
+        rustup_shell_ok=0
+        if [[ "${rustc_shell_path}" != "missing" ]]; then rustc_shell_ok=1; fi
+        if [[ "${cargo_shell_path}" != "missing" ]]; then cargo_shell_ok=1; fi
+        if [[ "${rustup_shell_path}" != "missing" ]]; then rustup_shell_ok=1; fi
+
+        rustc_env_version="missing"
+        cargo_env_version="missing"
+        rustup_env_version="missing"
         cargo_tauri_version="missing"
         if [[ "{{ tauri_rust_user }}" = "root" ]]; then
           if [[ -f "$HOME/.cargo/env" ]]; then . "$HOME/.cargo/env"; fi
-          rustc_version="$(rustc --version 2>/dev/null || true)"
-          cargo_version="$(cargo --version 2>/dev/null || true)"
-          rustup_version="$(rustup --version 2>/dev/null || true)"
+          rustc_env_version="$(rustc --version 2>/dev/null || true)"
+          cargo_env_version="$(cargo --version 2>/dev/null || true)"
+          rustup_env_version="$(rustup --version 2>/dev/null || true)"
           cargo_tauri_version="$(cargo tauri --version 2>/dev/null || true)"
         else
           rust_block="$(
             su - "{{ tauri_rust_user }}" -c '
               if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
-              printf "rustc_version=%s\n" "$(rustc --version 2>/dev/null || true)"
-              printf "cargo_version=%s\n" "$(cargo --version 2>/dev/null || true)"
-              printf "rustup_version=%s\n" "$(rustup --version 2>/dev/null || true)"
+              printf "rustc_env_version=%s\n" "$(rustc --version 2>/dev/null || true)"
+              printf "cargo_env_version=%s\n" "$(cargo --version 2>/dev/null || true)"
+              printf "rustup_env_version=%s\n" "$(rustup --version 2>/dev/null || true)"
               printf "cargo_tauri_version=%s\n" "$(cargo tauri --version 2>/dev/null || true)"
             ' 2>/dev/null || true
           )"
-          rustc_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^rustc_version=//p' | head -n1)"
-          cargo_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^cargo_version=//p' | head -n1)"
-          rustup_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^rustup_version=//p' | head -n1)"
+          rustc_env_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^rustc_env_version=//p' | head -n1)"
+          cargo_env_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^cargo_env_version=//p' | head -n1)"
+          rustup_env_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^rustup_env_version=//p' | head -n1)"
           cargo_tauri_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^cargo_tauri_version=//p' | head -n1)"
         fi
-        [[ -n "${rustc_version}" ]] || rustc_version="missing"
-        [[ -n "${cargo_version}" ]] || cargo_version="missing"
-        [[ -n "${rustup_version}" ]] || rustup_version="missing"
+        [[ -n "${rustc_env_version}" ]] || rustc_env_version="missing"
+        [[ -n "${cargo_env_version}" ]] || cargo_env_version="missing"
+        [[ -n "${rustup_env_version}" ]] || rustup_env_version="missing"
         [[ -n "${cargo_tauri_version}" ]] || cargo_tauri_version="missing"
 
-        rustc_semver="$(semver_or_zero "${rustc_version}")"
-        cargo_semver="$(semver_or_zero "${cargo_version}")"
-        rustc_ok=0
-        cargo_ok=0
-        if version_ge "${rustc_semver}" "{{ tauri_rust_min_version }}"; then rustc_ok=1; fi
-        if version_ge "${cargo_semver}" "{{ tauri_cargo_min_version }}"; then cargo_ok=1; fi
+        rustc_env_semver="$(semver_or_zero "${rustc_env_version}")"
+        cargo_env_semver="$(semver_or_zero "${cargo_env_version}")"
+        rustc_env_ok=0
+        cargo_env_ok=0
+        if version_ge "${rustc_env_semver}" "{{ tauri_rust_min_version }}"; then rustc_env_ok=1; fi
+        if version_ge "${cargo_env_semver}" "{{ tauri_cargo_min_version }}"; then cargo_env_ok=1; fi
+
+        rustc_ok="${rustc_env_ok}"
+        cargo_ok="${cargo_env_ok}"
 
         tauri_cli_version="$(tauri --version 2>/dev/null || true)"
         if [[ -z "${tauri_cli_version}" ]] && command -v npm >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
@@ -247,15 +268,28 @@
         printf 'npm_min_major=%s\n' "{{ tauri_npm_min_major }}"
         printf 'npm_ok=%s\n' "${npm_ok}"
         printf 'npx_version=%s\n' "${npx_version}"
-        printf 'rustc_version=%s\n' "${rustc_version}"
-        printf 'rustc_semver=%s\n' "${rustc_semver}"
+        printf 'rustc_shell_path=%s\n' "${rustc_shell_path}"
+        printf 'cargo_shell_path=%s\n' "${cargo_shell_path}"
+        printf 'rustup_shell_path=%s\n' "${rustup_shell_path}"
+        printf 'rustc_shell_ok=%s\n' "${rustc_shell_ok}"
+        printf 'cargo_shell_ok=%s\n' "${cargo_shell_ok}"
+        printf 'rustup_shell_ok=%s\n' "${rustup_shell_ok}"
+        printf 'rustc_env_version=%s\n' "${rustc_env_version}"
+        printf 'rustc_env_semver=%s\n' "${rustc_env_semver}"
         printf 'rustc_min_version=%s\n' "{{ tauri_rust_min_version }}"
-        printf 'rustc_ok=%s\n' "${rustc_ok}"
-        printf 'cargo_version=%s\n' "${cargo_version}"
-        printf 'cargo_semver=%s\n' "${cargo_semver}"
+        printf 'rustc_env_ok=%s\n' "${rustc_env_ok}"
+        printf 'cargo_env_version=%s\n' "${cargo_env_version}"
+        printf 'cargo_env_semver=%s\n' "${cargo_env_semver}"
         printf 'cargo_min_version=%s\n' "{{ tauri_cargo_min_version }}"
+        printf 'cargo_env_ok=%s\n' "${cargo_env_ok}"
+        printf 'rustup_env_version=%s\n' "${rustup_env_version}"
+        printf 'rustc_version=%s\n' "${rustc_env_version}"
+        printf 'rustc_semver=%s\n' "${rustc_env_semver}"
+        printf 'rustc_ok=%s\n' "${rustc_ok}"
+        printf 'cargo_version=%s\n' "${cargo_env_version}"
+        printf 'cargo_semver=%s\n' "${cargo_env_semver}"
         printf 'cargo_ok=%s\n' "${cargo_ok}"
-        printf 'rustup_version=%s\n' "${rustup_version}"
+        printf 'rustup_version=%s\n' "${rustup_env_version}"
         printf 'tauri_cli_version=%s\n' "${tauri_cli_version}"
         printf 'tauri_cli_semver=%s\n' "${tauri_cli_semver}"
         printf 'tauri_cli_min_version=%s\n' "{{ tauri_cli_min_version }}"
@@ -274,9 +308,18 @@
           {{
             (tauri_install_rust | bool)
             and not (
-              (tauri_toolchain_probe.stdout | default('')) is search('(?m)^rustc_ok=1$')
-              and (tauri_toolchain_probe.stdout | default('')) is search('(?m)^cargo_ok=1$')
+              (tauri_toolchain_probe.stdout | default('')) is search('(?m)^rustc_env_ok=1$')
+              and (tauri_toolchain_probe.stdout | default('')) is search('(?m)^cargo_env_ok=1$')
             )
+          }}
+
+    - name: Resolve Rust visibility management flag
+      ansible.builtin.set_fact:
+        tauri_rust_visibility_manage_effective: >-
+          {{
+            (tauri_install_rust | bool)
+            or (tauri_profile_effective == 'build')
+            or (tauri_cli_method_effective == 'cargo')
           }}
 
     - name: Resolve effective Tauri CLI install flag
@@ -309,7 +352,7 @@
           npm_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^npm_ok=1$') }}"
           install_rust_requested: "{{ tauri_install_rust | bool }}"
           install_rust_effective: "{{ tauri_install_rust_effective | bool }}"
-          rust_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^rustc_ok=1$') and (tauri_toolchain_probe.stdout | default('')) is search('(?m)^cargo_ok=1$') }}"
+          rust_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^rustc_env_ok=1$') and (tauri_toolchain_probe.stdout | default('')) is search('(?m)^cargo_env_ok=1$') }}"
           install_cli_requested: "{{ tauri_install_cli | bool }}"
           install_cli_effective: "{{ tauri_install_cli_effective | bool }}"
           tauri_cli_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^tauri_cli_ok=1$') }}"
@@ -373,7 +416,7 @@
       when:
         - tauri_enable | bool
         - tauri_mode_effective in ['apply', 'upgrade']
-        - tauri_install_rust_effective | bool or tauri_profile_effective == 'build' or tauri_cli_method_effective == 'cargo' or tauri_install_cli_effective | bool
+        - tauri_rust_visibility_manage_effective | bool
 
     - name: Assert Rust user exists
       ansible.builtin.assert:
@@ -383,7 +426,7 @@
       when:
         - tauri_enable | bool
         - tauri_mode_effective in ['apply', 'upgrade']
-        - tauri_install_rust_effective | bool or tauri_profile_effective == 'build' or tauri_cli_method_effective == 'cargo' or tauri_install_cli_effective | bool
+        - tauri_rust_visibility_manage_effective | bool
 
     - name: Capture Rust user home path
       ansible.builtin.set_fact:
@@ -391,7 +434,16 @@
       when:
         - tauri_enable | bool
         - tauri_mode_effective in ['apply', 'upgrade']
-        - tauri_install_rust_effective | bool or tauri_profile_effective == 'build' or tauri_cli_method_effective == 'cargo' or tauri_install_cli_effective | bool
+        - tauri_rust_visibility_manage_effective | bool
+
+    - name: Derive Rust env/bin paths
+      ansible.builtin.set_fact:
+        tauri_rust_env_effective: "{{ tauri_rust_home_effective }}/.cargo/env"
+        tauri_rust_bin_dir_effective: "{{ tauri_rust_home_effective }}/.cargo/bin"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_rust_visibility_manage_effective | bool
 
     - name: Download rustup installer
       ansible.builtin.get_url:
@@ -425,7 +477,7 @@
         }
 
         if [ "{{ tauri_rust_user }}" = "root" ]; then
-          if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+          if [ -f "{{ tauri_rust_env_effective }}" ]; then . "{{ tauri_rust_env_effective }}"; fi
           if command -v rustc >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; then
             current_rustc="$(rustc --version 2>/dev/null || true)"
             current_rustc_semver="$(semver_or_zero "${current_rustc}")"
@@ -437,7 +489,7 @@
             fi
           fi
           /bin/sh "{{ tauri_rustup_installer_path }}" -y --default-toolchain "{{ tauri_rust_toolchain }}"
-          . "$HOME/.cargo/env"
+          . "{{ tauri_rust_env_effective }}"
           rustup default "{{ tauri_rust_toolchain }}"
           echo "changed=1"
           rustc --version
@@ -460,7 +512,7 @@
                 printf "0.0.0"
               fi
             }
-            if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+            if [ -f "{{ tauri_rust_env_effective }}" ]; then . "{{ tauri_rust_env_effective }}"; fi
             if command -v rustc >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; then
               current_rustc="$(rustc --version 2>/dev/null || true)"
               current_rustc_semver="$(semver_or_zero "${current_rustc}")"
@@ -472,7 +524,7 @@
               fi
             fi
             /bin/sh "{{ tauri_rustup_installer_path }}" -y --default-toolchain "{{ tauri_rust_toolchain }}"
-            if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+            if [ -f "{{ tauri_rust_env_effective }}" ]; then . "{{ tauri_rust_env_effective }}"; fi
             rustup default "{{ tauri_rust_toolchain }}"
             echo "changed=1"
             rustc --version
@@ -488,15 +540,74 @@
         - tauri_mode_effective in ['apply', 'upgrade']
         - tauri_install_rust_effective | bool
 
-    - name: Validate rustc and cargo availability
+    - name: Write Rust profile hook for target user
+      ansible.builtin.copy:
+        dest: "{{ tauri_rust_profile_hook_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          if [ "${USER:-$(id -un 2>/dev/null || true)}" = "{{ tauri_rust_user }}" ] && [ -f "{{ tauri_rust_env_effective }}" ]; then
+            . "{{ tauri_rust_env_effective }}"
+          fi
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_rust_visibility_manage_effective | bool
+        - tauri_rust_create_profile_hook | bool
+
+    - name: Ensure Rust symlink directory exists
+      ansible.builtin.file:
+        path: "{{ tauri_rust_symlink_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_rust_visibility_manage_effective | bool
+        - tauri_rust_create_system_symlinks | bool
+
+    - name: Expose Rust toolchain in system path
+      ansible.builtin.shell: |
+        set -euo pipefail
+        bin_dir="{{ tauri_rust_bin_dir_effective }}"
+        changed=0
+        for exe in rustc cargo rustup; do
+          src="${bin_dir}/${exe}"
+          dst="{{ tauri_rust_symlink_dir }}/${exe}"
+          if [ ! -x "${src}" ]; then
+            echo "missing=${exe}"
+            exit 1
+          fi
+          if [ "$(readlink "${dst}" 2>/dev/null || true)" != "${src}" ]; then
+            changed=1
+          fi
+          ln -sf "${src}" "${dst}"
+          printf '%s_path=%s\n' "${exe}" "${src}"
+        done
+        printf 'changed=%s\n' "${changed}"
+      args:
+        executable: /bin/bash
+      register: tauri_rust_symlink_result
+      changed_when: "'changed=1' in (tauri_rust_symlink_result.stdout | default(''))"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_rust_visibility_manage_effective | bool
+        - tauri_rust_create_system_symlinks | bool
+
+    - name: Validate Rust in target user env
       ansible.builtin.shell: |
         set -euo pipefail
         if [ "{{ tauri_rust_user }}" = "root" ]; then
-          if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
+          if [ -f "{{ tauri_rust_env_effective }}" ]; then . "{{ tauri_rust_env_effective }}"; fi
           rustc --version
           cargo --version
+          rustup --version
         else
-          su - "{{ tauri_rust_user }}" -c 'if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi; rustc --version; cargo --version'
+          su - "{{ tauri_rust_user }}" -c 'if [ -f "{{ tauri_rust_env_effective }}" ]; then . "{{ tauri_rust_env_effective }}"; fi; rustc --version; cargo --version; rustup --version'
         fi
       args:
         executable: /bin/bash
@@ -505,7 +616,26 @@
       when:
         - tauri_enable | bool
         - tauri_mode_effective in ['apply', 'upgrade']
-        - (tauri_install_rust | bool) or (tauri_profile_effective == 'build')
+        - tauri_rust_visibility_manage_effective | bool
+
+    - name: Validate Rust in unsourced shell
+      ansible.builtin.shell: |
+        set -euo pipefail
+        printf 'rustc_path=%s\n' "$(command -v rustc)"
+        printf 'cargo_path=%s\n' "$(command -v cargo)"
+        printf 'rustup_path=%s\n' "$(command -v rustup)"
+        rustc --version
+        cargo --version
+        rustup --version
+      args:
+        executable: /bin/bash
+      register: tauri_rust_shell_validation
+      changed_when: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_rust_visibility_manage_effective | bool
+        - tauri_rust_shell_validate | bool
 
     - name: Validate Node/npm for npm-based Tauri CLI
       ansible.builtin.assert:
@@ -613,6 +743,20 @@
           esac
         }
 
+        rust_home_effective="{{ tauri_rust_home_effective | default('') }}"
+        if [[ -z "${rust_home_effective}" ]]; then
+          if [[ "{{ tauri_rust_user }}" = "root" ]]; then
+            rust_home_effective="/root"
+          else
+            rust_home_effective="$(getent passwd "{{ tauri_rust_user }}" | cut -d: -f6 2>/dev/null || true)"
+            [[ -n "${rust_home_effective}" ]] || rust_home_effective="/home/{{ tauri_rust_user }}"
+          fi
+        fi
+        rust_env_effective="{{ tauri_rust_env_effective | default('') }}"
+        if [[ -z "${rust_env_effective}" ]]; then
+          rust_env_effective="${rust_home_effective}/.cargo/env"
+        fi
+
         node_version="$(node --version 2>/dev/null || true)"
         npm_version="$(npm --version 2>/dev/null || true)"
         npx_version="$(npx --version 2>/dev/null || true)"
@@ -630,38 +774,84 @@
           npm_ok=1
         fi
 
+        rustc_shell_path="$(command -v rustc 2>/dev/null || true)"
+        cargo_shell_path="$(command -v cargo 2>/dev/null || true)"
+        rustup_shell_path="$(command -v rustup 2>/dev/null || true)"
+        [[ -n "${rustc_shell_path}" ]] || rustc_shell_path="missing"
+        [[ -n "${cargo_shell_path}" ]] || cargo_shell_path="missing"
+        [[ -n "${rustup_shell_path}" ]] || rustup_shell_path="missing"
+        rustc_shell_ok=0
+        cargo_shell_ok=0
+        rustup_shell_ok=0
+        if [[ "${rustc_shell_path}" != "missing" ]]; then rustc_shell_ok=1; fi
+        if [[ "${cargo_shell_path}" != "missing" ]]; then cargo_shell_ok=1; fi
+        if [[ "${rustup_shell_path}" != "missing" ]]; then rustup_shell_ok=1; fi
+
         rustc_version="missing"
         cargo_version="missing"
         rustup_version="missing"
+        rustc_env_version="missing"
+        cargo_env_version="missing"
+        rustup_env_version="missing"
         cargo_tauri_version="missing"
+        cargo_tauri_env_version="missing"
         tauri_cli_version=""
-        if [[ "{{ tauri_rust_user }}" = "root" ]]; then
-          if [[ -f "$HOME/.cargo/env" ]]; then . "$HOME/.cargo/env"; fi
+
+        if [[ "${rustc_shell_path}" != "missing" ]]; then
           rustc_version="$(rustc --version 2>/dev/null || true)"
+        fi
+        if [[ "${cargo_shell_path}" != "missing" ]]; then
           cargo_version="$(cargo --version 2>/dev/null || true)"
-          rustup_version="$(rustup --version 2>/dev/null || true)"
           cargo_tauri_version="$(cargo tauri --version 2>/dev/null || true)"
+        fi
+        if [[ "${rustup_shell_path}" != "missing" ]]; then
+          rustup_version="$(rustup --version 2>/dev/null || true)"
+        fi
+
+        if [[ "{{ tauri_rust_user }}" = "root" ]]; then
+          if [[ -f "${rust_env_effective}" ]]; then . "${rust_env_effective}"; fi
+          rustc_env_version="$(rustc --version 2>/dev/null || true)"
+          cargo_env_version="$(cargo --version 2>/dev/null || true)"
+          rustup_env_version="$(rustup --version 2>/dev/null || true)"
+          cargo_tauri_env_version="$(cargo tauri --version 2>/dev/null || true)"
           tauri_cli_version="$(tauri --version 2>/dev/null || true)"
         else
           rust_block="$(
             su - "{{ tauri_rust_user }}" -c '
-              if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi
-              printf "rustc_version=%s\n" "$(rustc --version 2>/dev/null || true)"
-              printf "cargo_version=%s\n" "$(cargo --version 2>/dev/null || true)"
-              printf "rustup_version=%s\n" "$(rustup --version 2>/dev/null || true)"
-              printf "cargo_tauri_version=%s\n" "$(cargo tauri --version 2>/dev/null || true)"
+              if [ -f "'"${rust_env_effective}"'" ]; then . "'"${rust_env_effective}"'"; fi
+              printf "rustc_env_version=%s\n" "$(rustc --version 2>/dev/null || true)"
+              printf "cargo_env_version=%s\n" "$(cargo --version 2>/dev/null || true)"
+              printf "rustup_env_version=%s\n" "$(rustup --version 2>/dev/null || true)"
+              printf "cargo_tauri_env_version=%s\n" "$(cargo tauri --version 2>/dev/null || true)"
               printf "tauri_cli_version=%s\n" "$(tauri --version 2>/dev/null || true)"
             ' 2>/dev/null || true
           )"
-          rustc_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^rustc_version=//p' | head -n1)"
-          cargo_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^cargo_version=//p' | head -n1)"
-          rustup_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^rustup_version=//p' | head -n1)"
-          cargo_tauri_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^cargo_tauri_version=//p' | head -n1)"
+          rustc_env_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^rustc_env_version=//p' | head -n1)"
+          cargo_env_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^cargo_env_version=//p' | head -n1)"
+          rustup_env_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^rustup_env_version=//p' | head -n1)"
+          cargo_tauri_env_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^cargo_tauri_env_version=//p' | head -n1)"
           tauri_cli_version="$(printf '%s\n' "${rust_block}" | sed -n 's/^tauri_cli_version=//p' | head -n1)"
         fi
+
+        if [[ "${rustc_version}" = "missing" || -z "${rustc_version}" ]]; then
+          rustc_version="${rustc_env_version:-missing}"
+        fi
+        if [[ "${cargo_version}" = "missing" || -z "${cargo_version}" ]]; then
+          cargo_version="${cargo_env_version:-missing}"
+        fi
+        if [[ "${rustup_version}" = "missing" || -z "${rustup_version}" ]]; then
+          rustup_version="${rustup_env_version:-missing}"
+        fi
+        if [[ "${cargo_tauri_version}" = "missing" || -z "${cargo_tauri_version}" ]]; then
+          cargo_tauri_version="${cargo_tauri_env_version:-missing}"
+        fi
+
         [[ -n "${rustc_version}" ]] || rustc_version="missing"
         [[ -n "${cargo_version}" ]] || cargo_version="missing"
         [[ -n "${rustup_version}" ]] || rustup_version="missing"
+        [[ -n "${rustc_env_version}" ]] || rustc_env_version="missing"
+        [[ -n "${cargo_env_version}" ]] || cargo_env_version="missing"
+        [[ -n "${rustup_env_version}" ]] || rustup_env_version="missing"
         [[ -n "${cargo_tauri_version}" ]] || cargo_tauri_version="missing"
 
         if [[ -z "${tauri_cli_version}" ]] && command -v npm >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
@@ -678,14 +868,20 @@
 
         rustc_semver="$(semver_or_zero "${rustc_version}")"
         cargo_semver="$(semver_or_zero "${cargo_version}")"
+        rustc_env_semver="$(semver_or_zero "${rustc_env_version}")"
+        cargo_env_semver="$(semver_or_zero "${cargo_env_version}")"
         tauri_cli_semver="$(semver_or_zero "${tauri_cli_version}")"
         cargo_tauri_semver="$(semver_or_zero "${cargo_tauri_version}")"
         rustc_ok=0
         cargo_ok=0
+        rustc_env_ok=0
+        cargo_env_ok=0
         tauri_cli_ok=0
         cargo_tauri_ok=0
         if version_ge "${rustc_semver}" "{{ tauri_rust_min_version }}"; then rustc_ok=1; fi
         if version_ge "${cargo_semver}" "{{ tauri_cargo_min_version }}"; then cargo_ok=1; fi
+        if version_ge "${rustc_env_semver}" "{{ tauri_rust_min_version }}"; then rustc_env_ok=1; fi
+        if version_ge "${cargo_env_semver}" "{{ tauri_cargo_min_version }}"; then cargo_env_ok=1; fi
         if version_ge "${tauri_cli_semver}" "{{ tauri_cli_min_version }}"; then tauri_cli_ok=1; fi
         if version_ge "${cargo_tauri_semver}" "{{ tauri_cli_min_version }}"; then cargo_tauri_ok=1; fi
 
@@ -698,6 +894,19 @@
         printf 'npm_min_major=%s\n' "{{ tauri_npm_min_major }}"
         printf 'npm_ok=%s\n' "${npm_ok}"
         printf 'npx_version=%s\n' "${npx_version}"
+        printf 'rustc_shell_path=%s\n' "${rustc_shell_path}"
+        printf 'cargo_shell_path=%s\n' "${cargo_shell_path}"
+        printf 'rustup_shell_path=%s\n' "${rustup_shell_path}"
+        printf 'rustc_shell_ok=%s\n' "${rustc_shell_ok}"
+        printf 'cargo_shell_ok=%s\n' "${cargo_shell_ok}"
+        printf 'rustup_shell_ok=%s\n' "${rustup_shell_ok}"
+        printf 'rustc_env_version=%s\n' "${rustc_env_version}"
+        printf 'rustc_env_semver=%s\n' "${rustc_env_semver}"
+        printf 'rustc_env_ok=%s\n' "${rustc_env_ok}"
+        printf 'cargo_env_version=%s\n' "${cargo_env_version}"
+        printf 'cargo_env_semver=%s\n' "${cargo_env_semver}"
+        printf 'cargo_env_ok=%s\n' "${cargo_env_ok}"
+        printf 'rustup_env_version=%s\n' "${rustup_env_version}"
         printf 'rustc_version=%s\n' "${rustc_version}"
         printf 'rustc_semver=%s\n' "${rustc_semver}"
         printf 'rustc_min_version=%s\n' "{{ tauri_rust_min_version }}"
@@ -730,8 +939,17 @@
         tauri_fact_rustc_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^rustc_version=(.*)$') | first | default('missing')) }}"
         tauri_fact_cargo_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^cargo_version=(.*)$') | first | default('missing')) }}"
         tauri_fact_rustup_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^rustup_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_rustc_shell_path: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^rustc_shell_path=(.*)$') | first | default('missing')) }}"
+        tauri_fact_cargo_shell_path: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^cargo_shell_path=(.*)$') | first | default('missing')) }}"
+        tauri_fact_rustup_shell_path: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^rustup_shell_path=(.*)$') | first | default('missing')) }}"
+        tauri_fact_rustc_shell_ok: "{{ ((tauri_toolchain_final_probe.stdout | default('')) is search('(?m)^rustc_shell_ok=1$')) }}"
+        tauri_fact_cargo_shell_ok: "{{ ((tauri_toolchain_final_probe.stdout | default('')) is search('(?m)^cargo_shell_ok=1$')) }}"
+        tauri_fact_rustup_shell_ok: "{{ ((tauri_toolchain_final_probe.stdout | default('')) is search('(?m)^rustup_shell_ok=1$')) }}"
         tauri_fact_cli_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^tauri_cli_version=(.*)$') | first | default('missing')) }}"
         tauri_fact_cargo_tauri_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^cargo_tauri_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_rust_home: "{{ tauri_rust_home_effective | default((tauri_rust_user == 'root') | ternary('/root', '/home/' ~ tauri_rust_user), true) }}"
+        tauri_fact_rust_env: "{{ tauri_rust_env_effective | default(((tauri_rust_user == 'root') | ternary('/root', '/home/' ~ tauri_rust_user)) ~ '/.cargo/env', true) }}"
+        tauri_fact_rust_bin_dir: "{{ tauri_rust_bin_dir_effective | default(((tauri_rust_user == 'root') | ternary('/root', '/home/' ~ tauri_rust_user)) ~ '/.cargo/bin', true) }}"
       when:
         - tauri_enable | bool
         - tauri_mode_effective in ['apply', 'upgrade']
@@ -761,7 +979,7 @@
             profile: "{{ tauri_profile_effective }}"
             install_requested:
               runtime: {{ tauri_install_runtime | bool | lower }}
-              build_deps: {{ tauri_install_build_deps_effective | bool | lower }}
+              build_deps: {{ tauri_install_build_deps | bool | lower }}
               node: {{ tauri_install_node_requested_effective | bool | lower }}
               rust: {{ tauri_install_rust | bool | lower }}
               cli: {{ tauri_install_cli | bool | lower }}
@@ -792,6 +1010,19 @@
                 version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^tauri_cli_version=(.*)$') | first | default('missing')) }}"
                 min_version: "{{ tauri_cli_min_version }}"
                 ok: {{ ((tauri_toolchain_final_probe.stdout | default('')) is search('(?m)^tauri_cli_ok=1$')) | lower }}
+            shell_visible:
+              rustc: {{ tauri_fact_rustc_shell_ok | bool | lower }}
+              cargo: {{ tauri_fact_cargo_shell_ok | bool | lower }}
+              rustup: {{ tauri_fact_rustup_shell_ok | bool | lower }}
+            shell_paths:
+              rustc: "{{ tauri_fact_rustc_shell_path }}"
+              cargo: "{{ tauri_fact_cargo_shell_path }}"
+              rustup: "{{ tauri_fact_rustup_shell_path }}"
+            rust_user:
+              name: "{{ tauri_rust_user }}"
+              home: "{{ tauri_fact_rust_home }}"
+              cargo_env: "{{ tauri_fact_rust_env }}"
+              cargo_bin_dir: "{{ tauri_fact_rust_bin_dir }}"
             node_version: "{{ tauri_fact_node_version }}"
             npm_version: "{{ tauri_fact_npm_version }}"
             npx_version: "{{ tauri_fact_npx_version }}"
@@ -819,8 +1050,8 @@
       ansible.builtin.debug:
         msg:
           - "Tauri platform setup complete for profile={{ tauri_profile_effective }} mode={{ tauri_mode_effective }}"
+          - "{{ (tauri_rust_visibility_manage_effective | bool) | ternary('Rust toolchain exposed via ' ~ tauri_rust_symlink_dir ~ ': rustc, cargo, rustup', 'Rust toolchain exposure not requested for this profile/mode') }}"
           - "Runtime facts: {{ tauri_runtime_facts_path }}"
-          - "Development/build should happen on a separate workstation; deploy built releases to runtime hosts."
       when:
         - tauri_enable | bool
         - tauri_mode_effective in ['apply', 'upgrade']

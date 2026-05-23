@@ -19,6 +19,11 @@ tauri_npm_min_major: 9
 tauri_install_rust: false
 tauri_rust_min_version: "1.77.2"
 tauri_cargo_min_version: "1.77.2"
+tauri_rust_create_system_symlinks: true
+tauri_rust_symlink_dir: "/usr/local/bin"
+tauri_rust_create_profile_hook: true
+tauri_rust_profile_hook_path: "/etc/profile.d/tauri-rust.sh"
+tauri_rust_shell_validate: true
 tauri_install_cli: false
 tauri_cli_method: "npm"
 tauri_cli_min_version: "2.0.0"

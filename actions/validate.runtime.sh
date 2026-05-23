@@ -609,6 +609,18 @@ if ! grep -q 'node_npm_min_major' "${ROOT}/ansible/group_vars/debian.yml"; then
   echo "[validate.runtime][error] ansible/group_vars/debian.yml must define node_npm_min_major"
   rc=1
 fi
+if ! grep -q 'tauri_rust_create_system_symlinks' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define tauri_rust_create_system_symlinks"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_profile_hook_path' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define tauri_rust_profile_hook_path"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_shell_validate' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define tauri_rust_shell_validate"
+  rc=1
+fi
 
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
 if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/codex.sh"; then
@@ -744,6 +756,10 @@ if ! cmp -s "${ROOT}/ansible/cli/tauri.yml" "${ROOT}/static/ansible/cli/tauri.ym
   echo "[validate.runtime][error] static/ansible/cli/tauri.yml is out of sync with ansible/cli/tauri.yml"
   rc=1
 fi
+if ! cmp -s "${ROOT}/ansible/group_vars/debian.yml" "${ROOT}/static/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] static/ansible/group_vars/debian.yml is out of sync with ansible/group_vars/debian.yml"
+  rc=1
+fi
 
 echo "[validate.runtime] checking ansible/cli/tauri.yml contract..."
 if ! grep -q 'tauri_mode: "apply"' "${ROOT}/ansible/cli/tauri.yml"; then
@@ -798,6 +814,46 @@ if ! grep -q 'tauri_install_cli_effective' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must compute tauri_install_cli_effective"
   rc=1
 fi
+if ! grep -q 'tauri_rust_create_system_symlinks' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must define tauri_rust_create_system_symlinks"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_profile_hook_path' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must define tauri_rust_profile_hook_path"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_shell_validate' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must define tauri_rust_shell_validate"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_env_effective' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must derive tauri_rust_env_effective"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_bin_dir_effective' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must derive tauri_rust_bin_dir_effective"
+  rc=1
+fi
+if ! grep -q 'for exe in rustc cargo rustup' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must manage rustc/cargo/rustup symlink loop"
+  rc=1
+fi
+if ! grep -Eq '/usr/local/bin|tauri_rust_symlink_dir' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must define system symlink directory for Rust"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_symlink_dir: "/usr/local/bin"' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must manage shell-visible rustc path"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_symlink_dir: "/usr/local/bin"' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must manage shell-visible cargo path"
+  rc=1
+fi
+if ! grep -q 'tauri_rust_symlink_dir: "/usr/local/bin"' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must manage shell-visible rustup path"
+  rc=1
+fi
 if ! grep -q 'tauri_rust_min_version' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must define tauri_rust_min_version"
   rc=1
@@ -822,8 +878,28 @@ if ! grep -q 'cargo_ok' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must emit cargo_ok probe data"
   rc=1
 fi
+if ! grep -q 'rustc_shell_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit rustc_shell_ok probe data"
+  rc=1
+fi
+if ! grep -q 'cargo_shell_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit cargo_shell_ok probe data"
+  rc=1
+fi
+if ! grep -q 'rustup_shell_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit rustup_shell_ok probe data"
+  rc=1
+fi
 if ! grep -q 'tauri_cli_ok' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must emit tauri_cli_ok probe data"
+  rc=1
+fi
+if ! grep -q 'shell_visible:' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml facts must include shell_visible section"
+  rc=1
+fi
+if ! grep -q 'shell_paths:' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml facts must include shell_paths section"
   rc=1
 fi
 if search_regex 'npm create tauri-app|npx tauri init' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
@@ -836,6 +912,12 @@ if search_regex 'npm exec tauri -- --version' "${ROOT}/ansible/cli/tauri.yml" >/
 fi
 if search_regex 'Vue|Vite|Webpack|Phaser|ThreeJS|database|camera.py|hardware.py' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must stay platform-only and not include app/framework sidecars"
+  rc=1
+fi
+if search_regex '(^|[^[:alnum:]_])rust --version([^[:alnum:]_]|$)' \
+  "${ROOT}/ansible/cli/tauri.yml" \
+  "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
+  echo "[validate.runtime][error] validation and examples must check rustc/cargo/rustup, not rust"
   rc=1
 fi
 if grep -qx 'cli/tauri.yml' "${ROOT}/ansible/install.playbooks.txt"; then
