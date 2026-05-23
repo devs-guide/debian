@@ -434,6 +434,7 @@ node_enable: true
 node_mode: "apply"
 node_version: $(yaml.quote "${TAURI_NODE_VERSION}")
 node_min_major: $(yaml.quote "${TAURI_NODE_MIN_MAJOR}")
+node_npm_min_major: $(yaml.quote "${TAURI_NPM_MIN_MAJOR}")
 node_install_policy: "if_missing_or_too_old"
 node_enable_corepack: $(bool.yaml "${TAURI_ENABLE_COREPACK}")
 node_create_system_symlinks: true

@@ -13,6 +13,7 @@
     node_nvm_dir: "{{ nvm_dir | default('/root/.nvm') }}"
     node_version: "lts/*"
     node_min_major: 20
+    node_npm_min_major: 9
     node_install_policy: "if_missing_or_too_old"   # always | if_missing_or_too_old
     node_npm_policy: "bundled"   # bundled | pinned | latest
     node_npm_version: ""
@@ -128,7 +129,7 @@
         if [[ "${node_version}" != "missing" && "${node_major}" -ge "{{ node_min_major | int }}" ]]; then
           node_ok=1
         fi
-        if [[ "${npm_version}" != "missing" && "${npm_major}" -ge 1 ]]; then
+        if [[ "${npm_version}" != "missing" && "${npm_major}" -ge "{{ node_npm_min_major | int }}" ]]; then
           npm_ok=1
         fi
         if [[ "${node_ok}" -eq 1 && "${npm_ok}" -eq 1 ]]; then
@@ -139,6 +140,8 @@
         printf 'node_min_major=%s\n' "{{ node_min_major }}"
         printf 'node_ok=%s\n' "${node_ok}"
         printf 'npm_version=%s\n' "${npm_version}"
+        printf 'npm_major=%s\n' "${npm_major}"
+        printf 'npm_min_major=%s\n' "{{ node_npm_min_major }}"
         printf 'npm_ok=%s\n' "${npm_ok}"
         printf 'node_install_needed=%s\n' "${node_install_needed}"
       args:

@@ -105,6 +105,116 @@ PY
   return 1
 }
 
+validate_shell_payloads() {
+  local f="$1"
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[validate.runtime][error] python3 is required to validate shell payloads in ${f}"
+    return 1
+  fi
+
+  python3 - "$f" <<'PY'
+from pathlib import Path
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+path = Path(sys.argv[1])
+text = path.read_text()
+
+def neutralize_jinja(payload: str) -> str:
+    payload = re.sub(r"\{\{.*?\}\}", "0", payload, flags=re.S)
+    payload = re.sub(r"\{%.*?%\}", "", payload, flags=re.S)
+    payload = re.sub(r"\{#.*?#\}", "", payload, flags=re.S)
+    return payload
+
+def extract_with_yaml(raw: str):
+    try:
+        import yaml
+    except Exception:
+        return None, None
+    try:
+        docs = yaml.safe_load(raw)
+    except Exception as exc:
+        return None, f"[validate.runtime][error] invalid YAML while extracting shell payloads: {path}: {exc}"
+
+    blocks = []
+    def walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ("shell", "ansible.builtin.shell") and isinstance(value, str):
+                    blocks.append(value)
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+    walk(docs)
+    return blocks, None
+
+def extract_with_text_scan(raw: str):
+    lines = raw.splitlines()
+    blocks = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = re.match(r"^(\s*)(?:ansible\.builtin\.shell|shell):\s*\|\s*$", line)
+        if not m:
+            i += 1
+            continue
+        base_indent = len(m.group(1))
+        j = i + 1
+        payload_lines = []
+        while j < len(lines):
+            current = lines[j]
+            if current.strip() == "":
+                payload_lines.append("")
+                j += 1
+                continue
+            current_indent = len(current) - len(current.lstrip(" "))
+            if current_indent <= base_indent:
+                break
+            # YAML block content is conventionally indented by at least 2 spaces.
+            trim = min(len(current), base_indent + 2)
+            payload_lines.append(current[trim:])
+            j += 1
+        blocks.append("\n".join(payload_lines) + "\n")
+        i = j
+    return blocks
+
+shell_blocks, parse_error = extract_with_yaml(text)
+if parse_error:
+    print(parse_error)
+    raise SystemExit(1)
+if shell_blocks is None:
+    shell_blocks = extract_with_text_scan(text)
+
+for idx, raw_payload in enumerate(shell_blocks, start=1):
+    payload = neutralize_jinja(raw_payload)
+    with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as tmp:
+        tmp.write(payload)
+        tmp_path = tmp.name
+    try:
+        result = subprocess.run(
+            ["bash", "-n", tmp_path],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            print(f"[validate.runtime][error] shell payload parse failed: {path} block#{idx}")
+            if stderr:
+                print(stderr)
+            raise SystemExit(1)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+PY
+}
+
 files=(
   "setup/bootstrap.sh"
   "setup/debian.sh"
@@ -491,6 +601,14 @@ if ! grep -q 'node_install_needed' "${ROOT}/ansible/cli/node.yml"; then
   echo "[validate.runtime][error] ansible/cli/node.yml must compute node_install_needed"
   rc=1
 fi
+if ! grep -q 'node_npm_min_major' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must define node_npm_min_major"
+  rc=1
+fi
+if ! grep -q 'node_npm_min_major' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define node_npm_min_major"
+  rc=1
+fi
 
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
 if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/codex.sh"; then
@@ -599,6 +717,10 @@ if ! grep -q 'DEBIAN_CLI_TAURI_CLI_METHOD:-npm' "${ROOT}/setup/cli/tauri.sh"; th
   echo "[validate.runtime][error] setup/cli/tauri.sh must default DEBIAN_CLI_TAURI_CLI_METHOD to npm"
   rc=1
 fi
+if ! grep -q 'node_npm_min_major' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must pass node_npm_min_major to the Node feature"
+  rc=1
+fi
 if search_regex 'codex' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must not install codex directly"
   rc=1
@@ -607,8 +729,13 @@ fi
 echo "[validate.runtime] checking Tauri playbook YAML syntax..."
 for f in \
   "${ROOT}/ansible/cli/tauri.yml" \
-  "${ROOT}/static/ansible/cli/tauri.yml"; do
+  "${ROOT}/static/ansible/cli/tauri.yml" \
+  "${ROOT}/ansible/cli/node.yml" \
+  "${ROOT}/static/ansible/cli/node.yml"; do
   if ! validate_yaml_file "${f}"; then
+    rc=1
+  fi
+  if ! validate_shell_payloads "${f}"; then
     rc=1
   fi
 done
@@ -701,6 +828,10 @@ if ! grep -q 'tauri_cli_ok' "${ROOT}/ansible/cli/tauri.yml"; then
 fi
 if search_regex 'npm create tauri-app|npx tauri init' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must not scaffold or initialize app source"
+  rc=1
+fi
+if search_regex 'npm exec tauri -- --version' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must not use npm exec tauri -- --version fallback"
   rc=1
 fi
 if search_regex 'Vue|Vite|Webpack|Phaser|ThreeJS|database|camera.py|hardware.py' "${ROOT}/ansible/cli/tauri.yml" >/dev/null; then

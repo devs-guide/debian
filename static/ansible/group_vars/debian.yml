@@ -24,6 +24,7 @@ tauri_cli_method: "npm"
 tauri_cli_min_version: "2.0.0"
 tauri_runtime_facts_path: "/etc/ansible/debian/facts/cli.tauri.yml"
 node_min_major: 20
+node_npm_min_major: 9
 node_install_policy: "if_missing_or_too_old"
 package_group_overrides:
   base: true
