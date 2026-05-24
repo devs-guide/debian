@@ -41,6 +41,8 @@ LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
+TAURI_SELF_URL="${DEBIAN_CLI_TAURI_SELF_URL:-${PAGES_BASE_URL}/setup/cli/tauri}"
+TAURI_SUDO_REEXEC="${DEBIAN_CLI_TAURI_SUDO_REEXEC:-0}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 RELEASE_GROUP_VARS_FILE="${DEBIAN_CLI_TAURI_RELEASE_GROUP_VARS_FILE:-}"
 FEATURE_PLAYBOOKS=(
@@ -110,6 +112,84 @@ reset.feature.tmp.cache() {
       rm -rf "${TMP_DIR}"
       ;;
   esac
+}
+
+collect.sudo.env.args() {
+  local -n _out="$1"
+  local name=""
+
+  while IFS= read -r name; do
+    case "${name}" in
+      DEBIAN_CLI_TAURI_*|PAGES_BASE_URL|TMP_ROOT_DIR|TMP_DIR|REFRESH)
+        _out+=("${name}=${!name}")
+        ;;
+    esac
+  done < <(compgen -e)
+}
+
+current.script.path() {
+  local source_path="${BASH_SOURCE[0]:-}"
+
+  case "${source_path}" in
+    ""|-|/dev/fd/*|/proc/self/fd/*)
+      return 1
+      ;;
+  esac
+
+  if [[ -r "${source_path}" ]]; then
+    readlink -f "${source_path}" 2>/dev/null || printf '%s\n' "${source_path}"
+    return 0
+  fi
+
+  return 1
+}
+
+ensure.root.or.sudo.reexec() {
+  local script_path=""
+  local -a sudo_env
+  sudo_env=()
+
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if [[ "${TAURI_SUDO_REEXEC}" = "1" ]]; then
+    log.error "sudo re-entry was requested but the script is still not root."
+    exit 1
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    log.error "This setup requires root privileges. Install sudo or run as root."
+    exit 1
+  fi
+
+  log "Root privileges required; requesting sudo..."
+  if ! sudo -v; then
+    log.error "sudo authentication failed or was cancelled."
+    exit 1
+  fi
+
+  collect.sudo.env.args sudo_env
+  sudo_env+=("DEBIAN_CLI_TAURI_SUDO_REEXEC=1")
+
+  if script_path="$(current.script.path)"; then
+    exec sudo env "${sudo_env[@]}" bash "${script_path}" "$@"
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    exec sudo env "${sudo_env[@]}" bash -c \
+      'wget -qO- "$1" | bash -s -- "${@:2}"' \
+      bash "${TAURI_SELF_URL}" "$@"
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    exec sudo env "${sudo_env[@]}" bash -c \
+      'curl -fsSL "$1" | bash -s -- "${@:2}"' \
+      bash "${TAURI_SELF_URL}" "$@"
+  fi
+
+  log.error "Cannot re-enter with sudo from stdin because neither wget nor curl is available."
+  exit 1
 }
 
 source.release.common() {
@@ -453,6 +533,7 @@ run.tauri.feature() {
 }
 
 main() {
+  ensure.root.or.sudo.reexec "$@"
   reset.feature.tmp.cache
   source.release.common
   require.root

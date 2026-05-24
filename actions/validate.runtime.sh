@@ -215,6 +215,24 @@ for idx, raw_payload in enumerate(shell_blocks, start=1):
 PY
 }
 
+require_contains() {
+  local file="$1"
+  local pattern="$2"
+  if ! grep -Fq -- "${pattern}" "${ROOT}/${file}"; then
+    echo "[validate.runtime][error] missing pattern in ${file}: ${pattern}"
+    rc=1
+  fi
+}
+
+reject_contains() {
+  local file="$1"
+  local pattern="$2"
+  if grep -Fq -- "${pattern}" "${ROOT}/${file}"; then
+    echo "[validate.runtime][error] unexpected pattern in ${file}: ${pattern}"
+    rc=1
+  fi
+}
+
 files=(
   "setup/bootstrap.sh"
   "setup/debian.sh"
@@ -737,6 +755,19 @@ if search_regex 'codex' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must not install codex directly"
   rc=1
 fi
+require_contains "setup/cli/tauri.sh" 'ensure.root.or.sudo.reexec'
+require_contains "setup/cli/tauri.sh" 'DEBIAN_CLI_TAURI_SUDO_REEXEC'
+require_contains "setup/cli/tauri.sh" 'TAURI_SELF_URL'
+require_contains "setup/cli/tauri.sh" 'sudo -v'
+require_contains "setup/cli/tauri.sh" 'collect.sudo.env.args'
+require_contains "setup/cli/tauri.sh" 'wget -qO- "$1" | bash -s -- "${@:2}"'
+reject_contains "setup/cli/tauri.sh" 'TAURI_NODE_SYSTEM_SCOPE_OK'
+reject_contains "setup/cli/tauri.sh" 'TAURI_NODE_SYSTEM_RESOLVED'
+reject_contains "ansible/cli/node.yml" 'node_install_scope'
+reject_contains "ansible/cli/node.yml" 'node_validate_non_root'
+reject_contains "ansible/cli/tauri.yml" 'system_private_backing'
+reject_contains "ansible/cli/tauri.yml" 'private_system_runtime_path'
+reject_contains "ansible/cli/tauri.yml" 'setpriv --reuid=65534'
 
 echo "[validate.runtime] checking Tauri playbook YAML syntax..."
 for f in \
@@ -754,6 +785,18 @@ done
 
 if ! cmp -s "${ROOT}/ansible/cli/tauri.yml" "${ROOT}/static/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] static/ansible/cli/tauri.yml is out of sync with ansible/cli/tauri.yml"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/tauri.sh" "${ROOT}/static/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] static/setup/cli/tauri.sh is out of sync with setup/cli/tauri.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/tauri.sh" "${ROOT}/static/setup/cli/tauri"; then
+  echo "[validate.runtime][error] static/setup/cli/tauri is out of sync with setup/cli/tauri.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/ansible/cli/node.yml" "${ROOT}/static/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] static/ansible/cli/node.yml is out of sync with ansible/cli/node.yml"
   rc=1
 fi
 if ! cmp -s "${ROOT}/ansible/group_vars/debian.yml" "${ROOT}/static/ansible/group_vars/debian.yml"; then
