@@ -6,6 +6,10 @@
 ## Published usage:
 ##   wget -qO- https://devs-guide.github.io/debian/setup/autologin | bash
 
+## EXAMPLE:
+# env DEBIAN_AUTOLOGIN_ENABLE=1 DEBIAN_AUTOLOGIN_MODE=apply DEBIAN_AUTOLOGIN_USER=app DEBIAN_AUTOLOGIN_TTY=tty1 DEBIAN_AUTOLOGIN_ACTION=shell bash -c 'wget -qO-  https://devs-guide.github.io/debian/setup/autologin | bash'
+
+
 set -euo pipefail
 
 log() { printf '[setup.autologin] %s\n' "$*" >&2; }

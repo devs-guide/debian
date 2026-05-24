@@ -19,6 +19,8 @@ FILES=(
   "setup/release.common.sh:setup/release.common.sh"
   "setup/cli/node.sh:setup/cli/node.sh"
   "setup/cli/node:setup/cli/node.sh"
+  "setup/cli/auto.app.sh:setup/cli/auto.app.sh"
+  "setup/cli/auto.app:setup/cli/auto.app.sh"
   "setup/cli/codex.sh:setup/cli/codex.sh"
   "setup/cli/tauri.sh:setup/cli/tauri.sh"
   "setup/cli/tauri:setup/cli/tauri.sh"
@@ -152,6 +154,7 @@ check_playlist_refs() {
 
 check_playlist_refs
 check_setup_feature_refs "setup/cli/node.sh"
+check_setup_feature_refs "setup/cli/auto.app.sh"
 check_setup_feature_refs "setup/cli/codex.sh"
 check_setup_feature_refs "setup/cli/tauri.sh"
 check_setup_feature_refs "setup/hardware.sh"
