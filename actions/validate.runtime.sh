@@ -238,6 +238,7 @@ files=(
   "setup/debian.sh"
   "setup/metal.sh"
   "setup/hardware.sh"
+  "setup/autologin.sh"
   "setup/cli/node.sh"
   "setup/release.common.sh"
   "setup/cli/codex.sh"
@@ -257,6 +258,7 @@ files=(
   "ansible/cli/node.yml"
   "ansible/cli/codex.yml"
   "ansible/cli/tauri.yml"
+  "ansible/autologin.yml"
   "ansible/group_vars/all.yml"
   "ansible/group_vars/debian.yml"
   "ansible/group_vars/trixie.yml"
@@ -627,6 +629,18 @@ if ! grep -q 'node_npm_min_major' "${ROOT}/ansible/group_vars/debian.yml"; then
   echo "[validate.runtime][error] ansible/group_vars/debian.yml must define node_npm_min_major"
   rc=1
 fi
+if ! grep -q 'autologin_mode' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define autologin_mode defaults"
+  rc=1
+fi
+if ! grep -q 'autologin_user' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define autologin_user defaults"
+  rc=1
+fi
+if ! grep -q 'autologin_tty' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define autologin_tty defaults"
+  rc=1
+fi
 if ! grep -q 'tauri_rust_create_system_symlinks' "${ROOT}/ansible/group_vars/debian.yml"; then
   echo "[validate.runtime][error] ansible/group_vars/debian.yml must define tauri_rust_create_system_symlinks"
   rc=1
@@ -659,6 +673,52 @@ if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/codex.sh"; then
 fi
 if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/codex.sh"; then
   echo "[validate.runtime][error] setup/cli/codex.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+
+echo "[validate.runtime] checking setup/autologin.sh runner contract..."
+if ! bash -n "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must pass bash -n"
+  rc=1
+fi
+if ! grep -q '"autologin.yml"' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must reference autologin.yml"
+  rc=1
+fi
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must define GROUP_VARS_FILES"
+  rc=1
+fi
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_AUTOLOGIN_ENABLE' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must support DEBIAN_AUTOLOGIN_ENABLE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_AUTOLOGIN_MODE' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must support DEBIAN_AUTOLOGIN_MODE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_AUTOLOGIN_USER' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must support DEBIAN_AUTOLOGIN_USER"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_AUTOLOGIN_TTY' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must support DEBIAN_AUTOLOGIN_TTY"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_AUTOLOGIN_ACTION' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must support DEBIAN_AUTOLOGIN_ACTION"
+  rc=1
+fi
+if ! grep -q 'preflight|apply|disable' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must support preflight, apply, and disable modes"
   rc=1
 fi
 
@@ -771,6 +831,8 @@ reject_contains "ansible/cli/tauri.yml" 'setpriv --reuid=65534'
 
 echo "[validate.runtime] checking Tauri playbook YAML syntax..."
 for f in \
+  "${ROOT}/ansible/autologin.yml" \
+  "${ROOT}/static/ansible/autologin.yml" \
   "${ROOT}/ansible/cli/tauri.yml" \
   "${ROOT}/static/ansible/cli/tauri.yml" \
   "${ROOT}/ansible/cli/node.yml" \
@@ -787,6 +849,18 @@ if ! cmp -s "${ROOT}/ansible/cli/tauri.yml" "${ROOT}/static/ansible/cli/tauri.ym
   echo "[validate.runtime][error] static/ansible/cli/tauri.yml is out of sync with ansible/cli/tauri.yml"
   rc=1
 fi
+if ! cmp -s "${ROOT}/ansible/autologin.yml" "${ROOT}/static/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] static/ansible/autologin.yml is out of sync with ansible/autologin.yml"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/autologin.sh" "${ROOT}/static/setup/autologin.sh"; then
+  echo "[validate.runtime][error] static/setup/autologin.sh is out of sync with setup/autologin.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/autologin.sh" "${ROOT}/static/setup/autologin"; then
+  echo "[validate.runtime][error] static/setup/autologin is out of sync with setup/autologin.sh"
+  rc=1
+fi
 if ! cmp -s "${ROOT}/setup/cli/tauri.sh" "${ROOT}/static/setup/cli/tauri.sh"; then
   echo "[validate.runtime][error] static/setup/cli/tauri.sh is out of sync with setup/cli/tauri.sh"
   rc=1
@@ -801,6 +875,44 @@ if ! cmp -s "${ROOT}/ansible/cli/node.yml" "${ROOT}/static/ansible/cli/node.yml"
 fi
 if ! cmp -s "${ROOT}/ansible/group_vars/debian.yml" "${ROOT}/static/ansible/group_vars/debian.yml"; then
   echo "[validate.runtime][error] static/ansible/group_vars/debian.yml is out of sync with ansible/group_vars/debian.yml"
+  rc=1
+fi
+
+echo "[validate.runtime] checking ansible/autologin.yml contract..."
+if ! grep -q 'autologin_enable' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must define autologin_enable"
+  rc=1
+fi
+if ! grep -q 'autologin_mode' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must define autologin_mode"
+  rc=1
+fi
+if ! grep -q 'autologin_user' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must define autologin_user"
+  rc=1
+fi
+if ! grep -q 'autologin_tty' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must define autologin_tty"
+  rc=1
+fi
+if ! grep -q 'autologin_action' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must define autologin_action"
+  rc=1
+fi
+if ! grep -q 'autologin_command' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must define autologin_command"
+  rc=1
+fi
+if ! grep -q 'autologin_runtime_facts_path' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must define autologin_runtime_facts_path"
+  rc=1
+fi
+if ! grep -q 'getty@tty1.service.d' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must manage getty@tty1.service.d by default"
+  rc=1
+fi
+if ! grep -q -- '--autologin' "${ROOT}/ansible/autologin.yml"; then
+  echo "[validate.runtime][error] ansible/autologin.yml must configure agetty --autologin"
   rc=1
 fi
 
@@ -1116,6 +1228,7 @@ if search_regex 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guid
   "${ROOT}/setup/debian.sh" \
   "${ROOT}/setup/metal.sh" \
   "${ROOT}/setup/hardware.sh" \
+  "${ROOT}/setup/autologin.sh" \
   "${ROOT}/setup/cli/node.sh" \
   "${ROOT}/setup/release.common.sh" \
   "${ROOT}/setup/cli/codex.sh" \

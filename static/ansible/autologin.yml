@@ -1,0 +1,395 @@
+---
+- name: "[debian]: autologin setup"
+  hosts: all
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed | default('/usr/bin/python3') }}"
+    autologin_enable: false
+    autologin_mode: "apply"   # preflight | apply | disable
+    autologin_user: "app"
+    autologin_tty: "tty1"
+    autologin_term: "linux"
+    autologin_noreset: true
+    autologin_noclear: true
+    autologin_action: "shell"   # shell | command
+    autologin_command: ""
+    autologin_validation_banner: true
+    autologin_marker_enable: true
+    autologin_marker_path: "/home/app/.cache/autologin-tty1.ok"
+    autologin_runtime_facts_path: "/etc/ansible/debian/facts/autologin.yml"
+    autologin_manage_login_hook: true
+    autologin_login_hook_path: "/home/app/.config/debian/autologin-login.sh"
+    autologin_bash_profile_path: "/home/app/.bash_profile"
+    autologin_override_dir: "/etc/systemd/system/getty@tty1.service.d"
+    autologin_override_path: "/etc/systemd/system/getty@tty1.service.d/override.conf"
+    autologin_getty_unit: "getty@tty1.service"
+
+  pre_tasks:
+    - name: Check Debian host marker
+      ansible.builtin.stat:
+        path: /etc/debian_version
+      register: debian_version_marker
+
+    - name: Assert Debian family host
+      ansible.builtin.assert:
+        that:
+          - debian_version_marker.stat.exists
+        fail_msg: "Autologin feature is supported only on Debian-family hosts."
+
+    - name: Normalize autologin mode
+      ansible.builtin.set_fact:
+        autologin_mode_effective: "{{ autologin_mode | default('apply') | lower }}"
+        autologin_tty_effective: "{{ autologin_tty | default('tty1') | lower }}"
+        autologin_action_effective: "{{ autologin_action | default('shell') | lower }}"
+
+    - name: Validate autologin mode
+      ansible.builtin.assert:
+        that:
+          - autologin_mode_effective in ['preflight', 'apply', 'disable']
+        fail_msg: "Unsupported autologin_mode={{ autologin_mode_effective }}. Use preflight, apply, or disable."
+
+    - name: Validate autologin tty
+      ansible.builtin.assert:
+        that:
+          - autologin_tty_effective is match('^tty[0-9]+$')
+        fail_msg: "Unsupported autologin_tty={{ autologin_tty_effective }}. Use tty<number>, for example tty1."
+
+    - name: Validate autologin action
+      ansible.builtin.assert:
+        that:
+          - autologin_action_effective in ['shell', 'command']
+        fail_msg: "Unsupported autologin_action={{ autologin_action_effective }}. Use shell or command."
+
+    - name: Validate command mode configuration
+      ansible.builtin.assert:
+        that:
+          - autologin_action_effective != 'command' or (autologin_command | default('') | length > 0)
+        fail_msg: "autologin_command must be set when autologin_action=command."
+
+    - name: Validate apply mode enable flag
+      ansible.builtin.assert:
+        that:
+          - autologin_mode_effective != 'apply' or (autologin_enable | bool)
+        fail_msg: "autologin_enable must be true when autologin_mode=apply."
+
+    - name: Capture autologin user passwd entry
+      ansible.builtin.command:
+        argv:
+          - getent
+          - passwd
+          - "{{ autologin_user }}"
+      register: autologin_user_getent
+      changed_when: false
+      failed_when: false
+
+    - name: Assert autologin user exists
+      ansible.builtin.assert:
+        that:
+          - autologin_user_getent.rc == 0
+          - autologin_user_getent.stdout | length > 0
+        fail_msg: "Autologin user does not exist: {{ autologin_user }}"
+
+    - name: Resolve autologin user identity
+      ansible.builtin.set_fact:
+        autologin_user_fields: "{{ autologin_user_getent.stdout.split(':') }}"
+        autologin_user_uid_effective: "{{ (autologin_user_getent.stdout.split(':'))[2] }}"
+        autologin_user_gid_effective: "{{ (autologin_user_getent.stdout.split(':'))[3] }}"
+        autologin_user_home_effective: "{{ (autologin_user_getent.stdout.split(':'))[5] }}"
+        autologin_user_shell_effective: "{{ (autologin_user_getent.stdout.split(':'))[6] }}"
+
+    - name: Assert autologin user has expected passwd fields
+      ansible.builtin.assert:
+        that:
+          - autologin_user_fields | length >= 7
+        fail_msg: "Could not parse passwd entry for {{ autologin_user }}."
+
+    - name: Check autologin user home exists
+      ansible.builtin.stat:
+        path: "{{ autologin_user_home_effective }}"
+      register: autologin_user_home_stat
+
+    - name: Assert autologin user home exists
+      ansible.builtin.assert:
+        that:
+          - autologin_user_home_stat.stat.exists
+          - autologin_user_home_stat.stat.isdir
+        fail_msg: "Autologin user home is missing: {{ autologin_user_home_effective }}"
+
+    - name: Resolve effective autologin file paths
+      ansible.builtin.set_fact:
+        autologin_override_dir_effective: >-
+          {{
+            ("/etc/systemd/system/getty@" ~ autologin_tty_effective ~ ".service.d")
+            if (
+              (autologin_tty_effective != 'tty1')
+              and (autologin_override_dir | default('') == '/etc/systemd/system/getty@tty1.service.d')
+            )
+            else (
+              autologin_override_dir
+              if (autologin_override_dir | default('') | length > 0)
+              else '/etc/systemd/system/getty@' ~ autologin_tty_effective ~ '.service.d'
+            )
+          }}
+        autologin_override_path_effective: >-
+          {{
+            ("/etc/systemd/system/getty@" ~ autologin_tty_effective ~ ".service.d/override.conf")
+            if (
+              (autologin_tty_effective != 'tty1')
+              and (autologin_override_path | default('') == '/etc/systemd/system/getty@tty1.service.d/override.conf')
+            )
+            else (
+              autologin_override_path
+              if (autologin_override_path | default('') | length > 0)
+              else (
+                (
+                  autologin_override_dir
+                  if (autologin_override_dir | default('') | length > 0)
+                  else '/etc/systemd/system/getty@' ~ autologin_tty_effective ~ '.service.d'
+                ) ~ '/override.conf'
+              )
+            )
+          }}
+        autologin_getty_unit_effective: >-
+          {{
+            'getty@' ~ autologin_tty_effective ~ '.service'
+            if (
+              (autologin_tty_effective != 'tty1')
+              and (autologin_getty_unit | default('') == 'getty@tty1.service')
+            )
+            else (
+              autologin_getty_unit
+              if (autologin_getty_unit | default('') | length > 0)
+              else 'getty@' ~ autologin_tty_effective ~ '.service'
+            )
+          }}
+        autologin_login_hook_path_effective: >-
+          {{
+            (autologin_user_home_effective ~ '/.config/debian/autologin-login.sh')
+            if (
+              autologin_user != 'app'
+              and (autologin_login_hook_path | default('') == '/home/app/.config/debian/autologin-login.sh')
+            )
+            else (
+              autologin_login_hook_path
+              if (autologin_login_hook_path | default('') | length > 0)
+              else autologin_user_home_effective ~ '/.config/debian/autologin-login.sh'
+            )
+          }}
+        autologin_bash_profile_path_effective: >-
+          {{
+            autologin_user_home_effective ~ '/.bash_profile'
+            if (
+              autologin_user != 'app'
+              and (autologin_bash_profile_path | default('') == '/home/app/.bash_profile')
+            )
+            else (
+              autologin_bash_profile_path
+              if (autologin_bash_profile_path | default('') | length > 0)
+              else autologin_user_home_effective ~ '/.bash_profile'
+            )
+          }}
+        autologin_marker_path_effective: >-
+          {{
+            autologin_user_home_effective ~ '/.cache/autologin-' ~ autologin_tty_effective ~ '.ok'
+            if (
+              (
+                autologin_user != 'app'
+                or autologin_tty_effective != 'tty1'
+              )
+              and (autologin_marker_path | default('') == '/home/app/.cache/autologin-tty1.ok')
+            )
+            else (
+              autologin_marker_path
+              if (autologin_marker_path | default('') | length > 0)
+              else autologin_user_home_effective ~ '/.cache/autologin-' ~ autologin_tty_effective ~ '.ok'
+            )
+          }}
+
+    - name: Capture preflight autologin summary
+      ansible.builtin.debug:
+        msg:
+          autologin:
+            enabled: "{{ autologin_enable | bool }}"
+            mode: "{{ autologin_mode_effective }}"
+            user: "{{ autologin_user }}"
+            user_shell: "{{ autologin_user_shell_effective }}"
+            tty: "{{ autologin_tty_effective }}"
+            action: "{{ autologin_action_effective }}"
+            getty_unit: "{{ autologin_getty_unit_effective }}"
+            hook_path: "{{ autologin_login_hook_path_effective }}"
+            marker_path: "{{ autologin_marker_path_effective }}"
+
+    - name: End play in preflight mode
+      ansible.builtin.meta: end_play
+      when: autologin_mode_effective == 'preflight'
+
+  tasks:
+    - name: Check current bash profile file
+      ansible.builtin.stat:
+        path: "{{ autologin_bash_profile_path_effective }}"
+      register: autologin_bash_profile_stat
+
+    - name: Disable autologin by removing getty override
+      ansible.builtin.file:
+        path: "{{ autologin_override_path_effective }}"
+        state: absent
+      when: autologin_mode_effective == 'disable'
+
+    - name: Disable autologin by removing managed login hook
+      ansible.builtin.file:
+        path: "{{ autologin_login_hook_path_effective }}"
+        state: absent
+      when:
+        - autologin_mode_effective == 'disable'
+        - autologin_manage_login_hook | bool
+
+    - name: Disable autologin by removing managed bash profile block
+      ansible.builtin.blockinfile:
+        path: "{{ autologin_bash_profile_path_effective }}"
+        marker: "# {mark} debian-autologin managed block"
+        state: absent
+      when:
+        - autologin_mode_effective == 'disable'
+        - autologin_bash_profile_stat.stat.exists
+
+    - name: Ensure getty override directory exists
+      ansible.builtin.file:
+        path: "{{ autologin_override_dir_effective }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: autologin_mode_effective == 'apply'
+
+    - name: Write getty override for tty autologin
+      ansible.builtin.copy:
+        dest: "{{ autologin_override_path_effective }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=-/sbin/agetty{% if autologin_noreset | bool %} --noreset{% endif %}{% if autologin_noclear | bool %} --noclear{% endif %} --autologin {{ autologin_user }} %I $TERM
+          Type=idle
+      when: autologin_mode_effective == 'apply'
+
+    - name: Ensure managed login hook parent directory exists
+      ansible.builtin.file:
+        path: "{{ autologin_login_hook_path_effective | dirname }}"
+        state: directory
+        owner: "{{ autologin_user }}"
+        group: "{{ autologin_user }}"
+        mode: "0755"
+      when:
+        - autologin_mode_effective == 'apply'
+        - autologin_manage_login_hook | bool
+
+    - name: Write managed login hook
+      ansible.builtin.copy:
+        dest: "{{ autologin_login_hook_path_effective }}"
+        owner: "{{ autologin_user }}"
+        group: "{{ autologin_user }}"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          if [ -n "${SSH_TTY:-}" ]; then
+            return 0
+          fi
+
+          current_tty="$(tty 2>/dev/null || true)"
+          if [ "${current_tty}" != "/dev/{{ autologin_tty_effective }}" ]; then
+            return 0
+          fi
+
+          marker_path="{{ autologin_marker_path_effective }}"
+          if [ "{{ autologin_marker_enable | bool }}" = "True" ] || [ "{{ autologin_marker_enable | bool }}" = "true" ]; then
+            mkdir -p "$(dirname "${marker_path}")"
+            date -Is > "${marker_path}"
+          fi
+
+          if [ "{{ autologin_action_effective }}" = "shell" ]; then
+            if [ "{{ autologin_validation_banner | bool }}" = "True" ] || [ "{{ autologin_validation_banner | bool }}" = "true" ]; then
+              printf '\n[autologin] user=%s tty=%s time=%s\n' "$(id -un)" "${current_tty}" "$(date -Is)"
+              printf '[autologin] validation shell ready; waiting for next command.\n\n'
+            fi
+            return 0
+          fi
+
+          exec /bin/bash -lc {{ autologin_command | quote }}
+      when:
+        - autologin_mode_effective == 'apply'
+        - autologin_manage_login_hook | bool
+
+    - name: Ensure bash profile exists for autologin user
+      ansible.builtin.file:
+        path: "{{ autologin_bash_profile_path_effective }}"
+        state: touch
+        owner: "{{ autologin_user }}"
+        group: "{{ autologin_user }}"
+        mode: "0644"
+      when:
+        - autologin_mode_effective == 'apply'
+        - autologin_manage_login_hook | bool
+
+    - name: Ensure managed bash profile autologin block
+      ansible.builtin.blockinfile:
+        path: "{{ autologin_bash_profile_path_effective }}"
+        marker: "# {mark} debian-autologin managed block"
+        create: true
+        owner: "{{ autologin_user }}"
+        group: "{{ autologin_user }}"
+        mode: "0644"
+        block: |
+          [ -f "$HOME/.config/debian/autologin-login.sh" ] && . "$HOME/.config/debian/autologin-login.sh"
+      when:
+        - autologin_mode_effective == 'apply'
+        - autologin_manage_login_hook | bool
+
+    - name: Reload systemd daemon for autologin unit changes
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart getty target unit
+      ansible.builtin.systemd:
+        name: "{{ autologin_getty_unit_effective }}"
+        state: restarted
+
+    - name: Ensure autologin facts directory exists
+      ansible.builtin.file:
+        path: "{{ autologin_runtime_facts_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write autologin runtime facts
+      ansible.builtin.copy:
+        dest: "{{ autologin_runtime_facts_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          ---
+          debian_autologin_runtime:
+            enabled: {{ (autologin_mode_effective == 'apply') and (autologin_enable | bool) }}
+            mode: "{{ autologin_mode_effective }}"
+            user: "{{ autologin_user }}"
+            tty: "{{ autologin_tty_effective }}"
+            getty_unit: "{{ autologin_getty_unit_effective }}"
+            override_path: "{{ autologin_override_path_effective }}"
+            action: "{{ autologin_action_effective }}"
+            marker_enable: {{ autologin_marker_enable | bool }}
+            marker_path: "{{ autologin_marker_path_effective }}"
+            login_hook_path: "{{ autologin_login_hook_path_effective }}"
+            bash_profile_path: "{{ autologin_bash_profile_path_effective }}"
+
+    - name: Print autologin next steps
+      ansible.builtin.debug:
+        msg:
+          - "Autologin setup complete: mode={{ autologin_mode_effective }} user={{ autologin_user }} tty={{ autologin_tty_effective }} action={{ autologin_action_effective }}"
+          - "Runtime facts: {{ autologin_runtime_facts_path }}"
+          - "Reboot to validate local autologin behavior on /dev/{{ autologin_tty_effective }}."
