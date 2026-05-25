@@ -1,0 +1,374 @@
+---
+- name: "[debian]: startx setup"
+  hosts: all
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed | default('/usr/bin/python3') }}"
+    startx_enable: true
+    startx_mode: "apply"
+    startx_user: "app"
+    startx_tty: "tty1"
+    startx_display: ":0"
+    startx_install_packages: false
+    startx_manage_xwrapper: true
+    startx_allowed_users: "console"
+    startx_needs_root_rights: "auto"
+    startx_manage_xinitrc: true
+    startx_manage_wrapper: true
+    startx_wrapper_path: "/usr/local/bin/kiosk-startx"
+    startx_xinitrc_path: "/home/app/.xinitrc"
+    startx_xsession_hook_dir: "/home/app/.config/debian/xsession.d"
+    startx_openbox_command: "/usr/bin/openbox-session"
+    startx_server_args: "-nolisten tcp"
+    startx_runtime_facts_path: "/etc/ansible/debian/facts/startx.yml"
+    startx_xwrapper_config_path: "/etc/X11/Xwrapper.config"
+    startx_runtime_facts_dir: "/etc/ansible/debian/facts"
+
+  pre_tasks:
+    - name: Check Debian host marker
+      ansible.builtin.stat:
+        path: /etc/debian_version
+      register: startx_debian_version_marker
+
+    - name: Assert Debian family host
+      ansible.builtin.assert:
+        that:
+          - startx_debian_version_marker.stat.exists
+        fail_msg: "STARTX feature is supported only on Debian-family hosts."
+
+    - name: Normalize STARTX mode and target settings
+      ansible.builtin.set_fact:
+        startx_mode_effective: "{{ startx_mode | default('apply') | lower }}"
+        startx_enable_effective: "{{ startx_enable }}"
+        startx_user_effective: "{{ startx_user }}"
+        startx_tty_effective: "{{ startx_tty | default('tty1') | lower }}"
+        startx_display_effective: "{{ startx_display | default(':0') }}"
+
+    - name: Validate STARTX mode
+      ansible.builtin.assert:
+        that:
+          - startx_mode_effective in ['preflight', 'apply', 'disable']
+        fail_msg: "Unsupported startx_mode={{ startx_mode_effective }}. Use preflight, apply, or disable."
+
+    - name: Validate STARTX tty target
+      ansible.builtin.assert:
+        that:
+          - startx_tty_effective is match('^tty[0-9]+$')
+        fail_msg: "Unsupported startx_tty={{ startx_tty_effective }}. Use tty<number>, for example tty1."
+
+    - name: Validate STARTX display target
+      ansible.builtin.assert:
+        that:
+          - startx_display_effective is match('^:[0-9]+$')
+        fail_msg: "Unsupported startx_display={{ startx_display_effective }}. Use DISPLAY-style value such as :0."
+
+    - name: Capture STARTX user passwd entry
+      ansible.builtin.command:
+        argv:
+          - getent
+          - passwd
+          - "{{ startx_user_effective }}"
+      register: startx_user_getent
+      changed_when: false
+      failed_when: false
+
+    - name: Assert STARTX user exists
+      ansible.builtin.assert:
+        that:
+          - startx_user_getent.rc == 0
+          - startx_user_getent.stdout | length > 0
+        fail_msg: "STARTX user does not exist: {{ startx_user_effective }}"
+
+    - name: Resolve STARTX user identity
+      ansible.builtin.set_fact:
+        startx_user_fields: "{{ startx_user_getent.stdout.split(':') }}"
+        startx_user_uid_effective: "{{ (startx_user_getent.stdout.split(':'))[2] }}"
+        startx_user_gid_effective: "{{ (startx_user_getent.stdout.split(':'))[3] }}"
+        startx_user_home_effective: "{{ (startx_user_getent.stdout.split(':'))[5] }}"
+
+    - name: Assert STARTX user has expected passwd fields
+      ansible.builtin.assert:
+        that:
+          - startx_user_fields | length >= 7
+        fail_msg: "Could not parse passwd entry for {{ startx_user_effective }}."
+
+    - name: Capture and validate STARTX user home
+      ansible.builtin.stat:
+        path: "{{ startx_user_home_effective }}"
+      register: startx_user_home_stat
+
+    - name: Assert STARTX user home exists
+      ansible.builtin.assert:
+        that:
+          - startx_user_home_stat.stat.exists
+          - startx_user_home_stat.stat.isdir
+        fail_msg: "STARTX user home is missing: {{ startx_user_home_effective }}"
+
+    - name: Resolve STARTX derived paths
+      ansible.builtin.set_fact:
+        startx_xinitrc_path_effective: >-
+          {{
+            startx_xinitrc_path
+            if (startx_xinitrc_path | default('') | length > 0)
+            else startx_user_home_effective ~ '/.xinitrc'
+          }}
+        startx_wrapper_path_effective: >-
+          {{
+            startx_wrapper_path
+            if (startx_wrapper_path | default('') | length > 0)
+            else '/usr/local/bin/kiosk-startx'
+          }}
+        startx_xwrapper_path_effective: >-
+          {{
+            startx_xwrapper_config_path
+            if (startx_xwrapper_config_path | default('') | length > 0)
+            else '/etc/X11/Xwrapper.config'
+          }}
+        startx_xinitrc_dir_effective: >-
+          {{
+            (startx_xinitrc_path if (startx_xinitrc_path | default('', true) | length > 0) else startx_user_home_effective ~ '/.xinitrc') | dirname
+          }}
+        startx_xsession_hook_dir_effective: >-
+          {{
+            startx_xsession_hook_dir
+            if (startx_xsession_hook_dir | default('', true) | length > 0)
+            else '/home/' ~ startx_user_effective ~ '/.config/debian/xsession.d'
+          }}
+        startx_hook_marker_path_effective: "{{ startx_xsession_hook_dir_effective }}/.debian-startx-managed"
+
+    - name: Normalize STARTX install flags
+      ansible.builtin.set_fact:
+        startx_enable_flag: "{{ startx_enable_effective | default(false) | bool }}"
+        startx_manage_xwrapper_effective: "{{ startx_manage_xwrapper | default(false) | bool }}"
+        startx_manage_xinitrc_effective: "{{ startx_manage_xinitrc | default(false) | bool }}"
+        startx_manage_wrapper_effective: "{{ startx_manage_wrapper | default(false) | bool }}"
+
+    - name: Capture STARTX preflight summary
+      ansible.builtin.debug:
+        msg:
+          startx:
+            enabled: "{{ startx_enable_flag | bool }}"
+            mode: "{{ startx_mode_effective }}"
+            user: "{{ startx_user_effective }}"
+            tty: "{{ startx_tty_effective }}"
+            display: "{{ startx_display_effective }}"
+            xinitrc: "{{ startx_xinitrc_path_effective }}"
+            wrapper: "{{ startx_wrapper_path_effective }}"
+            hook_dir: "{{ startx_xsession_hook_dir_effective }}"
+
+    - name: End play in preflight mode
+      ansible.builtin.meta: end_play
+      when: startx_mode_effective == 'preflight'
+
+  tasks:
+    - name: Ensure Xwrapper config directory exists
+      ansible.builtin.file:
+        path: /etc/X11
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when:
+        - startx_mode_effective == 'apply'
+        - startx_enable_flag | bool
+        - startx_manage_xwrapper_effective | bool
+
+    - name: Configure Xwrapper for STARTX
+      ansible.builtin.copy:
+        dest: "{{ startx_xwrapper_path_effective }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          allowed_users={{ startx_allowed_users }}
+          needs_root_rights={{ startx_needs_root_rights }}
+      when:
+        - startx_mode_effective == 'apply'
+        - startx_enable_flag | bool
+        - startx_manage_xwrapper_effective | bool
+
+    - name: Ensure STARTX hook directory exists
+      ansible.builtin.file:
+        path: "{{ startx_xsession_hook_dir_effective }}"
+        state: directory
+        owner: "{{ startx_user_uid_effective }}"
+        group: "{{ startx_user_gid_effective }}"
+        mode: "0755"
+      when:
+        - startx_mode_effective == 'apply'
+        - startx_enable_flag | bool
+        - startx_manage_xinitrc_effective | bool
+
+    - name: Set STARTX hook marker
+      ansible.builtin.copy:
+        dest: "{{ startx_hook_marker_path_effective }}"
+        owner: "{{ startx_user_uid_effective }}"
+        group: "{{ startx_user_gid_effective }}"
+        mode: "0644"
+        content: "Managed STARTX hook directory marker."
+      when:
+        - startx_mode_effective == 'apply'
+        - startx_enable_flag | bool
+        - startx_manage_xinitrc_effective | bool
+
+    - name: Ensure Xinitrc parent directory exists
+      ansible.builtin.file:
+        path: "{{ startx_xinitrc_dir_effective }}"
+        state: directory
+        owner: "{{ startx_user_uid_effective }}"
+        group: "{{ startx_user_gid_effective }}"
+        mode: "0755"
+      when:
+        - startx_mode_effective == 'apply'
+        - startx_enable_flag | bool
+        - startx_manage_xinitrc_effective | bool
+
+    - name: Write managed .xinitrc
+      ansible.builtin.copy:
+        dest: "{{ startx_xinitrc_path_effective }}"
+        owner: "{{ startx_user_uid_effective }}"
+        group: "{{ startx_user_gid_effective }}"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env sh
+          set -eu
+
+          export DISPLAY="${DISPLAY:-:0}"
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+          export GDK_BACKEND="${GDK_BACKEND:-x11}"
+
+          if [ -d "{{ startx_xsession_hook_dir_effective }}" ]; then
+            for hook in "{{ startx_xsession_hook_dir_effective }}"/*.sh; do
+              if [ -r "${hook}" ]; then
+                . "${hook}"
+              fi
+            done
+          fi
+
+          exec {{ startx_openbox_command }}
+      when:
+        - startx_mode_effective == 'apply'
+        - startx_enable_flag | bool
+        - startx_manage_xinitrc_effective | bool
+
+    - name: Write managed STARTX launcher wrapper
+      ansible.builtin.copy:
+        dest: "{{ startx_wrapper_path_effective }}"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          STARTX_TTY="${DEBIAN_STARTX_TTY:-tty1}"
+          STARTX_DISPLAY="${DEBIAN_STARTX_DISPLAY:-:0}"
+          STARTX_SERVER_ARGS="${DEBIAN_STARTX_SERVER_ARGS:--nolisten tcp}"
+          STARTX_ALLOW_ROOT="${DEBIAN_STARTX_ALLOW_ROOT:-0}"
+          STARTX_XINITRC="${DEBIAN_STARTX_XINITRC_PATH:-$HOME/.xinitrc}"
+
+          STARTX_DISPLAY_ID="${STARTX_DISPLAY#:}"
+
+          if [ "$(id -u)" -eq 0 ] && [ "${STARTX_ALLOW_ROOT}" != "1" ]; then
+            echo "[kiosk-startx][error] refusing to start X as root." >&2
+            exit 90
+          fi
+
+          if [ -n "${SSH_TTY:-}" ]; then
+            echo "[kiosk-startx][error] refusing to start X from SSH." >&2
+            exit 91
+          fi
+
+          current_tty="$(tty 2>/dev/null || true)"
+          if [ "${current_tty}" != "/dev/${STARTX_TTY}" ]; then
+            echo "[kiosk-startx][error] expected /dev/${STARTX_TTY}, got ${current_tty:-unknown}." >&2
+            exit 92
+          fi
+
+          export DISPLAY="${STARTX_DISPLAY}"
+          export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          export GDK_BACKEND="${GDK_BACKEND:-x11}"
+
+          if [ -S "/tmp/.X11-unix/X${STARTX_DISPLAY_ID}" ]; then
+            echo "[kiosk-startx] X already running on ${STARTX_DISPLAY}." >&2
+            exec /bin/bash
+          fi
+
+          exec /usr/bin/startx "${STARTX_XINITRC}" -- "${STARTX_DISPLAY}" ${STARTX_SERVER_ARGS}
+      when:
+        - startx_mode_effective == 'apply'
+        - startx_enable_flag | bool
+        - startx_manage_wrapper_effective | bool
+
+    - name: Remove managed STARTX launcher wrapper
+      ansible.builtin.file:
+        path: "{{ startx_wrapper_path_effective }}"
+        state: absent
+      when:
+        - startx_mode_effective == 'disable'
+        - startx_manage_wrapper_effective | bool
+
+    - name: Remove managed STARTX xinitrc
+      ansible.builtin.file:
+        path: "{{ startx_xinitrc_path_effective }}"
+        state: absent
+      when:
+        - startx_mode_effective == 'disable'
+        - startx_manage_xinitrc_effective | bool
+
+    - name: Remove managed Xwrapper config
+      ansible.builtin.file:
+        path: "{{ startx_xwrapper_path_effective }}"
+        state: absent
+      when:
+        - startx_mode_effective == 'disable'
+        - startx_manage_xwrapper_effective | bool
+
+    - name: Remove managed STARTX hook marker
+      ansible.builtin.file:
+        path: "{{ startx_hook_marker_path_effective }}"
+        state: absent
+      when:
+        - startx_mode_effective == 'disable'
+        - startx_manage_xinitrc_effective | bool
+
+    - name: Ensure STARTX runtime facts directory exists
+      ansible.builtin.file:
+        path: "{{ startx_runtime_facts_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write STARTX runtime facts
+      ansible.builtin.copy:
+        dest: "{{ startx_runtime_facts_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          ---
+          debian_startx_runtime:
+            enabled: {{ (startx_mode_effective == 'apply') and (startx_enable_flag | bool) }}
+            mode: "{{ startx_mode_effective }}"
+            user: "{{ startx_user_effective }}"
+            tty: "{{ startx_tty_effective }}"
+            display: "{{ startx_display_effective }}"
+            manage_xwrapper: {{ startx_manage_xwrapper_effective | bool }}
+            manage_xinitrc: {{ startx_manage_xinitrc_effective | bool }}
+            manage_wrapper: {{ startx_manage_wrapper_effective | bool }}
+            wrapper_path: "{{ startx_wrapper_path_effective }}"
+            xinitrc_path: "{{ startx_xinitrc_path_effective }}"
+            xsession_hook_dir: "{{ startx_xsession_hook_dir_effective }}"
+
+    - name: Print STARTX next steps
+      ansible.builtin.debug:
+        msg:
+          - "STARTX platform setup complete for mode={{ startx_mode_effective }} user={{ startx_user_effective }} tty={{ startx_tty_effective }}"
+          - "Runtime facts: {{ startx_runtime_facts_path }}"
+          - "Use DEBIAN_AUTOAPP_PROFILE=startx and configure autologin for kiosk startup."

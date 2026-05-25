@@ -240,8 +240,13 @@ files=(
   "setup/hardware.sh"
   "setup/autologin.sh"
   "setup/cli/node.sh"
+  "setup/cli/x11.sh"
+  "setup/cli/openbox.sh"
+  "setup/cli/touchscreen.sh"
   "setup/release.common.sh"
   "setup/cli/codex.sh"
+  "setup/cli/kiosk.app.sh"
+  "setup/cli/startx.sh"
   "setup/cli/tauri.sh"
   "actions/www.pages.sh"
   "actions/validate.runtime.sh"
@@ -257,7 +262,11 @@ files=(
   "ansible/sources.yml"
   "ansible/cli/node.yml"
   "ansible/cli/codex.yml"
+  "ansible/cli/x11.yml"
+  "ansible/cli/openbox.yml"
+  "ansible/cli/touchscreen.yml"
   "ansible/cli/tauri.yml"
+  "ansible/cli/startx.yml"
   "ansible/autologin.yml"
   "ansible/group_vars/all.yml"
   "ansible/group_vars/debian.yml"
@@ -829,10 +838,353 @@ reject_contains "ansible/cli/tauri.yml" 'system_private_backing'
 reject_contains "ansible/cli/tauri.yml" 'private_system_runtime_path'
 reject_contains "ansible/cli/tauri.yml" 'setpriv --reuid=65534'
 
+echo "[validate.runtime] checking setup/cli/startx.sh runner contract..."
+if ! bash -n "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must pass bash -n"
+  rc=1
+fi
+if ! grep -q '"cli/startx.yml"' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must reference cli/startx.yml"
+  rc=1
+fi
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must define GROUP_VARS_FILES"
+  rc=1
+fi
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_MODE' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_MODE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_ENABLE' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_ENABLE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_USER' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_USER"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_TTY' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_TTY"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_DISPLAY' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_DISPLAY"
+  rc=1
+fi
+if ! grep -q 'preflight|apply|disable' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support preflight, apply, and disable modes"
+  rc=1
+fi
+
+echo "[validate.runtime] checking setup/cli/startx.sh feature vars contract..."
+if ! grep -q 'DEBIAN_STARTX_OPENBOX_COMMAND' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_OPENBOX_COMMAND"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_XINITRC_PATH' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_XINITRC_PATH"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_XSESSION_HOOK_DIR' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_XSESSION_HOOK_DIR"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_WRAPPER_PATH' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_WRAPPER_PATH"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_STARTX_SERVER_ARGS' "${ROOT}/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] setup/cli/startx.sh must support DEBIAN_STARTX_SERVER_ARGS"
+  rc=1
+fi
+
+echo "[validate.runtime] checking setup/cli/x11.sh runner contract..."
+if ! bash -n "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must pass bash -n"
+  rc=1
+fi
+if ! grep -q '"cli/x11.yml"' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must reference cli/x11.yml"
+  rc=1
+fi
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must define GROUP_VARS_FILES"
+  rc=1
+fi
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_X11_MODE' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must support DEBIAN_X11_MODE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_X11_ENABLE' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must support DEBIAN_X11_ENABLE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_X11_PACKAGES' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must support DEBIAN_X11_PACKAGES"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_X11_RUNTIME_FACTS_PATH' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must support DEBIAN_X11_RUNTIME_FACTS_PATH"
+  rc=1
+fi
+if ! grep -q 'preflight|apply|disable' "${ROOT}/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] setup/cli/x11.sh must support preflight, apply, and disable modes"
+  rc=1
+fi
+
+echo "[validate.runtime] checking setup/cli/openbox.sh runner contract..."
+if ! bash -n "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must pass bash -n"
+  rc=1
+fi
+if ! grep -q '"cli/openbox.yml"' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must reference cli/openbox.yml"
+  rc=1
+fi
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must define GROUP_VARS_FILES"
+  rc=1
+fi
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_OPENBOX_MODE' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must support DEBIAN_OPENBOX_MODE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_OPENBOX_ENABLE' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must support DEBIAN_OPENBOX_ENABLE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_OPENBOX_USER' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must support DEBIAN_OPENBOX_USER"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_OPENBOX_FULLSCREEN' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must support DEBIAN_OPENBOX_FULLSCREEN"
+  rc=1
+fi
+if ! grep -q 'preflight|apply|disable' "${ROOT}/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] setup/cli/openbox.sh must support preflight, apply, and disable modes"
+  rc=1
+fi
+
+echo "[validate.runtime] checking setup/cli/touchscreen.sh runner contract..."
+if ! bash -n "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must pass bash -n"
+  rc=1
+fi
+if ! grep -q '"cli/touchscreen.yml"' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must reference cli/touchscreen.yml"
+  rc=1
+fi
+if ! grep -q 'GROUP_VARS_FILES=(' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must define GROUP_VARS_FILES"
+  rc=1
+fi
+if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must use ensure.local.ansible"
+  rc=1
+fi
+if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_TOUCHSCREEN_MODE' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must support DEBIAN_TOUCHSCREEN_MODE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_TOUCHSCREEN_ENABLE' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must support DEBIAN_TOUCHSCREEN_ENABLE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_TOUCHSCREEN_RUNTIME_FACTS_PATH' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must support DEBIAN_TOUCHSCREEN_RUNTIME_FACTS_PATH"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_TOUCHSCREEN_PACKAGES' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must support DEBIAN_TOUCHSCREEN_PACKAGES"
+  rc=1
+fi
+if ! grep -q 'preflight|apply|disable' "${ROOT}/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] setup/cli/touchscreen.sh must support preflight, apply, and disable modes"
+  rc=1
+fi
+
+echo "[validate.runtime] checking ansible/cli/startx.yml contract..."
+if ! grep -q 'startx_enable: true' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must define default startx_enable"
+  rc=1
+fi
+if ! grep -q 'startx_mode: "apply"' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must default startx_mode to apply"
+  rc=1
+fi
+if ! grep -q 'startx_user: "app"' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must default startx_user to app"
+  rc=1
+fi
+if ! grep -q 'startx_tty: "tty1"' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must default startx_tty to tty1"
+  rc=1
+fi
+if ! grep -q 'startx_display: ":0"' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must default startx_display to :0"
+  rc=1
+fi
+if ! grep -q 'startx_install_packages' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must define startx_install_packages"
+  rc=1
+fi
+if ! grep -q 'startx_manage_xwrapper' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must define startx_manage_xwrapper"
+  rc=1
+fi
+if ! grep -q 'startx_wrapper_path' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must define startx_wrapper_path"
+  rc=1
+fi
+if ! grep -q 'startx_xinitrc_path' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must define startx_xinitrc_path"
+  rc=1
+fi
+if ! grep -q 'startx_xsession_hook_dir' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must define startx_xsession_hook_dir"
+  rc=1
+fi
+if ! grep -q 'xwrapper_config_path' "${ROOT}/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] ansible/cli/startx.yml must define startx_xwrapper_config_path"
+  rc=1
+fi
+
+echo "[validate.runtime] checking ansible/cli/x11.yml contract..."
+if ! grep -q 'x11_enable:' "${ROOT}/ansible/cli/x11.yml"; then
+  echo "[validate.runtime][error] ansible/cli/x11.yml must define x11_enable"
+  rc=1
+fi
+if ! grep -q 'x11_mode: "apply"' "${ROOT}/ansible/cli/x11.yml"; then
+  echo "[validate.runtime][error] ansible/cli/x11.yml must default x11_mode to apply"
+  rc=1
+fi
+if ! grep -q 'x11_install_packages' "${ROOT}/ansible/cli/x11.yml"; then
+  echo "[validate.runtime][error] ansible/cli/x11.yml must define x11_install_packages"
+  rc=1
+fi
+if ! grep -q 'x11_packages:' "${ROOT}/ansible/cli/x11.yml"; then
+  echo "[validate.runtime][error] ansible/cli/x11.yml must define x11_packages"
+  rc=1
+fi
+if ! grep -q 'xserver-xorg' "${ROOT}/ansible/cli/x11.yml"; then
+  echo "[validate.runtime][error] ansible/cli/x11.yml must include xserver-xorg"
+  rc=1
+fi
+if ! grep -q 'wmctrl' "${ROOT}/ansible/cli/x11.yml"; then
+  echo "[validate.runtime][error] ansible/cli/x11.yml must include wmctrl"
+  rc=1
+fi
+if ! grep -q 'x11_runtime_facts_path' "${ROOT}/ansible/cli/x11.yml"; then
+  echo "[validate.runtime][error] ansible/cli/x11.yml must define x11_runtime_facts_path"
+  rc=1
+fi
+
+echo "[validate.runtime] checking ansible/cli/openbox.yml contract..."
+if ! grep -q 'openbox_enable:' "${ROOT}/ansible/cli/openbox.yml"; then
+  echo "[validate.runtime][error] ansible/cli/openbox.yml must define openbox_enable"
+  rc=1
+fi
+if ! grep -q 'openbox_mode: "apply"' "${ROOT}/ansible/cli/openbox.yml"; then
+  echo "[validate.runtime][error] ansible/cli/openbox.yml must default openbox_mode to apply"
+  rc=1
+fi
+if ! grep -q 'openbox_user:' "${ROOT}/ansible/cli/openbox.yml"; then
+  echo "[validate.runtime][error] ansible/cli/openbox.yml must define openbox_user"
+  rc=1
+fi
+if ! grep -q 'openbox_session_command' "${ROOT}/ansible/cli/openbox.yml"; then
+  echo "[validate.runtime][error] ansible/cli/openbox.yml must define openbox_session_command"
+  rc=1
+fi
+if ! grep -q 'openbox_packages:' "${ROOT}/ansible/cli/openbox.yml"; then
+  echo "[validate.runtime][error] ansible/cli/openbox.yml must define openbox_packages"
+  rc=1
+fi
+if ! grep -q 'openbox_fullscreen_helper' "${ROOT}/ansible/cli/openbox.yml"; then
+  echo "[validate.runtime][error] ansible/cli/openbox.yml must define openbox_fullscreen_helper"
+  rc=1
+fi
+if ! grep -q 'openbox_runtime_facts_path' "${ROOT}/ansible/cli/openbox.yml"; then
+  echo "[validate.runtime][error] ansible/cli/openbox.yml must define openbox_runtime_facts_path"
+  rc=1
+fi
+
+echo "[validate.runtime] checking ansible/cli/touchscreen.yml contract..."
+if ! grep -q 'touchscreen_enable:' "${ROOT}/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] ansible/cli/touchscreen.yml must define touchscreen_enable"
+  rc=1
+fi
+if ! grep -q 'touchscreen_mode: "apply"' "${ROOT}/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] ansible/cli/touchscreen.yml must default touchscreen_mode to apply"
+  rc=1
+fi
+if ! grep -q 'touchscreen_user:' "${ROOT}/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] ansible/cli/touchscreen.yml must define touchscreen_user"
+  rc=1
+fi
+if ! grep -q 'touchscreen_match:' "${ROOT}/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] ansible/cli/touchscreen.yml must define touchscreen_match"
+  rc=1
+fi
+if ! grep -q 'touchscreen_install_packages' "${ROOT}/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] ansible/cli/touchscreen.yml must define touchscreen_install_packages"
+  rc=1
+fi
+if ! grep -q 'touchscreen_config_file' "${ROOT}/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] ansible/cli/touchscreen.yml must define touchscreen_config_file"
+  rc=1
+fi
+if ! grep -q 'touchscreen_apply_script_path' "${ROOT}/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] ansible/cli/touchscreen.yml must define touchscreen_apply_script_path"
+  rc=1
+fi
+if ! grep -q 'touchscreen_runtime_facts_path' "${ROOT}/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] ansible/cli/touchscreen.yml must define touchscreen_runtime_facts_path"
+  rc=1
+fi
+
+
 echo "[validate.runtime] checking Tauri playbook YAML syntax..."
 for f in \
   "${ROOT}/ansible/autologin.yml" \
   "${ROOT}/static/ansible/autologin.yml" \
+  "${ROOT}/ansible/cli/startx.yml" \
+  "${ROOT}/static/ansible/cli/startx.yml" \
+  "${ROOT}/ansible/cli/x11.yml" \
+  "${ROOT}/static/ansible/cli/x11.yml" \
+  "${ROOT}/ansible/cli/openbox.yml" \
+  "${ROOT}/static/ansible/cli/openbox.yml" \
+  "${ROOT}/ansible/cli/touchscreen.yml" \
+  "${ROOT}/static/ansible/cli/touchscreen.yml" \
   "${ROOT}/ansible/cli/tauri.yml" \
   "${ROOT}/static/ansible/cli/tauri.yml" \
   "${ROOT}/ansible/cli/node.yml" \
@@ -847,6 +1199,22 @@ done
 
 if ! cmp -s "${ROOT}/ansible/cli/tauri.yml" "${ROOT}/static/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] static/ansible/cli/tauri.yml is out of sync with ansible/cli/tauri.yml"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/ansible/cli/startx.yml" "${ROOT}/static/ansible/cli/startx.yml"; then
+  echo "[validate.runtime][error] static/ansible/cli/startx.yml is out of sync with ansible/cli/startx.yml"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/ansible/cli/x11.yml" "${ROOT}/static/ansible/cli/x11.yml"; then
+  echo "[validate.runtime][error] static/ansible/cli/x11.yml is out of sync with ansible/cli/x11.yml"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/ansible/cli/openbox.yml" "${ROOT}/static/ansible/cli/openbox.yml"; then
+  echo "[validate.runtime][error] static/ansible/cli/openbox.yml is out of sync with ansible/cli/openbox.yml"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/ansible/cli/touchscreen.yml" "${ROOT}/static/ansible/cli/touchscreen.yml"; then
+  echo "[validate.runtime][error] static/ansible/cli/touchscreen.yml is out of sync with ansible/cli/touchscreen.yml"
   rc=1
 fi
 if ! cmp -s "${ROOT}/ansible/autologin.yml" "${ROOT}/static/ansible/autologin.yml"; then
@@ -869,6 +1237,39 @@ if ! cmp -s "${ROOT}/setup/cli/tauri.sh" "${ROOT}/static/setup/cli/tauri"; then
   echo "[validate.runtime][error] static/setup/cli/tauri is out of sync with setup/cli/tauri.sh"
   rc=1
 fi
+if ! cmp -s "${ROOT}/setup/cli/startx.sh" "${ROOT}/static/setup/cli/startx.sh"; then
+  echo "[validate.runtime][error] static/setup/cli/startx.sh is out of sync with setup/cli/startx.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/startx.sh" "${ROOT}/static/setup/cli/startx"; then
+  echo "[validate.runtime][error] static/setup/cli/startx is out of sync with setup/cli/startx.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/x11.sh" "${ROOT}/static/setup/cli/x11.sh"; then
+  echo "[validate.runtime][error] static/setup/cli/x11.sh is out of sync with setup/cli/x11.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/x11.sh" "${ROOT}/static/setup/cli/x11"; then
+  echo "[validate.runtime][error] static/setup/cli/x11 is out of sync with setup/cli/x11.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/openbox.sh" "${ROOT}/static/setup/cli/openbox.sh"; then
+  echo "[validate.runtime][error] static/setup/cli/openbox.sh is out of sync with setup/cli/openbox.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/openbox.sh" "${ROOT}/static/setup/cli/openbox"; then
+  echo "[validate.runtime][error] static/setup/cli/openbox is out of sync with setup/cli/openbox.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/touchscreen.sh" "${ROOT}/static/setup/cli/touchscreen.sh"; then
+  echo "[validate.runtime][error] static/setup/cli/touchscreen.sh is out of sync with setup/cli/touchscreen.sh"
+  rc=1
+fi
+if ! cmp -s "${ROOT}/setup/cli/touchscreen.sh" "${ROOT}/static/setup/cli/touchscreen"; then
+  echo "[validate.runtime][error] static/setup/cli/touchscreen is out of sync with setup/cli/touchscreen.sh"
+  rc=1
+fi
+
 if ! cmp -s "${ROOT}/ansible/cli/node.yml" "${ROOT}/static/ansible/cli/node.yml"; then
   echo "[validate.runtime][error] static/ansible/cli/node.yml is out of sync with ansible/cli/node.yml"
   rc=1
@@ -1230,8 +1631,12 @@ if search_regex 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guid
   "${ROOT}/setup/hardware.sh" \
   "${ROOT}/setup/autologin.sh" \
   "${ROOT}/setup/cli/node.sh" \
+  "${ROOT}/setup/cli/x11.sh" \
+  "${ROOT}/setup/cli/openbox.sh" \
+  "${ROOT}/setup/cli/touchscreen.sh" \
   "${ROOT}/setup/release.common.sh" \
   "${ROOT}/setup/cli/codex.sh" \
+  "${ROOT}/setup/cli/startx.sh" \
   "${ROOT}/setup/cli/tauri.sh" \
   "${ROOT}/actions/www.pages.sh" \
   "${ROOT}/actions/validate.pages.sh" \

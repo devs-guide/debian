@@ -1,0 +1,131 @@
+---
+- name: "[debian]: x11 setup"
+  hosts: all
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed | default('/usr/bin/python3') }}"
+    x11_enable: false
+    x11_mode: "apply"
+    x11_install_packages: true
+    x11_packages:
+      - xserver-xorg
+      - xserver-xorg-legacy
+      - xinit
+      - x11-apps
+      - x11-xserver-utils
+      - x11-utils
+      - xauth
+      - dbus-x11
+      - wmctrl
+    x11_runtime_facts_path: "/etc/ansible/debian/facts/x11.yml"
+
+  pre_tasks:
+    - name: Check Debian host marker
+      ansible.builtin.stat:
+        path: /etc/debian_version
+      register: x11_debian_version_marker
+
+    - name: Assert Debian family host
+      ansible.builtin.assert:
+        that:
+          - x11_debian_version_marker.stat.exists
+        fail_msg: "X11 feature is supported only on Debian-family hosts."
+
+    - name: Normalize X11 mode and install flags
+      ansible.builtin.set_fact:
+        x11_mode_effective: "{{ x11_mode | default('apply') | lower }}"
+        x11_enable_effective: "{{ x11_enable }}"
+        x11_install_packages_effective: "{{ x11_install_packages | default(true) | bool }}"
+        x11_packages_effective: >-
+          {{
+            x11_packages
+            if (x11_packages is sequence and x11_packages is not string)
+            else []
+          }}
+
+    - name: Validate X11 mode
+      ansible.builtin.assert:
+        that:
+          - x11_mode_effective in ['preflight', 'apply', 'disable']
+        fail_msg: "Unsupported x11_mode={{ x11_mode_effective }}. Use preflight, apply, or disable."
+
+    - name: Check required package installability
+      ansible.builtin.command:
+        argv:
+          - apt-cache
+          - policy
+          - "{{ item }}"
+      register: x11_pkg_policy
+      changed_when: false
+      loop: "{{ x11_packages_effective }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Capture X11 preflight summary
+      ansible.builtin.debug:
+        msg:
+          enabled: "{{ x11_enable_effective | bool }}"
+          mode: "{{ x11_mode_effective }}"
+          install_packages: "{{ x11_install_packages_effective | bool }}"
+          packages: "{{ x11_packages_effective }}"
+
+    - name: End play in preflight mode
+      ansible.builtin.meta: end_play
+      when: x11_mode_effective == 'preflight'
+
+  tasks:
+    - name: Install X11 system packages
+      ansible.builtin.apt:
+        name: "{{ x11_packages_effective }}"
+        state: present
+        install_recommends: false
+      when:
+        - x11_mode_effective == 'apply'
+        - x11_enable_effective | bool
+        - x11_install_packages_effective | bool
+
+    - name: Remove X11 packages in disable mode
+      ansible.builtin.apt:
+        name: "{{ x11_packages_effective }}"
+        state: absent
+        purge: true
+        autoremove: true
+      when:
+        - x11_mode_effective == 'disable'
+        - x11_enable_effective | bool
+
+    - name: Ensure X11 runtime facts directory exists
+      ansible.builtin.file:
+        path: "{{ x11_runtime_facts_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write X11 runtime facts
+      ansible.builtin.copy:
+        dest: "{{ x11_runtime_facts_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          ---
+          debian_x11_runtime:
+            enabled: {{ (x11_mode_effective == 'apply') and (x11_enable_effective | bool) }}
+            mode: "{{ x11_mode_effective }}"
+            install_packages: {{ x11_install_packages_effective | bool }}
+            packages:
+            {% for pkg in x11_packages_effective %}
+              - {{ pkg }}
+            {% endfor %}
+            runtime_facts_path: "{{ x11_runtime_facts_path }}"
+
+    - name: Print X11 next steps
+      ansible.builtin.debug:
+        msg:
+          - "X11 platform setup complete for mode={{ x11_mode_effective }}"
+          - "Runtime facts: {{ x11_runtime_facts_path }}"
+          - "Install packages via DEBIAN_X11_PACKAGES in x11 feature mode."

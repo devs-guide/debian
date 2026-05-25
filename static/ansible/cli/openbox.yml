@@ -1,0 +1,315 @@
+---
+- name: "[debian]: openbox setup"
+  hosts: all
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed | default('/usr/bin/python3') }}"
+    openbox_enable: false
+    openbox_mode: "apply"
+    openbox_user: "app"
+    openbox_session_command: "/usr/bin/openbox-session"
+    openbox_install_packages: true
+    openbox_packages:
+      - openbox
+    openbox_xinitrc_path: "/home/app/.xinitrc"
+    openbox_xsession_hook_dir: "/home/app/.config/debian/xsession.d"
+    openbox_manage_xinitrc: true
+    openbox_manage_xsession_hook_dir: true
+    openbox_fullscreen: false
+    openbox_fullscreen_match: "xclock"
+    openbox_fullscreen_retries: 24
+    openbox_fullscreen_delay_ms: 250
+    openbox_fullscreen_helper: "/usr/local/bin/debian-openbox-fullscreen"
+    openbox_runtime_facts_path: "/etc/ansible/debian/facts/openbox.yml"
+    openbox_xsession_fullscreen_hook: "/usr/local/bin/openbox-fullscreen-hook.sh"
+
+  pre_tasks:
+    - name: Check Debian host marker
+      ansible.builtin.stat:
+        path: /etc/debian_version
+      register: openbox_debian_version_marker
+
+    - name: Assert Debian family host
+      ansible.builtin.assert:
+        that:
+          - openbox_debian_version_marker.stat.exists
+        fail_msg: "Openbox feature is supported only on Debian-family hosts."
+
+    - name: Normalize Openbox mode and install flags
+      ansible.builtin.set_fact:
+        openbox_mode_effective: "{{ openbox_mode | default('apply') | lower }}"
+        openbox_enable_effective: "{{ openbox_enable }}"
+        openbox_install_packages_effective: "{{ openbox_install_packages | default(true) | bool }}"
+        openbox_manage_xinitrc_effective: "{{ openbox_manage_xinitrc | default(false) | bool }}"
+        openbox_manage_xsession_hook_dir_effective: "{{ openbox_manage_xsession_hook_dir | default(false) | bool }}"
+
+    - name: Validate Openbox mode
+      ansible.builtin.assert:
+        that:
+          - openbox_mode_effective in ['preflight', 'apply', 'disable']
+        fail_msg: "Unsupported openbox_mode={{ openbox_mode_effective }}. Use preflight, apply, or disable."
+
+    - name: Capture Openbox user passwd entry
+      ansible.builtin.command:
+        argv:
+          - getent
+          - passwd
+          - "{{ openbox_user }}"
+      register: openbox_user_getent
+      changed_when: false
+      failed_when: false
+
+    - name: Assert Openbox user exists
+      ansible.builtin.assert:
+        that:
+          - openbox_user_getent.rc == 0
+          - openbox_user_getent.stdout | length > 0
+        fail_msg: "Openbox user does not exist: {{ openbox_user }}"
+
+    - name: Resolve Openbox user identity
+      ansible.builtin.set_fact:
+        openbox_user_fields: "{{ openbox_user_getent.stdout.split(':') }}"
+        openbox_user_uid_effective: "{{ (openbox_user_getent.stdout.split(':'))[2] }}"
+        openbox_user_gid_effective: "{{ (openbox_user_getent.stdout.split(':'))[3] }}"
+        openbox_user_home_effective: "{{ (openbox_user_getent.stdout.split(':'))[5] }}"
+
+    - name: Assert Openbox user has expected passwd fields
+      ansible.builtin.assert:
+        that:
+          - openbox_user_fields | length >= 7
+        fail_msg: "Could not parse passwd entry for {{ openbox_user }}."
+
+    - name: Capture and validate Openbox user home
+      ansible.builtin.stat:
+        path: "{{ openbox_user_home_effective }}"
+      register: openbox_user_home_stat
+
+    - name: Assert Openbox user home exists
+      ansible.builtin.assert:
+        that:
+          - openbox_user_home_stat.stat.exists
+          - openbox_user_home_stat.stat.isdir
+        fail_msg: "Openbox user home is missing: {{ openbox_user_home_effective }}"
+
+    - name: Resolve Openbox derived paths
+      ansible.builtin.set_fact:
+        openbox_xinitrc_path_effective: >-
+          {{
+            openbox_xinitrc_path
+            if (openbox_xinitrc_path | default('') | length > 0)
+            else openbox_user_home_effective ~ '/.xinitrc'
+          }}
+        openbox_xsession_hook_dir_effective: >-
+          {{
+            openbox_xsession_hook_dir
+            if (openbox_xsession_hook_dir | default('') | length > 0)
+            else openbox_user_home_effective ~ '/.config/debian/xsession.d'
+          }}
+        openbox_xinitrc_dir_effective: >-
+          {{
+            (openbox_xinitrc_path if (openbox_xinitrc_path | default('', true) | length > 0) else openbox_user_home_effective ~ '/.xinitrc') | dirname
+          }}
+
+    - name: Capture Openbox preflight summary
+      ansible.builtin.debug:
+        msg:
+          openbox:
+            enabled: "{{ openbox_enable_effective | bool }}"
+            mode: "{{ openbox_mode_effective }}"
+            user: "{{ openbox_user }}"
+            session_command: "{{ openbox_session_command }}"
+            xinitrc: "{{ openbox_xinitrc_path_effective }}"
+            xsession_hook_dir: "{{ openbox_xsession_hook_dir_effective }}"
+            fullscreen: "{{ openbox_fullscreen | bool }}"
+
+    - name: End play in preflight mode
+      ansible.builtin.meta: end_play
+      when: openbox_mode_effective == 'preflight'
+
+  tasks:
+    - name: Install Openbox packages
+      ansible.builtin.apt:
+        name: "{{ openbox_packages }}"
+        state: present
+        install_recommends: false
+      when:
+        - openbox_mode_effective == 'apply'
+        - openbox_enable_effective | bool
+        - openbox_install_packages_effective | bool
+
+    - name: Ensure Openbox xinitrc directory exists
+      ansible.builtin.file:
+        path: "{{ openbox_xinitrc_dir_effective }}"
+        state: directory
+        owner: "{{ openbox_user_uid_effective }}"
+        group: "{{ openbox_user_gid_effective }}"
+        mode: "0755"
+      when:
+        - openbox_mode_effective == 'apply'
+        - openbox_enable_effective | bool
+        - openbox_manage_xinitrc_effective | bool
+
+    - name: Ensure Openbox hook directory exists
+      ansible.builtin.file:
+        path: "{{ openbox_xsession_hook_dir_effective }}"
+        state: directory
+        owner: "{{ openbox_user_uid_effective }}"
+        group: "{{ openbox_user_gid_effective }}"
+        mode: "0755"
+      when:
+        - openbox_mode_effective == 'apply'
+        - openbox_enable_effective | bool
+        - openbox_manage_xsession_hook_dir_effective | bool
+
+    - name: Write managed Openbox fullscreen helper
+      ansible.builtin.copy:
+        dest: "{{ openbox_fullscreen_helper }}"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env sh
+          set -eu
+
+          OPENBOX_FULLSCREEN_MATCH="${OPENBOX_FULLSCREEN_MATCH:-xclock}"
+          OPENBOX_FULLSCREEN_RETRIES="${OPENBOX_FULLSCREEN_RETRIES:-24}"
+          OPENBOX_FULLSCREEN_DELAY_MS="${OPENBOX_FULLSCREEN_DELAY_MS:-250}"
+
+          if ! command -v wmctrl >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          i=0
+          delay="$(awk -v ms="${OPENBOX_FULLSCREEN_DELAY_MS}" 'BEGIN { if (ms == "" || ms < 0) ms = 250; printf "%.3f", ms / 1000 }')"
+          while [ "${i}" -lt "${OPENBOX_FULLSCREEN_RETRIES}" ]; do
+            sleep "${delay}"
+            match_id="$(wmctrl -l | awk -v pat="${OPENBOX_FULLSCREEN_MATCH}" 'index($0, pat) { print $1; exit }')"
+            if [ -n "${match_id}" ]; then
+              wmctrl -i -r "${match_id}" -b add,fullscreen >/tmp/debian-openbox-fullscreen.log 2>&1 || true
+              exit 0
+            fi
+            i=$((i + 1))
+          done
+
+    - name: Write managed Openbox fullscreen hook
+      ansible.builtin.copy:
+        dest: "{{ openbox_xsession_hook_dir_effective }}/10-openbox-fullscreen.sh"
+        owner: "{{ openbox_user_uid_effective }}"
+        group: "{{ openbox_user_gid_effective }}"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env sh
+          set -eu
+
+          if ! command -v "{{ openbox_fullscreen_helper }}" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          OPENBOX_FULLSCREEN_MATCH="{{ openbox_fullscreen_match }}"
+          OPENBOX_FULLSCREEN_RETRIES="{{ openbox_fullscreen_retries }}"
+          OPENBOX_FULLSCREEN_DELAY_MS="{{ openbox_fullscreen_delay_ms }}"
+          export OPENBOX_FULLSCREEN_MATCH
+          export OPENBOX_FULLSCREEN_RETRIES
+          export OPENBOX_FULLSCREEN_DELAY_MS
+
+          ( "{{ openbox_fullscreen_helper }}" ) >/tmp/debian-openbox-fullscreen.log 2>&1 &
+      when:
+        - openbox_mode_effective == 'apply'
+        - openbox_enable_effective | bool
+        - openbox_fullscreen | bool
+        - openbox_manage_xsession_hook_dir_effective | bool
+
+    - name: Write managed .xinitrc
+      ansible.builtin.copy:
+        dest: "{{ openbox_xinitrc_path_effective }}"
+        owner: "{{ openbox_user_uid_effective }}"
+        group: "{{ openbox_user_gid_effective }}"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env sh
+          set -eu
+
+          export DISPLAY="${DISPLAY:-:0}"
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+          export GDK_BACKEND="${GDK_BACKEND:-x11}"
+
+          if [ -d "{{ openbox_xsession_hook_dir_effective }}" ]; then
+            for hook in "{{ openbox_xsession_hook_dir_effective }}"/*.sh; do
+              if [ -r "${hook}" ]; then
+                . "${hook}"
+              fi
+            done
+          fi
+
+          exec {{ openbox_session_command }}
+      when:
+        - openbox_mode_effective == 'apply'
+        - openbox_enable_effective | bool
+        - openbox_manage_xinitrc_effective | bool
+
+    - name: Remove fullscreen helper on disable
+      ansible.builtin.file:
+        path: "{{ openbox_fullscreen_helper }}"
+        state: absent
+      when:
+        - openbox_mode_effective == 'disable'
+
+    - name: Remove managed Openbox fullscreen hook on disable
+      ansible.builtin.file:
+        path: "{{ openbox_xsession_hook_dir_effective }}/10-openbox-fullscreen.sh"
+        state: absent
+      when:
+        - openbox_mode_effective == 'disable'
+
+    - name: Remove managed .xinitrc on disable
+      ansible.builtin.file:
+        path: "{{ openbox_xinitrc_path_effective }}"
+        state: absent
+      when:
+        - openbox_mode_effective == 'disable'
+        - openbox_manage_xinitrc_effective | bool
+
+    - name: Remove managed xsession hook dir on disable
+      ansible.builtin.file:
+        path: "{{ openbox_xsession_hook_dir_effective }}"
+        state: absent
+      when:
+        - openbox_mode_effective == 'disable'
+        - openbox_manage_xsession_hook_dir_effective | bool
+
+    - name: Ensure Openbox runtime facts directory exists
+      ansible.builtin.file:
+        path: "{{ openbox_runtime_facts_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write Openbox runtime facts
+      ansible.builtin.copy:
+        dest: "{{ openbox_runtime_facts_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          ---
+          debian_openbox_runtime:
+            enabled: {{ (openbox_mode_effective == 'apply') and (openbox_enable_effective | bool) }}
+            mode: "{{ openbox_mode_effective }}"
+            user: "{{ openbox_user }}"
+            session_command: "{{ openbox_session_command }}"
+            fullscreen: {{ openbox_fullscreen | bool }}
+            fullscreen_match: "{{ openbox_fullscreen_match }}"
+            xinitrc_path: "{{ openbox_xinitrc_path_effective }}"
+            xsession_hook_dir: "{{ openbox_xsession_hook_dir_effective }}"
+
+    - name: Print Openbox next steps
+      ansible.builtin.debug:
+        msg:
+          - "Openbox platform setup complete for mode={{ openbox_mode_effective }} user={{ openbox_user }}"
+          - "Runtime facts: {{ openbox_runtime_facts_path }}"
+          - "Place custom session settings in your profile or override openbox vars in runner env."

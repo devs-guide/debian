@@ -47,6 +47,75 @@ autologin_bash_profile_path: "/home/app/.bash_profile"
 autologin_override_dir: "/etc/systemd/system/getty@tty1.service.d"
 autologin_override_path: "/etc/systemd/system/getty@tty1.service.d/override.conf"
 autologin_getty_unit: "getty@tty1.service"
+startx_enable: false
+startx_mode: "apply"
+startx_user: "app"
+startx_tty: "tty1"
+startx_display: ":0"
+startx_install_packages: true
+startx_manage_xwrapper: true
+startx_allowed_users: "console"
+startx_needs_root_rights: "auto"
+startx_manage_xinitrc: true
+startx_manage_wrapper: true
+startx_wrapper_path: "/usr/local/bin/kiosk-startx"
+startx_xinitrc_path: "/home/app/.xinitrc"
+startx_xsession_hook_dir: "/home/app/.config/debian/xsession.d"
+startx_openbox_command: "/usr/bin/openbox-session"
+startx_server_args: "-nolisten tcp"
+startx_runtime_facts_path: "/etc/ansible/debian/facts/startx.yml"
+x11_enable: false
+x11_mode: "apply"
+x11_install_packages: true
+x11_packages:
+  - xserver-xorg
+  - xserver-xorg-legacy
+  - xinit
+  - x11-apps
+  - x11-xserver-utils
+  - x11-utils
+  - xauth
+  - dbus-x11
+  - wmctrl
+x11_runtime_facts_path: "/etc/ansible/debian/facts/x11.yml"
+openbox_enable: false
+openbox_mode: "apply"
+openbox_user: "app"
+openbox_session_command: "/usr/bin/openbox-session"
+openbox_install_packages: true
+openbox_packages:
+  - openbox
+openbox_xinitrc_path: "/home/app/.xinitrc"
+openbox_xsession_hook_dir: "/home/app/.config/debian/xsession.d"
+openbox_manage_xinitrc: true
+openbox_manage_xsession_hook_dir: true
+openbox_fullscreen: false
+openbox_fullscreen_match: "xclock"
+openbox_fullscreen_retries: 24
+openbox_fullscreen_delay_ms: 250
+openbox_fullscreen_helper: "/usr/local/bin/debian-openbox-fullscreen"
+openbox_runtime_facts_path: "/etc/ansible/debian/facts/openbox.yml"
+touchscreen_enable: false
+touchscreen_mode: "apply"
+touchscreen_user: "app"
+touchscreen_match: "eGalax|D-WAV|Titan6001|TouchController|Touchscreen"
+touchscreen_primary_id: ""
+touchscreen_disable_ids: ""
+touchscreen_output: ""
+touchscreen_matrix: "identity"
+touchscreen_custom_matrix: "1 0 0 0 1 0 0 0 1"
+touchscreen_config_file: "/etc/default/debian-touchscreen"
+touchscreen_apply_script_path: "/usr/local/bin/debian-touchscreen-apply"
+touchscreen_list_script_path: "/usr/local/bin/debian-touchscreen-list"
+touchscreen_xsession_hook_dir: "/home/app/.config/debian/xsession.d"
+touchscreen_hook_script: "20-touchscreen.sh"
+touchscreen_install_packages: true
+touchscreen_packages:
+  - xinput
+  - xinput-calibrator
+  - xserver-xorg-input-evdev
+touchscreen_install_evtest: false
+touchscreen_runtime_facts_path: "/etc/ansible/debian/facts/touchscreen.yml"
 node_min_major: 20
 node_npm_min_major: 9
 node_install_policy: "if_missing_or_too_old"
