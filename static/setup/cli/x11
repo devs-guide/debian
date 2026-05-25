@@ -98,6 +98,7 @@ yaml.string.list() {
   local raw="${1:-}"
   local item=""
   local -a values=()
+  local first=1
 
   read -r -a values <<< "${raw}"
   if (( ${#values[@]} == 0 )); then
@@ -107,9 +108,14 @@ yaml.string.list() {
 
   printf '['
   for item in "${values[@]}"; do
-    printf '%s, ' "$(yaml.quote "${item}")"
+    if (( first )); then
+      first=0
+    else
+      printf ', '
+    fi
+    printf '%s' "$(yaml.quote "${item}")"
   done
-  printf '\b\b]'
+  printf ']'
 }
 
 require.valid.mode() {
