@@ -726,6 +726,14 @@ if ! grep -q 'DEBIAN_AUTOLOGIN_ACTION' "${ROOT}/setup/autologin.sh"; then
   echo "[validate.runtime][error] setup/autologin.sh must support DEBIAN_AUTOLOGIN_ACTION"
   rc=1
 fi
+if ! grep -q 'ensure.root.or.sudo.reexec' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must support sudo re-entry"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_AUTOLOGIN_SUDO_REEXEC' "${ROOT}/setup/autologin.sh"; then
+  echo "[validate.runtime][error] setup/autologin.sh must support DEBIAN_AUTOLOGIN_SUDO_REEXEC"
+  rc=1
+fi
 if ! grep -q 'preflight|apply|disable' "${ROOT}/setup/autologin.sh"; then
   echo "[validate.runtime][error] setup/autologin.sh must support preflight, apply, and disable modes"
   rc=1

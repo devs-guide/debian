@@ -45,6 +45,8 @@ AUTOLOGIN_MARKER_ENABLE="${DEBIAN_AUTOLOGIN_MARKER_ENABLE:-1}"
 AUTOLOGIN_MARKER_PATH="${DEBIAN_AUTOLOGIN_MARKER_PATH:-/home/${AUTOLOGIN_USER}/.cache/autologin-${AUTOLOGIN_TTY}.ok}"
 FACTS_DIR="${DEBIAN_AUTOLOGIN_FACTS_DIR:-/etc/ansible/debian/facts}"
 AUTOLOGIN_RUNTIME_FACTS_PATH="${DEBIAN_AUTOLOGIN_RUNTIME_FACTS_PATH:-${FACTS_DIR}/autologin.yml}"
+AUTOLOGIN_SELF_URL="${DEBIAN_AUTOLOGIN_SELF_URL:-${PAGES_BASE_URL}/setup/autologin}"
+AUTOLOGIN_SUDO_REEXEC="${DEBIAN_AUTOLOGIN_SUDO_REEXEC:-0}"
 REFRESH="${REFRESH:-0}"
 AUTOLOGIN_ENABLE_SET=0
 declare -a FEATURE_GROUP_VARS_ARGS
@@ -122,6 +124,87 @@ require.debian.host() {
     log.error "This feature runner expects a Debian host."
     exit 1
   fi
+}
+
+collect.sudo.env.args() {
+  local -n _out="$1"
+
+  _out=(
+    "DEBIAN_AUTOLOGIN_ENABLE=${AUTOLOGIN_ENABLE}"
+    "DEBIAN_AUTOLOGIN_MODE=${FEATURE_MODE}"
+    "DEBIAN_AUTOLOGIN_USER=${AUTOLOGIN_USER}"
+    "DEBIAN_AUTOLOGIN_TTY=${AUTOLOGIN_TTY}"
+    "DEBIAN_AUTOLOGIN_TERM=${AUTOLOGIN_TERM}"
+    "DEBIAN_AUTOLOGIN_NORESET=${AUTOLOGIN_NORESET}"
+    "DEBIAN_AUTOLOGIN_NOCLEAR=${AUTOLOGIN_NOCLEAR}"
+    "DEBIAN_AUTOLOGIN_ACTION=${AUTOLOGIN_ACTION}"
+    "DEBIAN_AUTOLOGIN_COMMAND=${AUTOLOGIN_COMMAND}"
+    "DEBIAN_AUTOLOGIN_VALIDATION_BANNER=${AUTOLOGIN_VALIDATION_BANNER}"
+    "DEBIAN_AUTOLOGIN_MARKER_ENABLE=${AUTOLOGIN_MARKER_ENABLE}"
+    "DEBIAN_AUTOLOGIN_MARKER_PATH=${AUTOLOGIN_MARKER_PATH}"
+    "DEBIAN_AUTOLOGIN_FACTS_DIR=${FACTS_DIR}"
+    "DEBIAN_AUTOLOGIN_RUNTIME_FACTS_PATH=${AUTOLOGIN_RUNTIME_FACTS_PATH}"
+    "DEBIAN_AUTOLOGIN_SELF_URL=${AUTOLOGIN_SELF_URL}"
+    "DEBIAN_AUTOLOGIN_SUDO_REEXEC=1"
+  )
+}
+
+current.script.path() {
+  local source_path="${BASH_SOURCE[0]:-}"
+
+  case "${source_path}" in
+    ""|-|/dev/fd/*|/proc/self/fd/*)
+      return 1
+      ;;
+  esac
+
+  if [[ -r "${source_path}" ]]; then
+    readlink -f "${source_path}" 2>/dev/null || printf '%s\n' "${source_path}"
+    return 0
+  fi
+
+  return 1
+}
+
+ensure.root.or.sudo.reexec() {
+  local script_path=""
+  local -a sudo_env
+
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if [[ "${AUTOLOGIN_SUDO_REEXEC}" = "1" ]]; then
+    log.error "sudo re-entry was requested but the script is still not running as root."
+    exit 1
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    log.error "This setup requires root privileges. Install sudo or run as root."
+    exit 1
+  fi
+
+  log "Root privileges required; requesting sudo..."
+  if ! sudo -v; then
+    log.error "sudo authentication failed or was cancelled."
+    exit 1
+  fi
+
+  collect.sudo.env.args sudo_env
+  if script_path="$(current.script.path)"; then
+    exec sudo -E env "${sudo_env[@]}" bash "${script_path}" "$@"
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${AUTOLOGIN_SELF_URL}" "$@"
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    exec sudo -E env "${sudo_env[@]}" bash -c 'curl -fsSL "$1" | bash -s -- "${@:2}"' bash "${AUTOLOGIN_SELF_URL}" "$@"
+  fi
+
+  log.error "Cannot re-enter with sudo from stdin because neither wget nor curl is available."
+  exit 1
 }
 
 resolve.autologin.defaults() {
@@ -237,9 +320,10 @@ run.autologin.feature() {
 main() {
   reset.feature.tmp.cache
   source.release.common
+  ensure.root.or.sudo.reexec "$@"
+  require.debian.host
   require.root
   require.apt
-  require.debian.host
   require.valid.mode
   resolve.autologin.defaults
 
