@@ -137,6 +137,9 @@
             if (startx_xsession_hook_dir | default('', true) | length > 0)
             else '/home/' ~ startx_user_effective ~ '/.config/debian/xsession.d'
           }}
+
+    - name: Resolve STARTX hook marker path
+      ansible.builtin.set_fact:
         startx_hook_marker_path_effective: "{{ startx_xsession_hook_dir_effective }}/.debian-startx-managed"
 
     - name: Normalize STARTX install flags
