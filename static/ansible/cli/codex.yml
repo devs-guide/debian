@@ -175,15 +175,15 @@
         if codex mcp list 2>/dev/null | grep -q "{{ codex_docs_mcp_name }}"; then
           docs_mcp_installed="true"
         fi
-        cat > "{{ codex_runtime_facts_path }}" <<EOF
----
-debian_cli_codex_runtime:
-  node_version: "${node_version}"
-  npm_version: "${npm_version}"
-  codex_version: "${codex_version_current}"
-  codex_path: "${codex_path}"
-  docs_mcp_installed: ${docs_mcp_installed}
-EOF
+        {
+          printf '%s\n' '---'
+          printf '%s\n' 'debian_cli_codex_runtime:'
+          printf '%s\n' "  node_version: \"${node_version}\""
+          printf '%s\n' "  npm_version: \"${npm_version}\""
+          printf '%s\n' "  codex_version: \"${codex_version_current}\""
+          printf '%s\n' "  codex_path: \"${codex_path}\""
+          printf '%s\n' "  docs_mcp_installed: ${docs_mcp_installed}"
+        } > "{{ codex_runtime_facts_path }}"
       args:
         executable: /bin/bash
       changed_when: false
