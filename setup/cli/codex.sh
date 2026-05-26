@@ -40,6 +40,8 @@ CODEX_DOCS_MCP_NAME="${DEBIAN_CLI_CODEX_DOCS_MCP_NAME:-openaiDeveloperDocs}"
 CODEX_DOCS_MCP_URL="${DEBIAN_CLI_CODEX_DOCS_MCP_URL:-https://developers.openai.com/mcp}"
 FACTS_DIR="${DEBIAN_CLI_CODEX_FACTS_DIR:-/etc/ansible/debian/facts}"
 CODEX_RUNTIME_FACTS_PATH="${DEBIAN_CLI_CODEX_RUNTIME_FACTS_PATH:-${FACTS_DIR}/cli.codex.yml}"
+CODEX_SELF_URL="${DEBIAN_CLI_CODEX_SELF_URL:-${PAGES_BASE_URL}/setup/cli/codex.sh}"
+CODEX_SUDO_REEXEC="${DEBIAN_CLI_CODEX_SUDO_REEXEC:-0}"
 REFRESH="${REFRESH:-0}"
 declare -a FEATURE_GROUP_VARS_ARGS
 FEATURE_GROUP_VARS_ARGS=()
@@ -112,6 +114,83 @@ require.debian.host() {
     log.error "This feature runner expects a Debian host."
     exit 1
   fi
+}
+
+collect.sudo.env.args() {
+  local -n _out="$1"
+
+  _out=(
+    "DEBIAN_CLI_CODEX_MODE=${FEATURE_MODE}"
+    "DEBIAN_CLI_CODEX_NVM_VERSION=${NODE_NVM_VERSION}"
+    "DEBIAN_CLI_CODEX_NODE_VERSION=${NODE_VERSION}"
+    "DEBIAN_CLI_CODEX_PACKAGE=${CODEX_NPM_PACKAGE}"
+    "DEBIAN_CLI_CODEX_VERSION=${CODEX_VERSION}"
+    "DEBIAN_CLI_CODEX_INSTALL_DOCS_MCP=${CODEX_INSTALL_DOCS_MCP}"
+    "DEBIAN_CLI_CODEX_DOCS_MCP_NAME=${CODEX_DOCS_MCP_NAME}"
+    "DEBIAN_CLI_CODEX_DOCS_MCP_URL=${CODEX_DOCS_MCP_URL}"
+    "DEBIAN_CLI_CODEX_FACTS_DIR=${FACTS_DIR}"
+    "DEBIAN_CLI_CODEX_RUNTIME_FACTS_PATH=${CODEX_RUNTIME_FACTS_PATH}"
+    "DEBIAN_CLI_CODEX_SELF_URL=${CODEX_SELF_URL}"
+    "DEBIAN_CLI_CODEX_SUDO_REEXEC=1"
+  )
+}
+
+current.script.path() {
+  local source_path="${BASH_SOURCE[0]:-}"
+
+  case "${source_path}" in
+    ""|-|/dev/fd/*|/proc/self/fd/*)
+      return 1
+      ;;
+  esac
+
+  if [[ -r "${source_path}" ]]; then
+    readlink -f "${source_path}" 2>/dev/null || printf '%s\n' "${source_path}"
+    return 0
+  fi
+
+  return 1
+}
+
+ensure.root.or.sudo.reexec() {
+  local script_path=""
+  local -a sudo_env
+
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if [[ "${CODEX_SUDO_REEXEC}" = "1" ]]; then
+    log.error "sudo re-entry was requested but the script is still not running as root."
+    exit 1
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    log.error "This setup requires root privileges. Install sudo or run as root."
+    exit 1
+  fi
+
+  log "Root privileges required; requesting sudo..."
+  if ! sudo -v; then
+    log.error "sudo authentication failed or was cancelled."
+    exit 1
+  fi
+
+  collect.sudo.env.args sudo_env
+  if script_path="$(current.script.path)"; then
+    exec sudo -E env "${sudo_env[@]}" bash "${script_path}" "$@"
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${CODEX_SELF_URL}" "$@"
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    exec sudo -E env "${sudo_env[@]}" bash -c 'curl -fsSL "$1" | bash -s -- "${@:2}"' bash "${CODEX_SELF_URL}" "$@"
+  fi
+
+  log.error "Cannot re-enter with sudo from stdin because neither wget nor curl is available."
+  exit 1
 }
 
 reset.feature.extra.vars.args() {
@@ -254,6 +333,7 @@ run.cli.codex.feature() {
 main() {
   reset.feature.tmp.cache
   source.release.common
+  ensure.root.or.sudo.reexec "$@"
   require.root
   require.apt
   require.debian.host

@@ -43,6 +43,8 @@ DEBIAN_HARDWARE_CPUPOWER_ENABLE="${DEBIAN_HARDWARE_CPUPOWER_ENABLE:-0}"
 DEBIAN_HARDWARE_USB_AUTOSUSPEND_DISABLE="${DEBIAN_HARDWARE_USB_AUTOSUSPEND_DISABLE:-0}"
 DEBIAN_HARDWARE_DISABLE_CONSOLE_BLANKING="${DEBIAN_HARDWARE_DISABLE_CONSOLE_BLANKING:-0}"
 DEBIAN_HARDWARE_POWER_POLICY="${DEBIAN_HARDWARE_POWER_POLICY:-0}"
+HARDWARE_SELF_URL="${DEBIAN_HARDWARE_SELF_URL:-${PAGES_BASE_URL}/setup/hardware}"
+HARDWARE_SUDO_REEXEC="${DEBIAN_HARDWARE_SUDO_REEXEC:-0}"
 REFRESH="${REFRESH:-0}"
 declare -a FEATURE_GROUP_VARS_ARGS
 FEATURE_GROUP_VARS_ARGS=()
@@ -108,6 +110,86 @@ require.debian.host() {
     log.error "This feature runner expects a Debian host."
     exit 1
   fi
+}
+
+collect.sudo.env.args() {
+  local -n _out="$1"
+
+  _out=(
+    "DEBIAN_HARDWARE_MODE=${FEATURE_MODE}"
+    "DEBIAN_HARDWARE_ARCHIVE_TOOLS=${DEBIAN_HARDWARE_ARCHIVE_TOOLS}"
+    "DEBIAN_HARDWARE_FIRMWARE=${DEBIAN_HARDWARE_FIRMWARE}"
+    "DEBIAN_HARDWARE_DEV_TOOLS=${DEBIAN_HARDWARE_DEV_TOOLS}"
+    "DEBIAN_HARDWARE_APPLY_PERFORMANCE=${DEBIAN_HARDWARE_APPLY_PERFORMANCE}"
+    "DEBIAN_HARDWARE_CPUPOWER_ENABLE=${DEBIAN_HARDWARE_CPUPOWER_ENABLE}"
+    "DEBIAN_HARDWARE_USB_AUTOSUSPEND_DISABLE=${DEBIAN_HARDWARE_USB_AUTOSUSPEND_DISABLE}"
+    "DEBIAN_HARDWARE_DISABLE_CONSOLE_BLANKING=${DEBIAN_HARDWARE_DISABLE_CONSOLE_BLANKING}"
+    "DEBIAN_HARDWARE_POWER_POLICY=${DEBIAN_HARDWARE_POWER_POLICY}"
+    "DEBIAN_HARDWARE_SELF_URL=${HARDWARE_SELF_URL}"
+    "DEBIAN_HARDWARE_SUDO_REEXEC=1"
+    "PAGES_BASE_URL=${PAGES_BASE_URL}"
+    "TMP_ROOT_DIR=${TMP_ROOT_DIR}"
+    "TMP_DIR=${TMP_DIR}"
+    "REFRESH=${REFRESH}"
+  )
+}
+
+current.script.path() {
+  local source_path="${BASH_SOURCE[0]:-}"
+
+  case "${source_path}" in
+    ""|-|/dev/fd/*|/proc/self/fd/*)
+      return 1
+      ;;
+  esac
+
+  if [[ -r "${source_path}" ]]; then
+    readlink -f "${source_path}" 2>/dev/null || printf '%s\n' "${source_path}"
+    return 0
+  fi
+
+  return 1
+}
+
+ensure.root.or.sudo.reexec() {
+  local script_path=""
+  local -a sudo_env
+
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if [[ "${HARDWARE_SUDO_REEXEC}" = "1" ]]; then
+    log.error "sudo re-entry was requested but the script is still not running as root."
+    exit 1
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    log.error "This setup requires root privileges. Install sudo or run as root."
+    exit 1
+  fi
+
+  log "Root privileges required; requesting sudo..."
+  if ! sudo -v; then
+    log.error "sudo authentication failed or was cancelled."
+    exit 1
+  fi
+
+  collect.sudo.env.args sudo_env
+  if script_path="$(current.script.path)"; then
+    exec sudo -E env "${sudo_env[@]}" bash "${script_path}" "$@"
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${HARDWARE_SELF_URL}" "$@"
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    exec sudo -E env "${sudo_env[@]}" bash -c 'curl -fsSL "$1" | bash -s -- "${@:2}"' bash "${HARDWARE_SELF_URL}" "$@"
+  fi
+
+  log.error "Cannot re-enter with sudo from stdin because neither wget nor curl is available."
+  exit 1
 }
 
 reset.feature.extra.vars.args() {
@@ -290,6 +372,7 @@ run.hardware.feature() {
 main() {
   reset.feature.tmp.cache
   source.release.common
+  ensure.root.or.sudo.reexec "$@"
   require.root
   require.apt
   require.debian.host

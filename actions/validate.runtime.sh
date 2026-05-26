@@ -502,6 +502,18 @@ if ! grep -q 'REFRESH' "${ROOT}/setup/bootstrap.sh"; then
   echo "[validate.runtime][error] setup/bootstrap.sh must support REFRESH"
   rc=1
 fi
+if ! grep -q 'ensure.root.or.sudo.reexec' "${ROOT}/setup/bootstrap.sh"; then
+  echo "[validate.runtime][error] setup/bootstrap.sh must support sudo re-entry"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_BOOTSTRAP_SUDO_REEXEC' "${ROOT}/setup/bootstrap.sh"; then
+  echo "[validate.runtime][error] setup/bootstrap.sh must support DEBIAN_BOOTSTRAP_SUDO_REEXEC"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_BOOTSTRAP_SELF_URL' "${ROOT}/setup/bootstrap.sh"; then
+  echo "[validate.runtime][error] setup/bootstrap.sh must support DEBIAN_BOOTSTRAP_SELF_URL"
+  rc=1
+fi
 if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must use neutral /tmp/ansible/debian runtime paths"
   rc=1
@@ -566,6 +578,18 @@ if ! grep -Fq 'DEBIAN_NODE_NPM_POLICY:-bundled' "${ROOT}/setup/cli/node.sh"; the
 fi
 if ! grep -q 'preflight|apply|upgrade' "${ROOT}/setup/cli/node.sh"; then
   echo "[validate.runtime][error] setup/cli/node.sh must support preflight, apply, and upgrade modes"
+  rc=1
+fi
+if ! grep -q 'ensure.root.or.sudo.reexec' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must support sudo re-entry"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_NODE_SUDO_REEXEC' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must support DEBIAN_NODE_SUDO_REEXEC"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_NODE_SELF_URL' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must support DEBIAN_NODE_SELF_URL"
   rc=1
 fi
 if search_regex 'codex|tauri' "${ROOT}/setup/cli/node.sh" >/dev/null; then
@@ -1568,6 +1592,18 @@ if ! grep -q 'DEBIAN_HARDWARE_POWER_POLICY=.*:-0' "${ROOT}/setup/hardware.sh"; t
 fi
 if ! grep -q 'preflight|apply' "${ROOT}/setup/hardware.sh"; then
   echo "[validate.runtime][error] setup/hardware.sh must support preflight and apply modes"
+  rc=1
+fi
+if ! grep -q 'ensure.root.or.sudo.reexec' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must support sudo re-entry"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_HARDWARE_SUDO_REEXEC' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must support DEBIAN_HARDWARE_SUDO_REEXEC"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_HARDWARE_SELF_URL' "${ROOT}/setup/hardware.sh"; then
+  echo "[validate.runtime][error] setup/hardware.sh must support DEBIAN_HARDWARE_SELF_URL"
   rc=1
 fi
 if ! grep -q 'package_group_allowlist' "${ROOT}/setup/hardware.sh"; then
