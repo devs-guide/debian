@@ -274,10 +274,24 @@
         - node_mode_effective in ['apply', 'upgrade']
         - not nvm_sh.stat.exists
 
+    - name: Ensure target nvm directory exists before installation
+      ansible.builtin.file:
+        path: "{{ node_nvm_dir_effective }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when:
+        - node_enable | bool
+        - node_install_needed | bool
+        - node_mode_effective in ['apply', 'upgrade']
+        - not nvm_sh.stat.exists
+
     - name: Install nvm when missing
       ansible.builtin.shell: |
         set -e
         export NVM_DIR="{{ node_nvm_dir_effective }}"
+        export PROFILE="/dev/null"
         /bin/bash "{{ node_nvm_installer_path }}"
       args:
         executable: /bin/bash
