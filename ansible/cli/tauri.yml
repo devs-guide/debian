@@ -15,6 +15,9 @@
     tauri_install_node: false
     tauri_install_node_requested: false
     tauri_install_node_effective: false
+    tauri_node_install_scope: "shared"   # private | shared
+    tauri_node_shared_nvm_dir: "/usr/local/lib/nvm"
+    tauri_node_nvm_dir: ""
     tauri_node_min_major: 20
     tauri_npm_min_major: 9
     tauri_install_rust: false
@@ -83,8 +86,21 @@
         tauri_mode_effective: "{{ tauri_mode | default('apply') | lower }}"
         tauri_profile_effective: "{{ tauri_profile | default('runtime') | lower }}"
         tauri_cli_method_effective: "{{ tauri_cli_method | default('npm') | lower }}"
+        tauri_node_install_scope_effective: "{{ tauri_node_install_scope | default('shared') | lower }}"
         tauri_install_node_requested_effective: "{{ tauri_install_node_requested | default(tauri_install_node) | bool }}"
         tauri_install_node_effective_resolved: "{{ tauri_install_node_effective | default(tauri_install_node) | bool }}"
+        tauri_node_nvm_dir_effective: >-
+          {{
+            (
+              tauri_node_nvm_dir
+              if (tauri_node_nvm_dir | default('') | string | length > 0)
+              else (
+                tauri_node_shared_nvm_dir
+                if ((tauri_node_install_scope | default('shared') | lower) == 'shared')
+                else '/root/.nvm'
+              )
+            )
+          }}
 
     - name: Validate Tauri mode
       ansible.builtin.assert:
@@ -103,6 +119,12 @@
         that:
           - tauri_cli_method_effective in ['npm', 'cargo', 'none']
         fail_msg: "Unsupported tauri_cli_method={{ tauri_cli_method_effective }}. Use npm, cargo, or none."
+
+    - name: Validate Tauri Node install scope
+      ansible.builtin.assert:
+        that:
+          - tauri_node_install_scope_effective in ['private', 'shared']
+        fail_msg: "Unsupported tauri_node_install_scope={{ tauri_node_install_scope_effective }}. Use private or shared."
 
     - name: Resolve build-dependency installation flag
       ansible.builtin.set_fact:
@@ -169,9 +191,37 @@
           esac
         }
 
+        scope_path_ok() {
+          local scope="${1:-shared}"
+          local resolved="${2:-missing}"
+          if [[ -z "${resolved}" || "${resolved}" == "missing" ]]; then
+            return 1
+          fi
+          case "${scope}" in
+            shared)
+              [[ "${resolved}" != /root/* ]]
+              ;;
+            *)
+              return 0
+              ;;
+          esac
+        }
+
+        node_path="$(command -v node 2>/dev/null || true)"
+        npm_path="$(command -v npm 2>/dev/null || true)"
+        npx_path="$(command -v npx 2>/dev/null || true)"
+        node_realpath="$(readlink -f "${node_path}" 2>/dev/null || true)"
+        npm_realpath="$(readlink -f "${npm_path}" 2>/dev/null || true)"
+        npx_realpath="$(readlink -f "${npx_path}" 2>/dev/null || true)"
         node_version="$(node --version 2>/dev/null || true)"
         npm_version="$(npm --version 2>/dev/null || true)"
         npx_version="$(npx --version 2>/dev/null || true)"
+        [[ -n "${node_path}" ]] || node_path="missing"
+        [[ -n "${npm_path}" ]] || npm_path="missing"
+        [[ -n "${npx_path}" ]] || npx_path="missing"
+        [[ -n "${node_realpath}" ]] || node_realpath="missing"
+        [[ -n "${npm_realpath}" ]] || npm_realpath="missing"
+        [[ -n "${npx_realpath}" ]] || npx_realpath="missing"
         [[ -n "${node_version}" ]] || node_version="missing"
         [[ -n "${npm_version}" ]] || npm_version="missing"
         [[ -n "${npx_version}" ]] || npx_version="missing"
@@ -180,11 +230,23 @@
         npm_major="$(major_or_zero "${npm_version}")"
         node_ok=0
         npm_ok=0
+        node_scope_ok=0
+        npm_scope_ok=0
+        node_runtime_ok=0
         if [[ "${node_version}" != "missing" && "${node_major}" -ge "{{ tauri_node_min_major | int }}" ]]; then
           node_ok=1
         fi
         if [[ "${npm_version}" != "missing" && "${npm_major}" -ge "{{ tauri_npm_min_major | int }}" ]]; then
           npm_ok=1
+        fi
+        if scope_path_ok "{{ tauri_node_install_scope_effective }}" "${node_realpath}"; then
+          node_scope_ok=1
+        fi
+        if scope_path_ok "{{ tauri_node_install_scope_effective }}" "${npm_realpath}"; then
+          npm_scope_ok=1
+        fi
+        if [[ "${node_ok}" -eq 1 && "${npm_ok}" -eq 1 && "${node_scope_ok}" -eq 1 && "${npm_scope_ok}" -eq 1 ]]; then
+          node_runtime_ok=1
         fi
 
         rustc_shell_path="$(command -v rustc 2>/dev/null || true)"
@@ -256,18 +318,32 @@
         cargo_tauri_semver="$(semver_or_zero "${cargo_tauri_version}")"
         tauri_cli_ok=0
         cargo_tauri_ok=0
-        if version_ge "${tauri_cli_semver}" "{{ tauri_cli_min_version }}"; then tauri_cli_ok=1; fi
+        if version_ge "${tauri_cli_semver}" "{{ tauri_cli_min_version }}"; then
+          if [[ "{{ tauri_cli_method_effective }}" != "npm" || "${node_runtime_ok}" -eq 1 ]]; then
+            tauri_cli_ok=1
+          fi
+        fi
         if version_ge "${cargo_tauri_semver}" "{{ tauri_cli_min_version }}"; then cargo_tauri_ok=1; fi
 
         printf 'node_version=%s\n' "${node_version}"
+        printf 'node_path=%s\n' "${node_path}"
+        printf 'node_realpath=%s\n' "${node_realpath}"
         printf 'node_major=%s\n' "${node_major}"
         printf 'node_min_major=%s\n' "{{ tauri_node_min_major }}"
         printf 'node_ok=%s\n' "${node_ok}"
         printf 'npm_version=%s\n' "${npm_version}"
+        printf 'npm_path=%s\n' "${npm_path}"
+        printf 'npm_realpath=%s\n' "${npm_realpath}"
         printf 'npm_major=%s\n' "${npm_major}"
         printf 'npm_min_major=%s\n' "{{ tauri_npm_min_major }}"
         printf 'npm_ok=%s\n' "${npm_ok}"
         printf 'npx_version=%s\n' "${npx_version}"
+        printf 'npx_path=%s\n' "${npx_path}"
+        printf 'npx_realpath=%s\n' "${npx_realpath}"
+        printf 'node_install_scope=%s\n' "{{ tauri_node_install_scope_effective }}"
+        printf 'node_scope_ok=%s\n' "${node_scope_ok}"
+        printf 'npm_scope_ok=%s\n' "${npm_scope_ok}"
+        printf 'node_runtime_ok=%s\n' "${node_runtime_ok}"
         printf 'rustc_shell_path=%s\n' "${rustc_shell_path}"
         printf 'cargo_shell_path=%s\n' "${cargo_shell_path}"
         printf 'rustup_shell_path=%s\n' "${rustup_shell_path}"
@@ -348,8 +424,12 @@
           install_build_deps_effective: "{{ tauri_install_build_deps_effective | bool }}"
           install_node_requested: "{{ tauri_install_node_requested_effective | bool }}"
           install_node_effective: "{{ tauri_install_node_effective_resolved | bool }}"
+          node_install_scope: "{{ tauri_node_install_scope_effective }}"
           node_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^node_ok=1$') }}"
           npm_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^npm_ok=1$') }}"
+          node_scope_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^node_scope_ok=1$') }}"
+          npm_scope_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^npm_scope_ok=1$') }}"
+          node_runtime_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^node_runtime_ok=1$') }}"
           install_rust_requested: "{{ tauri_install_rust | bool }}"
           install_rust_effective: "{{ tauri_install_rust_effective | bool }}"
           rust_ok: "{{ (tauri_toolchain_probe.stdout | default('')) is search('(?m)^rustc_env_ok=1$') and (tauri_toolchain_probe.stdout | default('')) is search('(?m)^cargo_env_ok=1$') }}"
@@ -640,11 +720,10 @@
     - name: Validate Node/npm for npm-based Tauri CLI
       ansible.builtin.assert:
         that:
-          - tauri_toolchain_probe.stdout | default('') is search('(?m)^node_ok=1$')
-          - tauri_toolchain_probe.stdout | default('') is search('(?m)^npm_ok=1$')
+          - tauri_toolchain_probe.stdout | default('') is search('(?m)^node_runtime_ok=1$')
         fail_msg: >-
-          Node/npm do not satisfy minimum requirements for tauri_cli_method=npm.
-          Install Node first (setup/cli/node) or use tauri_cli_method=cargo/none.
+          Node/npm do not satisfy the shared runtime contract for tauri_cli_method=npm.
+          Install shared Node first (setup/cli/node) or use tauri_cli_method=cargo/none.
       when:
         - tauri_enable | bool
         - tauri_mode_effective in ['apply', 'upgrade']
@@ -757,9 +836,37 @@
           rust_env_effective="${rust_home_effective}/.cargo/env"
         fi
 
+        scope_path_ok() {
+          local scope="${1:-shared}"
+          local resolved="${2:-missing}"
+          if [[ -z "${resolved}" || "${resolved}" == "missing" ]]; then
+            return 1
+          fi
+          case "${scope}" in
+            shared)
+              [[ "${resolved}" != /root/* ]]
+              ;;
+            *)
+              return 0
+              ;;
+          esac
+        }
+
+        node_path="$(command -v node 2>/dev/null || true)"
+        npm_path="$(command -v npm 2>/dev/null || true)"
+        npx_path="$(command -v npx 2>/dev/null || true)"
+        node_realpath="$(readlink -f "${node_path}" 2>/dev/null || true)"
+        npm_realpath="$(readlink -f "${npm_path}" 2>/dev/null || true)"
+        npx_realpath="$(readlink -f "${npx_path}" 2>/dev/null || true)"
         node_version="$(node --version 2>/dev/null || true)"
         npm_version="$(npm --version 2>/dev/null || true)"
         npx_version="$(npx --version 2>/dev/null || true)"
+        [[ -n "${node_path}" ]] || node_path="missing"
+        [[ -n "${npm_path}" ]] || npm_path="missing"
+        [[ -n "${npx_path}" ]] || npx_path="missing"
+        [[ -n "${node_realpath}" ]] || node_realpath="missing"
+        [[ -n "${npm_realpath}" ]] || npm_realpath="missing"
+        [[ -n "${npx_realpath}" ]] || npx_realpath="missing"
         [[ -n "${node_version}" ]] || node_version="missing"
         [[ -n "${npm_version}" ]] || npm_version="missing"
         [[ -n "${npx_version}" ]] || npx_version="missing"
@@ -767,11 +874,23 @@
         npm_major="$(major_or_zero "${npm_version}")"
         node_ok=0
         npm_ok=0
+        node_scope_ok=0
+        npm_scope_ok=0
+        node_runtime_ok=0
         if [[ "${node_version}" != "missing" && "${node_major}" -ge "{{ tauri_node_min_major | int }}" ]]; then
           node_ok=1
         fi
         if [[ "${npm_version}" != "missing" && "${npm_major}" -ge "{{ tauri_npm_min_major | int }}" ]]; then
           npm_ok=1
+        fi
+        if scope_path_ok "{{ tauri_node_install_scope_effective }}" "${node_realpath}"; then
+          node_scope_ok=1
+        fi
+        if scope_path_ok "{{ tauri_node_install_scope_effective }}" "${npm_realpath}"; then
+          npm_scope_ok=1
+        fi
+        if [[ "${node_ok}" -eq 1 && "${npm_ok}" -eq 1 && "${node_scope_ok}" -eq 1 && "${npm_scope_ok}" -eq 1 ]]; then
+          node_runtime_ok=1
         fi
 
         rustc_shell_path="$(command -v rustc 2>/dev/null || true)"
@@ -882,18 +1001,32 @@
         if version_ge "${cargo_semver}" "{{ tauri_cargo_min_version }}"; then cargo_ok=1; fi
         if version_ge "${rustc_env_semver}" "{{ tauri_rust_min_version }}"; then rustc_env_ok=1; fi
         if version_ge "${cargo_env_semver}" "{{ tauri_cargo_min_version }}"; then cargo_env_ok=1; fi
-        if version_ge "${tauri_cli_semver}" "{{ tauri_cli_min_version }}"; then tauri_cli_ok=1; fi
+        if version_ge "${tauri_cli_semver}" "{{ tauri_cli_min_version }}"; then
+          if [[ "{{ tauri_cli_method_effective }}" != "npm" || "${node_runtime_ok}" -eq 1 ]]; then
+            tauri_cli_ok=1
+          fi
+        fi
         if version_ge "${cargo_tauri_semver}" "{{ tauri_cli_min_version }}"; then cargo_tauri_ok=1; fi
 
         printf 'node_version=%s\n' "${node_version}"
+        printf 'node_path=%s\n' "${node_path}"
+        printf 'node_realpath=%s\n' "${node_realpath}"
         printf 'node_major=%s\n' "${node_major}"
         printf 'node_min_major=%s\n' "{{ tauri_node_min_major }}"
         printf 'node_ok=%s\n' "${node_ok}"
         printf 'npm_version=%s\n' "${npm_version}"
+        printf 'npm_path=%s\n' "${npm_path}"
+        printf 'npm_realpath=%s\n' "${npm_realpath}"
         printf 'npm_major=%s\n' "${npm_major}"
         printf 'npm_min_major=%s\n' "{{ tauri_npm_min_major }}"
         printf 'npm_ok=%s\n' "${npm_ok}"
         printf 'npx_version=%s\n' "${npx_version}"
+        printf 'npx_path=%s\n' "${npx_path}"
+        printf 'npx_realpath=%s\n' "${npx_realpath}"
+        printf 'node_install_scope=%s\n' "{{ tauri_node_install_scope_effective }}"
+        printf 'node_scope_ok=%s\n' "${node_scope_ok}"
+        printf 'npm_scope_ok=%s\n' "${npm_scope_ok}"
+        printf 'node_runtime_ok=%s\n' "${node_runtime_ok}"
         printf 'rustc_shell_path=%s\n' "${rustc_shell_path}"
         printf 'cargo_shell_path=%s\n' "${cargo_shell_path}"
         printf 'rustup_shell_path=%s\n' "${rustup_shell_path}"
@@ -934,8 +1067,14 @@
     - name: Normalize final runtime facts
       ansible.builtin.set_fact:
         tauri_fact_node_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^node_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_node_path: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^node_path=(.*)$') | first | default('missing')) }}"
+        tauri_fact_node_realpath: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^node_realpath=(.*)$') | first | default('missing')) }}"
         tauri_fact_npm_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^npm_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_npm_path: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^npm_path=(.*)$') | first | default('missing')) }}"
+        tauri_fact_npm_realpath: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^npm_realpath=(.*)$') | first | default('missing')) }}"
         tauri_fact_npx_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^npx_version=(.*)$') | first | default('missing')) }}"
+        tauri_fact_npx_path: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^npx_path=(.*)$') | first | default('missing')) }}"
+        tauri_fact_npx_realpath: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^npx_realpath=(.*)$') | first | default('missing')) }}"
         tauri_fact_rustc_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^rustc_version=(.*)$') | first | default('missing')) }}"
         tauri_fact_cargo_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^cargo_version=(.*)$') | first | default('missing')) }}"
         tauri_fact_rustup_version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^rustup_version=(.*)$') | first | default('missing')) }}"
@@ -989,6 +1128,8 @@
               node: {{ tauri_install_node_effective_resolved | bool | lower }}
               rust: {{ tauri_install_rust_effective | bool | lower }}
               cli: {{ tauri_install_cli_effective | bool | lower }}
+            node_install_scope: "{{ tauri_node_install_scope_effective }}"
+            node_nvm_dir: "{{ tauri_node_nvm_dir_effective }}"
             version_checks:
               node:
                 version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^node_version=(.*)$') | first | default('missing')) }}"
@@ -1010,10 +1151,21 @@
                 version: "{{ ((tauri_toolchain_final_probe.stdout | default('')) | regex_findall('(?m)^tauri_cli_version=(.*)$') | first | default('missing')) }}"
                 min_version: "{{ tauri_cli_min_version }}"
                 ok: {{ ((tauri_toolchain_final_probe.stdout | default('')) is search('(?m)^tauri_cli_ok=1$')) | lower }}
+            node_visibility:
+              node_scope_ok: {{ ((tauri_toolchain_final_probe.stdout | default('')) is search('(?m)^node_scope_ok=1$')) | lower }}
+              npm_scope_ok: {{ ((tauri_toolchain_final_probe.stdout | default('')) is search('(?m)^npm_scope_ok=1$')) | lower }}
+              runtime_ok: {{ ((tauri_toolchain_final_probe.stdout | default('')) is search('(?m)^node_runtime_ok=1$')) | lower }}
             shell_visible:
               rustc: {{ tauri_fact_rustc_shell_ok | bool | lower }}
               cargo: {{ tauri_fact_cargo_shell_ok | bool | lower }}
               rustup: {{ tauri_fact_rustup_shell_ok | bool | lower }}
+            node_paths:
+              node: "{{ tauri_fact_node_path }}"
+              node_realpath: "{{ tauri_fact_node_realpath }}"
+              npm: "{{ tauri_fact_npm_path }}"
+              npm_realpath: "{{ tauri_fact_npm_realpath }}"
+              npx: "{{ tauri_fact_npx_path }}"
+              npx_realpath: "{{ tauri_fact_npx_realpath }}"
             shell_paths:
               rustc: "{{ tauri_fact_rustc_shell_path }}"
               cargo: "{{ tauri_fact_cargo_shell_path }}"

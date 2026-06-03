@@ -568,6 +568,14 @@ if ! grep -q 'DEBIAN_NODE_MODE' "${ROOT}/setup/cli/node.sh"; then
   echo "[validate.runtime][error] setup/cli/node.sh must support DEBIAN_NODE_MODE"
   rc=1
 fi
+if ! grep -q 'DEBIAN_NODE_INSTALL_SCOPE' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must support DEBIAN_NODE_INSTALL_SCOPE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_NODE_SHARED_NVM_DIR' "${ROOT}/setup/cli/node.sh"; then
+  echo "[validate.runtime][error] setup/cli/node.sh must support DEBIAN_NODE_SHARED_NVM_DIR"
+  rc=1
+fi
 if ! grep -Fq 'DEBIAN_NODE_VERSION:-lts/*' "${ROOT}/setup/cli/node.sh"; then
   echo "[validate.runtime][error] setup/cli/node.sh must default DEBIAN_NODE_VERSION to lts/*"
   rc=1
@@ -590,6 +598,12 @@ if ! grep -q 'DEBIAN_NODE_SUDO_REEXEC' "${ROOT}/setup/cli/node.sh"; then
 fi
 if ! grep -q 'DEBIAN_NODE_SELF_URL' "${ROOT}/setup/cli/node.sh"; then
   echo "[validate.runtime][error] setup/cli/node.sh must support DEBIAN_NODE_SELF_URL"
+  rc=1
+fi
+node_ensure_line="$(grep -n 'ensure.root.or.sudo.reexec "\$@"' "${ROOT}/setup/cli/node.sh" | tail -n1 | cut -d: -f1)"
+node_source_line="$(grep -n 'source.release.common' "${ROOT}/setup/cli/node.sh" | tail -n1 | cut -d: -f1)"
+if [[ -z "${node_ensure_line}" || -z "${node_source_line}" || "${node_ensure_line}" -ge "${node_source_line}" ]]; then
+  echo "[validate.runtime][error] setup/cli/node.sh must re-enter with sudo before sourcing release.common"
   rc=1
 fi
 if search_regex 'codex|tauri' "${ROOT}/setup/cli/node.sh" >/dev/null; then
@@ -650,8 +664,28 @@ if ! grep -q 'node_install_policy' "${ROOT}/ansible/cli/node.yml"; then
   echo "[validate.runtime][error] ansible/cli/node.yml must define node_install_policy"
   rc=1
 fi
+if ! grep -q 'node_install_scope' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must define node_install_scope"
+  rc=1
+fi
+if ! grep -q 'node_shared_nvm_dir' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must define node_shared_nvm_dir"
+  rc=1
+fi
 if ! grep -q 'node_install_needed' "${ROOT}/ansible/cli/node.yml"; then
   echo "[validate.runtime][error] ansible/cli/node.yml must compute node_install_needed"
+  rc=1
+fi
+if ! grep -q 'node_nvm_dir_effective' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must derive node_nvm_dir_effective"
+  rc=1
+fi
+if ! grep -q 'node_scope_ok' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must emit node_scope_ok probe data"
+  rc=1
+fi
+if ! grep -q 'node_runtime_ok' "${ROOT}/ansible/cli/node.yml"; then
+  echo "[validate.runtime][error] ansible/cli/node.yml must emit node_runtime_ok probe data"
   rc=1
 fi
 if ! grep -q 'node_npm_min_major' "${ROOT}/ansible/cli/node.yml"; then
@@ -660,6 +694,14 @@ if ! grep -q 'node_npm_min_major' "${ROOT}/ansible/cli/node.yml"; then
 fi
 if ! grep -q 'node_npm_min_major' "${ROOT}/ansible/group_vars/debian.yml"; then
   echo "[validate.runtime][error] ansible/group_vars/debian.yml must define node_npm_min_major"
+  rc=1
+fi
+if ! grep -q 'node_install_scope' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define node_install_scope"
+  rc=1
+fi
+if ! grep -q 'node_shared_nvm_dir' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define node_shared_nvm_dir"
   rc=1
 fi
 if ! grep -q 'autologin_mode' "${ROOT}/ansible/group_vars/debian.yml"; then
@@ -676,6 +718,14 @@ if ! grep -q 'autologin_tty' "${ROOT}/ansible/group_vars/debian.yml"; then
 fi
 if ! grep -q 'tauri_rust_create_system_symlinks' "${ROOT}/ansible/group_vars/debian.yml"; then
   echo "[validate.runtime][error] ansible/group_vars/debian.yml must define tauri_rust_create_system_symlinks"
+  rc=1
+fi
+if ! grep -q 'tauri_node_install_scope' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define tauri_node_install_scope"
+  rc=1
+fi
+if ! grep -q 'tauri_node_shared_nvm_dir' "${ROOT}/ansible/group_vars/debian.yml"; then
+  echo "[validate.runtime][error] ansible/group_vars/debian.yml must define tauri_node_shared_nvm_dir"
   rc=1
 fi
 if ! grep -q 'tauri_rust_profile_hook_path' "${ROOT}/ansible/group_vars/debian.yml"; then
@@ -832,6 +882,14 @@ if ! grep -q 'TAURI_NPM_MIN_MAJOR' "${ROOT}/setup/cli/tauri.sh"; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must define TAURI_NPM_MIN_MAJOR"
   rc=1
 fi
+if ! grep -q 'DEBIAN_CLI_TAURI_NODE_INSTALL_SCOPE' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must support DEBIAN_CLI_TAURI_NODE_INSTALL_SCOPE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_TAURI_NODE_SHARED_NVM_DIR' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must support DEBIAN_CLI_TAURI_NODE_SHARED_NVM_DIR"
+  rc=1
+fi
 if ! grep -q 'resolve.node.install.effective' "${ROOT}/setup/cli/tauri.sh"; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must resolve effective Node install decisions"
   rc=1
@@ -864,7 +922,6 @@ require_contains "setup/cli/tauri.sh" 'collect.sudo.env.args'
 require_contains "setup/cli/tauri.sh" 'wget -qO- "$1" | bash -s -- "${@:2}"'
 reject_contains "setup/cli/tauri.sh" 'TAURI_NODE_SYSTEM_SCOPE_OK'
 reject_contains "setup/cli/tauri.sh" 'TAURI_NODE_SYSTEM_RESOLVED'
-reject_contains "ansible/cli/node.yml" 'node_install_scope'
 reject_contains "ansible/cli/node.yml" 'node_validate_non_root'
 reject_contains "ansible/cli/tauri.yml" 'system_private_backing'
 reject_contains "ansible/cli/tauri.yml" 'private_system_runtime_path'
@@ -1450,12 +1507,28 @@ if ! grep -q 'tauri_cli_min_version' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must define tauri_cli_min_version"
   rc=1
 fi
+if ! grep -q 'tauri_node_install_scope' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must define tauri_node_install_scope"
+  rc=1
+fi
 if ! grep -q 'node_ok' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must emit node_ok probe data"
   rc=1
 fi
 if ! grep -q 'npm_ok' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must emit npm_ok probe data"
+  rc=1
+fi
+if ! grep -q 'node_scope_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit node_scope_ok probe data"
+  rc=1
+fi
+if ! grep -q 'node_runtime_ok' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must emit node_runtime_ok probe data"
+  rc=1
+fi
+if ! grep -q 'node_realpath' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must capture node_realpath probe data"
   rc=1
 fi
 if ! grep -q 'rustc_ok' "${ROOT}/ansible/cli/tauri.yml"; then

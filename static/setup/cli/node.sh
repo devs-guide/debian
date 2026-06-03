@@ -31,7 +31,15 @@ NODE_EXTRA_VARS_PATH="${TMP_DIR}/cli.node.extra-vars.yml"
 FEATURE_MODE="${1:-${DEBIAN_NODE_MODE:-apply}}"
 NODE_VERSION="${DEBIAN_NODE_VERSION:-lts/*}"
 NODE_NVM_VERSION="${DEBIAN_NODE_NVM_VERSION:-v0.40.4}"
-NODE_NVM_DIR="${DEBIAN_NODE_NVM_DIR:-/root/.nvm}"
+NODE_INSTALL_SCOPE="${DEBIAN_NODE_INSTALL_SCOPE:-shared}"
+NODE_SHARED_NVM_DIR="${DEBIAN_NODE_SHARED_NVM_DIR:-/usr/local/lib/nvm}"
+NODE_NVM_DIR="${DEBIAN_NODE_NVM_DIR:-}"
+if [[ -z "${NODE_NVM_DIR}" ]]; then
+  case "${NODE_INSTALL_SCOPE}" in
+    shared) NODE_NVM_DIR="${NODE_SHARED_NVM_DIR}" ;;
+    *) NODE_NVM_DIR="/root/.nvm" ;;
+  esac
+fi
 NODE_NPM_POLICY="${DEBIAN_NODE_NPM_POLICY:-bundled}"
 NODE_NPM_VERSION="${DEBIAN_NODE_NPM_VERSION:-}"
 NODE_GLOBAL_PACKAGES="${DEBIAN_NODE_GLOBAL_PACKAGES:-}"
@@ -132,6 +140,17 @@ require.valid.mode() {
   esac
 }
 
+require.valid.install.scope() {
+  case "${NODE_INSTALL_SCOPE}" in
+    private|shared) ;;
+    *)
+      log.error "Unsupported Node install scope: ${NODE_INSTALL_SCOPE}"
+      log.error "Use one of: private, shared"
+      exit 1
+      ;;
+  esac
+}
+
 require.debian.host() {
   if [[ ! -f /etc/debian_version ]]; then
     log.error "This feature runner expects a Debian host."
@@ -146,6 +165,8 @@ collect.sudo.env.args() {
     "DEBIAN_NODE_MODE=${FEATURE_MODE}"
     "DEBIAN_NODE_VERSION=${NODE_VERSION}"
     "DEBIAN_NODE_NVM_VERSION=${NODE_NVM_VERSION}"
+    "DEBIAN_NODE_INSTALL_SCOPE=${NODE_INSTALL_SCOPE}"
+    "DEBIAN_NODE_SHARED_NVM_DIR=${NODE_SHARED_NVM_DIR}"
     "DEBIAN_NODE_NVM_DIR=${NODE_NVM_DIR}"
     "DEBIAN_NODE_NPM_POLICY=${NODE_NPM_POLICY}"
     "DEBIAN_NODE_NPM_VERSION=${NODE_NPM_VERSION}"
@@ -357,6 +378,8 @@ write.node.extra.vars.file() {
 ansible_python_interpreter_managed: "/usr/bin/python3"
 node_enable: true
 node_mode: $(yaml.quote "${FEATURE_MODE}")
+node_install_scope: $(yaml.quote "${NODE_INSTALL_SCOPE}")
+node_shared_nvm_dir: $(yaml.quote "${NODE_SHARED_NVM_DIR}")
 node_version: $(yaml.quote "${NODE_VERSION}")
 node_nvm_version: $(yaml.quote "${NODE_NVM_VERSION}")
 nvm_version: $(yaml.quote "${NODE_NVM_VERSION}")
@@ -374,6 +397,8 @@ EOF
 
 run.preflight() {
   log "Feature mode: ${FEATURE_MODE}"
+  log "Install scope: ${NODE_INSTALL_SCOPE}"
+  log "NVM dir: ${NODE_NVM_DIR}"
   log "Desired Node selector: ${NODE_VERSION}"
   log "NVM release: ${NODE_NVM_VERSION}"
   log "npm policy: ${NODE_NPM_POLICY}"
@@ -407,13 +432,14 @@ run.node.feature() {
 }
 
 main() {
+  require.valid.mode
+  require.valid.install.scope
+  ensure.root.or.sudo.reexec "$@"
   reset.feature.tmp.cache
   source.release.common
-  ensure.root.or.sudo.reexec "$@"
   require.root
   require.apt
   require.debian.host
-  require.valid.mode
 
   if [[ "${FEATURE_MODE}" == "preflight" ]]; then
     run.preflight

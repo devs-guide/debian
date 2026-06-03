@@ -59,6 +59,15 @@ TAURI_PROFILE="${DEBIAN_CLI_TAURI_PROFILE:-runtime}"
 TAURI_INSTALL_RUNTIME="${DEBIAN_CLI_TAURI_INSTALL_RUNTIME:-}"
 TAURI_INSTALL_BUILD_DEPS="${DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS:-}"
 TAURI_INSTALL_NODE="${DEBIAN_CLI_TAURI_INSTALL_NODE:-}"
+TAURI_NODE_INSTALL_SCOPE="${DEBIAN_CLI_TAURI_NODE_INSTALL_SCOPE:-shared}"
+TAURI_NODE_SHARED_NVM_DIR="${DEBIAN_CLI_TAURI_NODE_SHARED_NVM_DIR:-/usr/local/lib/nvm}"
+TAURI_NODE_NVM_DIR="${DEBIAN_CLI_TAURI_NODE_NVM_DIR:-}"
+if [[ -z "${TAURI_NODE_NVM_DIR}" ]]; then
+  case "${TAURI_NODE_INSTALL_SCOPE}" in
+    shared) TAURI_NODE_NVM_DIR="${TAURI_NODE_SHARED_NVM_DIR}" ;;
+    *) TAURI_NODE_NVM_DIR="/root/.nvm" ;;
+  esac
+fi
 TAURI_NODE_VERSION="${DEBIAN_CLI_TAURI_NODE_VERSION:-lts/*}"
 TAURI_NODE_MIN_MAJOR="${DEBIAN_CLI_TAURI_NODE_MIN_MAJOR:-20}"
 TAURI_NPM_MIN_MAJOR="${DEBIAN_CLI_TAURI_NPM_MIN_MAJOR:-9}"
@@ -66,8 +75,14 @@ TAURI_INSTALL_NODE_REQUESTED="${TAURI_INSTALL_NODE:-}"
 TAURI_INSTALL_NODE_EFFECTIVE="${TAURI_INSTALL_NODE:-}"
 TAURI_NODE_CURRENT_VERSION="missing"
 TAURI_NPM_CURRENT_VERSION="missing"
+TAURI_NODE_CURRENT_PATH="missing"
+TAURI_NODE_CURRENT_REALPATH="missing"
+TAURI_NPM_CURRENT_PATH="missing"
+TAURI_NPM_CURRENT_REALPATH="missing"
 TAURI_NODE_MEETS_MINIMUM=0
 TAURI_NPM_MEETS_MINIMUM=0
+TAURI_NODE_SCOPE_OK=0
+TAURI_NPM_SCOPE_OK=0
 TAURI_ENABLE_COREPACK="${DEBIAN_CLI_TAURI_ENABLE_COREPACK:-0}"
 TAURI_INSTALL_RUST="${DEBIAN_CLI_TAURI_INSTALL_RUST:-}"
 TAURI_RUST_TOOLCHAIN="${DEBIAN_CLI_TAURI_RUST_TOOLCHAIN:-stable}"
@@ -252,9 +267,44 @@ major.ge() {
   [[ "${current_major}" -ge "${min_major}" ]]
 }
 
+resolved.path() {
+  local path="${1:-}"
+
+  if [[ -z "${path}" ]]; then
+    printf 'missing'
+    return 0
+  fi
+
+  readlink -f "${path}" 2>/dev/null || printf '%s' "${path}"
+}
+
+path.supports.scope() {
+  local scope="${1:-private}"
+  local resolved="${2:-missing}"
+
+  if [[ -z "${resolved}" || "${resolved}" == "missing" ]]; then
+    return 1
+  fi
+
+  case "${scope}" in
+    shared)
+      [[ "${resolved}" != /root/* ]]
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
 detect.node.npm() {
+  TAURI_NODE_CURRENT_PATH="$(command -v node 2>/dev/null || true)"
+  TAURI_NPM_CURRENT_PATH="$(command -v npm 2>/dev/null || true)"
   TAURI_NODE_CURRENT_VERSION="$(node --version 2>/dev/null || true)"
   TAURI_NPM_CURRENT_VERSION="$(npm --version 2>/dev/null || true)"
+  [[ -n "${TAURI_NODE_CURRENT_PATH}" ]] || TAURI_NODE_CURRENT_PATH="missing"
+  [[ -n "${TAURI_NPM_CURRENT_PATH}" ]] || TAURI_NPM_CURRENT_PATH="missing"
+  TAURI_NODE_CURRENT_REALPATH="$(resolved.path "${TAURI_NODE_CURRENT_PATH}")"
+  TAURI_NPM_CURRENT_REALPATH="$(resolved.path "${TAURI_NPM_CURRENT_PATH}")"
   [[ -n "${TAURI_NODE_CURRENT_VERSION}" ]] || TAURI_NODE_CURRENT_VERSION="missing"
   [[ -n "${TAURI_NPM_CURRENT_VERSION}" ]] || TAURI_NPM_CURRENT_VERSION="missing"
 
@@ -269,6 +319,18 @@ detect.node.npm() {
   else
     TAURI_NPM_MEETS_MINIMUM=0
   fi
+
+  if path.supports.scope "${TAURI_NODE_INSTALL_SCOPE}" "${TAURI_NODE_CURRENT_REALPATH}"; then
+    TAURI_NODE_SCOPE_OK=1
+  else
+    TAURI_NODE_SCOPE_OK=0
+  fi
+
+  if path.supports.scope "${TAURI_NODE_INSTALL_SCOPE}" "${TAURI_NPM_CURRENT_REALPATH}"; then
+    TAURI_NPM_SCOPE_OK=1
+  else
+    TAURI_NPM_SCOPE_OK=0
+  fi
 }
 
 resolve.node.install.effective() {
@@ -278,7 +340,7 @@ resolve.node.install.effective() {
   TAURI_INSTALL_NODE_EFFECTIVE="${TAURI_INSTALL_NODE_REQUESTED}"
 
   if is.true "${TAURI_INSTALL_NODE_REQUESTED}"; then
-    if [[ "${TAURI_NODE_MEETS_MINIMUM}" -eq 1 && "${TAURI_NPM_MEETS_MINIMUM}" -eq 1 ]]; then
+    if [[ "${TAURI_NODE_MEETS_MINIMUM}" -eq 1 && "${TAURI_NPM_MEETS_MINIMUM}" -eq 1 && "${TAURI_NODE_SCOPE_OK}" -eq 1 && "${TAURI_NPM_SCOPE_OK}" -eq 1 ]]; then
       TAURI_INSTALL_NODE_EFFECTIVE=0
     else
       TAURI_INSTALL_NODE_EFFECTIVE=1
@@ -305,6 +367,17 @@ require.valid.profile() {
     *)
       log.error "Unsupported profile: ${TAURI_PROFILE}"
       log.error "Use one of: runtime, build"
+      exit 1
+      ;;
+  esac
+}
+
+require.valid.node.install.scope() {
+  case "${TAURI_NODE_INSTALL_SCOPE}" in
+    private|shared) ;;
+    *)
+      log.error "Unsupported Node install scope: ${TAURI_NODE_INSTALL_SCOPE}"
+      log.error "Use one of: private, shared"
       exit 1
       ;;
   esac
@@ -495,6 +568,9 @@ tauri_install_build_deps: $(bool.yaml "${TAURI_INSTALL_BUILD_DEPS}")
 tauri_install_node: $(bool.yaml "${TAURI_INSTALL_NODE_EFFECTIVE}")
 tauri_install_node_requested: $(bool.yaml "${TAURI_INSTALL_NODE_REQUESTED}")
 tauri_install_node_effective: $(bool.yaml "${TAURI_INSTALL_NODE_EFFECTIVE}")
+tauri_node_install_scope: $(yaml.quote "${TAURI_NODE_INSTALL_SCOPE}")
+tauri_node_shared_nvm_dir: $(yaml.quote "${TAURI_NODE_SHARED_NVM_DIR}")
+tauri_node_nvm_dir: $(yaml.quote "${TAURI_NODE_NVM_DIR}")
 tauri_node_min_major: $(yaml.quote "${TAURI_NODE_MIN_MAJOR}")
 tauri_npm_min_major: $(yaml.quote "${TAURI_NPM_MIN_MAJOR}")
 tauri_node_current_version: $(yaml.quote "${TAURI_NODE_CURRENT_VERSION}")
@@ -512,6 +588,9 @@ tauri_install_test_tools: $(bool.yaml "${TAURI_INSTALL_TEST_TOOLS}")
 tauri_runtime_facts_path: $(yaml.quote "${TAURI_RUNTIME_FACTS_PATH}")
 node_enable: true
 node_mode: "apply"
+node_install_scope: $(yaml.quote "${TAURI_NODE_INSTALL_SCOPE}")
+node_shared_nvm_dir: $(yaml.quote "${TAURI_NODE_SHARED_NVM_DIR}")
+node_nvm_dir: $(yaml.quote "${TAURI_NODE_NVM_DIR}")
 node_version: $(yaml.quote "${TAURI_NODE_VERSION}")
 node_min_major: $(yaml.quote "${TAURI_NODE_MIN_MAJOR}")
 node_npm_min_major: $(yaml.quote "${TAURI_NPM_MIN_MAJOR}")
@@ -542,6 +621,7 @@ main() {
   require.valid.mode
   require.valid.profile
   resolve.profile.defaults
+  require.valid.node.install.scope
   resolve.node.install.effective
   require.valid.cli.method
 
@@ -550,6 +630,9 @@ main() {
   log "Install runtime libs: ${TAURI_INSTALL_RUNTIME}"
   log "Install build deps: ${TAURI_INSTALL_BUILD_DEPS}"
   log "Install Node playbook requested: ${TAURI_INSTALL_NODE_REQUESTED:-0}"
+  log "Node install scope: ${TAURI_NODE_INSTALL_SCOPE}"
+  log "Node runtime path: ${TAURI_NODE_CURRENT_PATH} -> ${TAURI_NODE_CURRENT_REALPATH} (scope_ok=${TAURI_NODE_SCOPE_OK})"
+  log "npm runtime path: ${TAURI_NPM_CURRENT_PATH} -> ${TAURI_NPM_CURRENT_REALPATH} (scope_ok=${TAURI_NPM_SCOPE_OK})"
   log "Existing Node: ${TAURI_NODE_CURRENT_VERSION} (min major ${TAURI_NODE_MIN_MAJOR}; ok=${TAURI_NODE_MEETS_MINIMUM})"
   log "Existing npm: ${TAURI_NPM_CURRENT_VERSION} (min major ${TAURI_NPM_MIN_MAJOR}; ok=${TAURI_NPM_MEETS_MINIMUM})"
   log "Install Node playbook effective: ${TAURI_INSTALL_NODE_EFFECTIVE:-0}"

@@ -14,6 +14,8 @@ tauri_install_build_deps: false
 tauri_install_node: false
 tauri_install_node_requested: false
 tauri_install_node_effective: false
+tauri_node_install_scope: "shared"
+tauri_node_shared_nvm_dir: "/usr/local/lib/nvm"
 tauri_node_min_major: 20
 tauri_npm_min_major: 9
 tauri_install_rust: false
@@ -118,7 +120,9 @@ touchscreen_install_evtest: false
 touchscreen_runtime_facts_path: "/etc/ansible/debian/facts/touchscreen.yml"
 node_min_major: 20
 node_npm_min_major: 9
+node_install_scope: "private"
 node_install_policy: "if_missing_or_too_old"
+node_shared_nvm_dir: "/usr/local/lib/nvm"
 package_group_overrides:
   base: true
   time_sync: true

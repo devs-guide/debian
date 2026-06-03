@@ -10,7 +10,9 @@
     node_enable: false
     node_mode: "apply"   # preflight | apply | upgrade
     node_nvm_version: "{{ nvm_version | default('v0.40.4') }}"
-    node_nvm_dir: "{{ nvm_dir | default('/root/.nvm') }}"
+    node_install_scope: "private"   # private | shared
+    node_shared_nvm_dir: "/usr/local/lib/nvm"
+    node_nvm_dir: "{{ nvm_dir | default('') }}"
     node_version: "lts/*"
     node_min_major: 20
     node_npm_min_major: 9
@@ -44,6 +46,7 @@
     - name: Normalize node mode and package inputs
       ansible.builtin.set_fact:
         node_mode_effective: "{{ node_mode | default('apply') | lower }}"
+        node_install_scope_effective: "{{ node_install_scope | default('private') | lower }}"
         node_npm_policy_effective: "{{ node_npm_policy | default('bundled') | lower }}"
         node_global_packages_effective: >-
           {{
@@ -52,6 +55,18 @@
             else (
               node_global_packages | default('') | string | split(' ')
               | reject('equalto', '') | list
+            )
+          }}
+        node_nvm_dir_effective: >-
+          {{
+            (
+              node_nvm_dir
+              if (node_nvm_dir | default('') | string | length > 0)
+              else (
+                node_shared_nvm_dir
+                if ((node_install_scope | default('private') | lower) == 'shared')
+                else '/root/.nvm'
+              )
             )
           }}
 
@@ -66,6 +81,12 @@
         that:
           - node_npm_policy_effective in ['bundled', 'pinned', 'latest']
         fail_msg: "Unsupported node_npm_policy={{ node_npm_policy_effective }}. Use bundled, pinned, or latest."
+
+    - name: Validate install scope
+      ansible.builtin.assert:
+        that:
+          - node_install_scope_effective in ['private', 'shared']
+        fail_msg: "Unsupported node_install_scope={{ node_install_scope_effective }}. Use private or shared."
 
     - name: Validate install policy
       ansible.builtin.assert:
@@ -93,13 +114,25 @@
 
     - name: Capture current node runtime state
       ansible.builtin.shell: |
-        set -e
+        set -euo pipefail
+        node_path="$(command -v node 2>/dev/null || true)"
+        npm_path="$(command -v npm 2>/dev/null || true)"
+        npx_path="$(command -v npx 2>/dev/null || true)"
+        node_realpath="$(readlink -f "${node_path}" 2>/dev/null || true)"
+        npm_realpath="$(readlink -f "${npm_path}" 2>/dev/null || true)"
+        npx_realpath="$(readlink -f "${npx_path}" 2>/dev/null || true)"
         node_v="$(node --version 2>/dev/null || true)"
         npm_v="$(npm --version 2>/dev/null || true)"
         npx_v="$(npx --version 2>/dev/null || true)"
         printf 'node_version=%s\n' "${node_v:-missing}"
         printf 'npm_version=%s\n' "${npm_v:-missing}"
         printf 'npx_version=%s\n' "${npx_v:-missing}"
+        printf 'node_path=%s\n' "${node_path:-missing}"
+        printf 'node_realpath=%s\n' "${node_realpath:-missing}"
+        printf 'npm_path=%s\n' "${npm_path:-missing}"
+        printf 'npm_realpath=%s\n' "${npm_realpath:-missing}"
+        printf 'npx_path=%s\n' "${npx_path:-missing}"
+        printf 'npx_realpath=%s\n' "${npx_realpath:-missing}"
       args:
         executable: /bin/bash
       register: node_preflight_versions
@@ -117,14 +150,43 @@
             *) printf '%s' "${raw}" ;;
           esac
         }
+        scope_path_ok() {
+          local scope="${1:-private}"
+          local resolved="${2:-missing}"
+          if [[ -z "${resolved}" || "${resolved}" == "missing" ]]; then
+            return 1
+          fi
+          case "${scope}" in
+            shared)
+              [[ "${resolved}" != /root/* ]]
+              ;;
+            *)
+              return 0
+              ;;
+          esac
+        }
+        node_path="$(command -v node 2>/dev/null || true)"
+        npm_path="$(command -v npm 2>/dev/null || true)"
+        npx_path="$(command -v npx 2>/dev/null || true)"
+        node_realpath="$(readlink -f "${node_path}" 2>/dev/null || true)"
+        npm_realpath="$(readlink -f "${npm_path}" 2>/dev/null || true)"
+        npx_realpath="$(readlink -f "${npx_path}" 2>/dev/null || true)"
         node_version="$(node --version 2>/dev/null || true)"
         npm_version="$(npm --version 2>/dev/null || true)"
         [[ -n "${node_version}" ]] || node_version="missing"
         [[ -n "${npm_version}" ]] || npm_version="missing"
+        [[ -n "${node_path}" ]] || node_path="missing"
+        [[ -n "${npm_path}" ]] || npm_path="missing"
+        [[ -n "${npx_path}" ]] || npx_path="missing"
+        [[ -n "${node_realpath}" ]] || node_realpath="missing"
+        [[ -n "${npm_realpath}" ]] || npm_realpath="missing"
+        [[ -n "${npx_realpath}" ]] || npx_realpath="missing"
         node_major="$(major_or_zero "${node_version}")"
         npm_major="$(major_or_zero "${npm_version}")"
         node_ok=0
         npm_ok=0
+        node_scope_ok=0
+        npm_scope_ok=0
         node_install_needed=1
         if [[ "${node_version}" != "missing" && "${node_major}" -ge "{{ node_min_major | int }}" ]]; then
           node_ok=1
@@ -132,17 +194,37 @@
         if [[ "${npm_version}" != "missing" && "${npm_major}" -ge "{{ node_npm_min_major | int }}" ]]; then
           npm_ok=1
         fi
-        if [[ "${node_ok}" -eq 1 && "${npm_ok}" -eq 1 ]]; then
+        if scope_path_ok "{{ node_install_scope_effective }}" "${node_realpath}"; then
+          node_scope_ok=1
+        fi
+        if scope_path_ok "{{ node_install_scope_effective }}" "${npm_realpath}"; then
+          npm_scope_ok=1
+        fi
+        if [[ "${node_ok}" -eq 1 && "${npm_ok}" -eq 1 && "${node_scope_ok}" -eq 1 && "${npm_scope_ok}" -eq 1 ]]; then
           node_install_needed=0
         fi
         printf 'node_version=%s\n' "${node_version}"
+        printf 'node_path=%s\n' "${node_path}"
+        printf 'node_realpath=%s\n' "${node_realpath}"
         printf 'node_major=%s\n' "${node_major}"
         printf 'node_min_major=%s\n' "{{ node_min_major }}"
         printf 'node_ok=%s\n' "${node_ok}"
         printf 'npm_version=%s\n' "${npm_version}"
+        printf 'npm_path=%s\n' "${npm_path}"
+        printf 'npm_realpath=%s\n' "${npm_realpath}"
         printf 'npm_major=%s\n' "${npm_major}"
         printf 'npm_min_major=%s\n' "{{ node_npm_min_major }}"
         printf 'npm_ok=%s\n' "${npm_ok}"
+        printf 'npx_path=%s\n' "${npx_path}"
+        printf 'npx_realpath=%s\n' "${npx_realpath}"
+        printf 'node_install_scope=%s\n' "{{ node_install_scope_effective }}"
+        printf 'node_scope_ok=%s\n' "${node_scope_ok}"
+        printf 'npm_scope_ok=%s\n' "${npm_scope_ok}"
+        if [[ "${node_ok}" -eq 1 && "${npm_ok}" -eq 1 && "${node_scope_ok}" -eq 1 && "${npm_scope_ok}" -eq 1 ]]; then
+          printf 'node_runtime_ok=1\n'
+        else
+          printf 'node_runtime_ok=0\n'
+        fi
         printf 'node_install_needed=%s\n' "${node_install_needed}"
       args:
         executable: /bin/bash
@@ -154,8 +236,7 @@
         node_install_needed: >-
           {{
             (node_install_policy == 'always')
-            or not ((node_version_probe.stdout | default('')) is search('(?m)^node_ok=1$'))
-            or not ((node_version_probe.stdout | default('')) is search('(?m)^npm_ok=1$'))
+            or not ((node_version_probe.stdout | default('')) is search('(?m)^node_runtime_ok=1$'))
           }}
 
     - name: Show preflight runtime versions
@@ -165,6 +246,8 @@
           probe: "{{ node_version_probe.stdout_lines | default([]) }}"
           install_needed: "{{ node_install_needed | bool }}"
           install_policy: "{{ node_install_policy }}"
+          install_scope: "{{ node_install_scope_effective }}"
+          nvm_dir: "{{ node_nvm_dir_effective }}"
 
     - name: End play in preflight mode
       ansible.builtin.meta: end_play
@@ -173,7 +256,7 @@
   tasks:
     - name: Check if nvm is already installed
       ansible.builtin.stat:
-        path: "{{ node_nvm_dir }}/nvm.sh"
+        path: "{{ node_nvm_dir_effective }}/nvm.sh"
       register: nvm_sh
       when:
         - node_enable | bool
@@ -194,11 +277,11 @@
     - name: Install nvm when missing
       ansible.builtin.shell: |
         set -e
-        export NVM_DIR="{{ node_nvm_dir }}"
+        export NVM_DIR="{{ node_nvm_dir_effective }}"
         /bin/bash "{{ node_nvm_installer_path }}"
       args:
         executable: /bin/bash
-        creates: "{{ node_nvm_dir }}/nvm.sh"
+        creates: "{{ node_nvm_dir_effective }}/nvm.sh"
       when:
         - node_enable | bool
         - node_install_needed | bool
@@ -207,7 +290,7 @@
 
     - name: Refresh nvm status after installation
       ansible.builtin.stat:
-        path: "{{ node_nvm_dir }}/nvm.sh"
+        path: "{{ node_nvm_dir_effective }}/nvm.sh"
       register: nvm_sh_after
       when:
         - node_enable | bool
@@ -217,8 +300,8 @@
     - name: Install and select requested Node.js version via nvm
       ansible.builtin.shell: |
         set -euo pipefail
-        export NVM_DIR="{{ node_nvm_dir }}"
-        . "{{ node_nvm_dir }}/nvm.sh"
+        export NVM_DIR="{{ node_nvm_dir_effective }}"
+        . "{{ node_nvm_dir_effective }}/nvm.sh"
         nvm install "{{ node_version }}"
         nvm alias default "{{ node_version }}" >/dev/null
         nvm use default >/dev/null
@@ -240,8 +323,8 @@
     - name: Apply npm policy
       ansible.builtin.shell: |
         set -euo pipefail
-        export NVM_DIR="{{ node_nvm_dir }}"
-        . "{{ node_nvm_dir }}/nvm.sh"
+        export NVM_DIR="{{ node_nvm_dir_effective }}"
+        . "{{ node_nvm_dir_effective }}/nvm.sh"
         nvm use default >/dev/null
         changed=0
         case "{{ node_npm_policy_effective }}" in
@@ -273,8 +356,8 @@
     - name: Install optional global npm packages
       ansible.builtin.shell: |
         set -euo pipefail
-        export NVM_DIR="{{ node_nvm_dir }}"
-        . "{{ node_nvm_dir }}/nvm.sh"
+        export NVM_DIR="{{ node_nvm_dir_effective }}"
+        . "{{ node_nvm_dir_effective }}/nvm.sh"
         nvm use default >/dev/null
         if npm list -g --depth=0 "{{ item }}" >/dev/null 2>&1; then
           echo "changed=0"
@@ -299,8 +382,8 @@
       ansible.builtin.shell: |
         set -euo pipefail
         if [ "{{ node_install_needed | bool }}" = "True" ] || [ "{{ node_install_needed | bool }}" = "true" ]; then
-          export NVM_DIR="{{ node_nvm_dir }}"
-          . "{{ node_nvm_dir }}/nvm.sh"
+          export NVM_DIR="{{ node_nvm_dir_effective }}"
+          . "{{ node_nvm_dir_effective }}/nvm.sh"
           nvm use default >/dev/null
         fi
         corepack enable
@@ -320,7 +403,7 @@
         group: root
         mode: "0644"
         content: |
-          export NVM_DIR="{{ node_nvm_dir }}"
+          export NVM_DIR="{{ node_nvm_dir_effective }}"
           [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
           [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
       when:
@@ -332,8 +415,8 @@
     - name: Configure system symlinks for node/npm/npx
       ansible.builtin.shell: |
         set -euo pipefail
-        export NVM_DIR="{{ node_nvm_dir }}"
-        . "{{ node_nvm_dir }}/nvm.sh"
+        export NVM_DIR="{{ node_nvm_dir_effective }}"
+        . "{{ node_nvm_dir_effective }}/nvm.sh"
         nvm use default >/dev/null
         node_path="$(nvm which default)"
         bin_dir="$(dirname "${node_path}")"
@@ -376,12 +459,21 @@
     - name: Capture final Node runtime details
       ansible.builtin.shell: |
         set -euo pipefail
+        node_path="$(command -v node 2>/dev/null || true)"
+        npm_path="$(command -v npm 2>/dev/null || true)"
+        npx_path="$(command -v npx 2>/dev/null || true)"
+        node_realpath="$(readlink -f "${node_path}" 2>/dev/null || true)"
+        npm_realpath="$(readlink -f "${npm_path}" 2>/dev/null || true)"
+        npx_realpath="$(readlink -f "${npx_path}" 2>/dev/null || true)"
         printf 'node_version=%s\n' "$(node --version 2>/dev/null || true)"
         printf 'npm_version=%s\n' "$(npm --version 2>/dev/null || true)"
         printf 'npx_version=%s\n' "$(npx --version 2>/dev/null || true)"
-        printf 'node_path=%s\n' "$(command -v node 2>/dev/null || true)"
-        printf 'npm_path=%s\n' "$(command -v npm 2>/dev/null || true)"
-        printf 'npx_path=%s\n' "$(command -v npx 2>/dev/null || true)"
+        printf 'node_path=%s\n' "${node_path}"
+        printf 'node_realpath=%s\n' "${node_realpath}"
+        printf 'npm_path=%s\n' "${npm_path}"
+        printf 'npm_realpath=%s\n' "${npm_realpath}"
+        printf 'npx_path=%s\n' "${npx_path}"
+        printf 'npx_realpath=%s\n' "${npx_realpath}"
       args:
         executable: /bin/bash
       register: node_runtime_info
@@ -397,8 +489,13 @@
           - node_runtime_info.stdout | default('') is search('(?m)^npm_version=[0-9]+')
           - node_runtime_info.stdout | default('') is search('(?m)^npx_version=[0-9]+')
           - node_runtime_info.stdout | default('') is search('(?m)^node_path=/.+')
+          - node_runtime_info.stdout | default('') is search('(?m)^node_realpath=/.+')
           - node_runtime_info.stdout | default('') is search('(?m)^npm_path=/.+')
+          - node_runtime_info.stdout | default('') is search('(?m)^npm_realpath=/.+')
           - node_runtime_info.stdout | default('') is search('(?m)^npx_path=/.+')
+          - node_runtime_info.stdout | default('') is search('(?m)^npx_realpath=/.+')
+          - (node_install_scope_effective != 'shared') or not (node_runtime_info.stdout | default('') is search('(?m)^node_realpath=/root/'))
+          - (node_install_scope_effective != 'shared') or not (node_runtime_info.stdout | default('') is search('(?m)^npm_realpath=/root/'))
         fail_msg: >-
           Node runtime capture was incomplete.
           stdout={{ node_runtime_info.stdout | default('') }}
@@ -412,8 +509,11 @@
         node_runtime_fact_npm_version: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npm_version=(.*)$') | first | default('unknown')) }}"
         node_runtime_fact_npx_version: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npx_version=(.*)$') | first | default('unknown')) }}"
         node_runtime_fact_node_path: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^node_path=(.*)$') | first | default('')) }}"
+        node_runtime_fact_node_realpath: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^node_realpath=(.*)$') | first | default('')) }}"
         node_runtime_fact_npm_path: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npm_path=(.*)$') | first | default('')) }}"
+        node_runtime_fact_npm_realpath: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npm_realpath=(.*)$') | first | default('')) }}"
         node_runtime_fact_npx_path: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npx_path=(.*)$') | first | default('')) }}"
+        node_runtime_fact_npx_realpath: "{{ ((node_runtime_info.stdout | default('')) | regex_findall('(?m)^npx_realpath=(.*)$') | first | default('')) }}"
       when:
         - node_enable | bool
         - node_mode_effective in ['apply', 'upgrade']
@@ -440,19 +540,31 @@
           node:
             enabled: true
             install_requested: {{ node_enable | bool | lower }}
+            install_scope: "{{ node_install_scope_effective }}"
             install_policy: "{{ node_install_policy }}"
             install_needed: {{ node_install_needed | bool | lower }}
             existing_node_version: "{{ ((node_version_probe.stdout | default('')) | regex_findall('(?m)^node_version=(.*)$') | first | default('missing')) }}"
+            existing_node_path: "{{ ((node_version_probe.stdout | default('')) | regex_findall('(?m)^node_path=(.*)$') | first | default('missing')) }}"
+            existing_node_realpath: "{{ ((node_version_probe.stdout | default('')) | regex_findall('(?m)^node_realpath=(.*)$') | first | default('missing')) }}"
+            existing_npm_path: "{{ ((node_version_probe.stdout | default('')) | regex_findall('(?m)^npm_path=(.*)$') | first | default('missing')) }}"
+            existing_npm_realpath: "{{ ((node_version_probe.stdout | default('')) | regex_findall('(?m)^npm_realpath=(.*)$') | first | default('missing')) }}"
             node_min_major: {{ node_min_major | int }}
             install_method: "{{ 'nvm' if (node_install_needed | bool) else 'existing' }}"
-            nvm_dir: "{{ node_nvm_dir }}"
+            nvm_dir: "{{ node_nvm_dir_effective }}"
             requested_version: "{{ node_version }}"
             node_version: "{{ node_runtime_fact_node_version }}"
             npm_version: "{{ node_runtime_fact_npm_version }}"
             npx_version: "{{ node_runtime_fact_npx_version }}"
             node_path: "{{ node_runtime_fact_node_path }}"
+            node_realpath: "{{ node_runtime_fact_node_realpath }}"
             npm_path: "{{ node_runtime_fact_npm_path }}"
+            npm_realpath: "{{ node_runtime_fact_npm_realpath }}"
             npx_path: "{{ node_runtime_fact_npx_path }}"
+            npx_realpath: "{{ node_runtime_fact_npx_realpath }}"
+            visibility:
+              node_scope_ok: {{ ((node_version_probe.stdout | default('')) is search('(?m)^node_scope_ok=1$')) | lower }}
+              npm_scope_ok: {{ ((node_version_probe.stdout | default('')) is search('(?m)^npm_scope_ok=1$')) | lower }}
+              runtime_ok: {{ ((node_version_probe.stdout | default('')) is search('(?m)^node_runtime_ok=1$')) | lower }}
             system_symlinks:
               node: "/usr/local/bin/node"
               npm: "/usr/local/bin/npm"
