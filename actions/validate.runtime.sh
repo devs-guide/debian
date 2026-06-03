@@ -738,6 +738,10 @@ if ! grep -q 'tauri_rust_shell_validate' "${ROOT}/ansible/group_vars/debian.yml"
 fi
 
 echo "[validate.runtime] checking setup/cli/codex.sh runner contract..."
+if ! bash -n "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must pass bash -n"
+  rc=1
+fi
 if ! grep -q '"cli/node.yml"' "${ROOT}/setup/cli/codex.sh"; then
   echo "[validate.runtime][error] setup/cli/codex.sh must reference cli/node.yml"
   rc=1
@@ -756,6 +760,66 @@ if ! grep -q 'ensure.local.ansible' "${ROOT}/setup/cli/codex.sh"; then
 fi
 if ! grep -q '/tmp/ansible/debian' "${ROOT}/setup/cli/codex.sh"; then
   echo "[validate.runtime][error] setup/cli/codex.sh must use neutral /tmp/ansible/debian cache paths"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_CODEX_MODE' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must support DEBIAN_CLI_CODEX_MODE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_CODEX_NODE_INSTALL_SCOPE' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must support DEBIAN_CLI_CODEX_NODE_INSTALL_SCOPE"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_CODEX_NODE_SHARED_NVM_DIR' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must support DEBIAN_CLI_CODEX_NODE_SHARED_NVM_DIR"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_CODEX_NODE_NVM_DIR' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must support DEBIAN_CLI_CODEX_NODE_NVM_DIR"
+  rc=1
+fi
+if ! grep -Fq 'DEBIAN_CLI_CODEX_NODE_VERSION:-lts/*' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must default DEBIAN_CLI_CODEX_NODE_VERSION to lts/*"
+  rc=1
+fi
+if ! grep -Fq 'DEBIAN_CLI_CODEX_NODE_INSTALL_SCOPE:-shared' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must default Node install scope to shared"
+  rc=1
+fi
+if ! grep -q 'ensure.root.or.sudo.reexec' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must support sudo re-entry"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_CODEX_SUDO_REEXEC' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must support DEBIAN_CLI_CODEX_SUDO_REEXEC"
+  rc=1
+fi
+if ! grep -q 'DEBIAN_CLI_CODEX_SELF_URL' "${ROOT}/setup/cli/codex.sh"; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must support DEBIAN_CLI_CODEX_SELF_URL"
+  rc=1
+fi
+codex_ensure_line="$(grep -n 'ensure.root.or.sudo.reexec "\$@"' "${ROOT}/setup/cli/codex.sh" | tail -n1 | cut -d: -f1)"
+codex_source_line="$(grep -n 'source.release.common' "${ROOT}/setup/cli/codex.sh" | tail -n1 | cut -d: -f1)"
+if [[ -z "${codex_ensure_line}" || -z "${codex_source_line}" || "${codex_ensure_line}" -ge "${codex_source_line}" ]]; then
+  echo "[validate.runtime][error] setup/cli/codex.sh must re-enter with sudo before sourcing release.common"
+  rc=1
+fi
+
+echo "[validate.runtime] checking ansible/cli/codex.yml contract..."
+if ! grep -q 'codex_node_install_scope' "${ROOT}/ansible/cli/codex.yml"; then
+  echo "[validate.runtime][error] ansible/cli/codex.yml must define codex_node_install_scope"
+  rc=1
+fi
+if ! grep -q 'codex_node_shared_nvm_dir' "${ROOT}/ansible/cli/codex.yml"; then
+  echo "[validate.runtime][error] ansible/cli/codex.yml must define codex_node_shared_nvm_dir"
+  rc=1
+fi
+if ! grep -q 'codex_nvm_dir_effective' "${ROOT}/ansible/cli/codex.yml"; then
+  echo "[validate.runtime][error] ansible/cli/codex.yml must derive codex_nvm_dir_effective"
+  rc=1
+fi
+if ! grep -q 'nvm use default' "${ROOT}/ansible/cli/codex.yml"; then
+  echo "[validate.runtime][error] ansible/cli/codex.yml must activate the default Node runtime before Codex operations"
   rc=1
 fi
 

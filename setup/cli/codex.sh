@@ -31,8 +31,21 @@ NODE_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NODE_PLAYBOOK_REL}"
 CODEX_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${CODEX_PLAYBOOK_REL}"
 CLI_CODEX_EXTRA_VARS_PATH="${TMP_DIR}/cli.codex.extra-vars.yml"
 FEATURE_MODE="${1:-${DEBIAN_CLI_CODEX_MODE:-apply}}"
-NODE_NVM_VERSION="${DEBIAN_CLI_CODEX_NVM_VERSION:-v0.39.7}"
+NODE_NVM_VERSION="${DEBIAN_CLI_CODEX_NVM_VERSION:-v0.40.4}"
 NODE_VERSION="${DEBIAN_CLI_CODEX_NODE_VERSION:-lts/*}"
+NODE_INSTALL_SCOPE="${DEBIAN_CLI_CODEX_NODE_INSTALL_SCOPE:-shared}"
+NODE_SHARED_NVM_DIR="${DEBIAN_CLI_CODEX_NODE_SHARED_NVM_DIR:-/usr/local/lib/nvm}"
+NODE_NVM_DIR="${DEBIAN_CLI_CODEX_NODE_NVM_DIR:-}"
+if [[ -z "${NODE_NVM_DIR}" ]]; then
+  case "${NODE_INSTALL_SCOPE}" in
+    shared) NODE_NVM_DIR="${NODE_SHARED_NVM_DIR}" ;;
+    *) NODE_NVM_DIR="/root/.nvm" ;;
+  esac
+fi
+NODE_NPM_POLICY="${DEBIAN_CLI_CODEX_NODE_NPM_POLICY:-bundled}"
+NODE_NPM_VERSION="${DEBIAN_CLI_CODEX_NODE_NPM_VERSION:-}"
+NODE_CREATE_SYSTEM_SYMLINKS="${DEBIAN_CLI_CODEX_NODE_CREATE_SYSTEM_SYMLINKS:-1}"
+NODE_ENABLE_COREPACK="${DEBIAN_CLI_CODEX_NODE_ENABLE_COREPACK:-0}"
 CODEX_NPM_PACKAGE="${DEBIAN_CLI_CODEX_PACKAGE:-@openai/codex}"
 CODEX_VERSION="${DEBIAN_CLI_CODEX_VERSION:-latest}"
 CODEX_INSTALL_DOCS_MCP="${DEBIAN_CLI_CODEX_INSTALL_DOCS_MCP:-1}"
@@ -109,6 +122,17 @@ require.valid.mode() {
   esac
 }
 
+require.valid.install.scope() {
+  case "${NODE_INSTALL_SCOPE}" in
+    private|shared) ;;
+    *)
+      log.error "Unsupported Node install scope: ${NODE_INSTALL_SCOPE}"
+      log.error "Use one of: private, shared"
+      exit 1
+      ;;
+  esac
+}
+
 require.debian.host() {
   if [[ ! -f /etc/debian_version ]]; then
     log.error "This feature runner expects a Debian host."
@@ -123,6 +147,13 @@ collect.sudo.env.args() {
     "DEBIAN_CLI_CODEX_MODE=${FEATURE_MODE}"
     "DEBIAN_CLI_CODEX_NVM_VERSION=${NODE_NVM_VERSION}"
     "DEBIAN_CLI_CODEX_NODE_VERSION=${NODE_VERSION}"
+    "DEBIAN_CLI_CODEX_NODE_INSTALL_SCOPE=${NODE_INSTALL_SCOPE}"
+    "DEBIAN_CLI_CODEX_NODE_SHARED_NVM_DIR=${NODE_SHARED_NVM_DIR}"
+    "DEBIAN_CLI_CODEX_NODE_NVM_DIR=${NODE_NVM_DIR}"
+    "DEBIAN_CLI_CODEX_NODE_NPM_POLICY=${NODE_NPM_POLICY}"
+    "DEBIAN_CLI_CODEX_NODE_NPM_VERSION=${NODE_NPM_VERSION}"
+    "DEBIAN_CLI_CODEX_NODE_CREATE_SYSTEM_SYMLINKS=${NODE_CREATE_SYSTEM_SYMLINKS}"
+    "DEBIAN_CLI_CODEX_NODE_ENABLE_COREPACK=${NODE_ENABLE_COREPACK}"
     "DEBIAN_CLI_CODEX_PACKAGE=${CODEX_NPM_PACKAGE}"
     "DEBIAN_CLI_CODEX_VERSION=${CODEX_VERSION}"
     "DEBIAN_CLI_CODEX_INSTALL_DOCS_MCP=${CODEX_INSTALL_DOCS_MCP}"
@@ -132,6 +163,10 @@ collect.sudo.env.args() {
     "DEBIAN_CLI_CODEX_RUNTIME_FACTS_PATH=${CODEX_RUNTIME_FACTS_PATH}"
     "DEBIAN_CLI_CODEX_SELF_URL=${CODEX_SELF_URL}"
     "DEBIAN_CLI_CODEX_SUDO_REEXEC=1"
+    "PAGES_BASE_URL=${PAGES_BASE_URL}"
+    "TMP_ROOT_DIR=${TMP_ROOT_DIR}"
+    "TMP_DIR=${TMP_DIR}"
+    "REFRESH=${REFRESH}"
   )
 }
 
@@ -207,7 +242,7 @@ use.local.feature.files() {
   local script_dir repo_root file
 
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  repo_root="$(cd "${script_dir}/.." && pwd)"
+  repo_root="$(cd "${script_dir}/../.." && pwd)"
 
   for file in "${GROUP_VARS_FILES[@]}"; do
     if [[ ! -r "${repo_root}/ansible/group_vars/${file}" ]]; then
@@ -277,11 +312,20 @@ debian_runtime_facts_dir: $(yaml.quote "${FACTS_DIR}")
 node_enable: true
 node_nvm_version: $(yaml.quote "${NODE_NVM_VERSION}")
 nvm_version: $(yaml.quote "${NODE_NVM_VERSION}")
+node_install_scope: $(yaml.quote "${NODE_INSTALL_SCOPE}")
+node_shared_nvm_dir: $(yaml.quote "${NODE_SHARED_NVM_DIR}")
+node_nvm_dir: $(yaml.quote "${NODE_NVM_DIR}")
+nvm_dir: $(yaml.quote "${NODE_NVM_DIR}")
 node_version: $(yaml.quote "${NODE_VERSION}")
-node_npm_policy: "bundled"
-node_create_system_symlinks: true
+node_npm_policy: $(yaml.quote "${NODE_NPM_POLICY}")
+node_npm_version: $(yaml.quote "${NODE_NPM_VERSION}")
+node_create_system_symlinks: $(bool.yaml "${NODE_CREATE_SYSTEM_SYMLINKS}")
+node_enable_corepack: $(bool.yaml "${NODE_ENABLE_COREPACK}")
 codex_enable: true
 codex_mode: $(yaml.quote "${FEATURE_MODE}")
+codex_node_install_scope: $(yaml.quote "${NODE_INSTALL_SCOPE}")
+codex_node_shared_nvm_dir: $(yaml.quote "${NODE_SHARED_NVM_DIR}")
+codex_nvm_dir: $(yaml.quote "${NODE_NVM_DIR}")
 codex_npm_package: $(yaml.quote "${CODEX_NPM_PACKAGE}")
 codex_version: $(yaml.quote "${CODEX_VERSION}")
 codex_install_docs_mcp: $(bool.yaml "${CODEX_INSTALL_DOCS_MCP}")
@@ -296,6 +340,8 @@ run.preflight() {
   log "Feature mode: ${FEATURE_MODE}"
   log "Target runtime: Debian host"
   log "Desired Node version: ${NODE_VERSION}"
+  log "Node install scope: ${NODE_INSTALL_SCOPE}"
+  log "Node NVM dir: ${NODE_NVM_DIR}"
   log "Desired Codex package: ${CODEX_NPM_PACKAGE}"
   log "Desired Codex version: ${CODEX_VERSION}"
   log "OpenAI docs MCP bootstrap: ${CODEX_INSTALL_DOCS_MCP}"
@@ -331,13 +377,14 @@ run.cli.codex.feature() {
 }
 
 main() {
+  require.valid.mode
+  require.valid.install.scope
+  ensure.root.or.sudo.reexec "$@"
   reset.feature.tmp.cache
   source.release.common
-  ensure.root.or.sudo.reexec "$@"
   require.root
   require.apt
   require.debian.host
-  require.valid.mode
 
   if [[ "${FEATURE_MODE}" == "preflight" ]]; then
     run.preflight
