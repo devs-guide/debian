@@ -72,12 +72,6 @@ user_defs:
     password_lock: false
     groups:
       - sudo
-  - name: proxmox
-    password: proxmox
-    update_password: "{{ bootstrap_default_user_update_password }}"
-    password_lock: false
-    groups:
-      - sudo
   - name: admin
     password: admin
     update_password: "{{ bootstrap_default_user_update_password }}"

@@ -28,7 +28,7 @@
 
 
 ## BUILD ENV:
-## 
+##
 # env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_RUST_USER="$(id -un)" DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash -c 'wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash'
 ##
 
@@ -594,6 +594,29 @@ confirm.tauri.runtime.packages() {
     log.error "Fetched Tauri playbook must include xdg-utils in tauri_runtime_packages."
     exit 1
   fi
+}
+
+write.tauri.extra.vars.file() {
+  resolve.invoking.user
+  mkdir -p "${TMP_DIR}"
+  cat > "${TAURI_EXTRA_VARS_PATH}" <<EOF_VARS
+---
+ansible_python_interpreter_managed: "/usr/bin/python3"
+tauri_enable: true
+tauri_mode: $(yaml.quote "${FEATURE_MODE}")
+tauri_profile: $(yaml.quote "${TAURI_PROFILE}")
+tauri_install_runtime: $(bool.yaml "${TAURI_INSTALL_RUNTIME}")
+tauri_install_build_deps: $(bool.yaml "${TAURI_INSTALL_BUILD_DEPS}")
+tauri_install_node: $(bool.yaml "${TAURI_INSTALL_NODE_EFFECTIVE}")
+tauri_install_node_requested: $(bool.yaml "${TAURI_INSTALL_NODE_REQUESTED}")
+tauri_install_node_effective: $(bool.yaml "${TAURI_INSTALL_NODE_EFFECTIVE}")
+tauri_node_install_scope: $(yaml.quote "${TAURI_NODE_INSTALL_SCOPE}")
+tauri_node_shared_nvm_dir: $(yaml.quote "${TAURI_NODE_SHARED_NVM_DIR}")
+tauri_node_nvm_dir: $(yaml.quote "${TAURI_NODE_NVM_DIR}")
+tauri_node_min_major: $(yaml.quote "${TAURI_NODE_MIN_MAJOR}")
+tauri_npm_min_major: $(yaml.quote "${TAURI_NPM_MIN_MAJOR}")
+tauri_node_current_version: $(yaml.quote "${TAURI_NODE_CURRENT_VERSION}")
+tauri_npm_current_version: $(yaml.quote "${TAURI_NPM_CURRENT_VERSION}")
 tauri_install_rust: $(bool.yaml "${TAURI_INSTALL_RUST}")
 tauri_rust_toolchain: $(yaml.quote "${TAURI_RUST_TOOLCHAIN}")
 tauri_rust_user: $(yaml.quote "${TAURI_RUST_USER}")
@@ -663,3 +686,7 @@ main() {
   ensure.local.ansible
   prepare.feature.files
   confirm.tauri.runtime.packages
+  run.tauri.feature
+}
+
+main "$@"
