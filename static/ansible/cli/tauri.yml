@@ -24,6 +24,7 @@
     tauri_install_rust_effective: false
     tauri_rust_toolchain: "stable"
     tauri_rust_user: "root"
+    tauri_invoking_user: ""
     tauri_rust_min_version: "1.77.2"
     tauri_cargo_min_version: "1.77.2"
     tauri_rustup_installer_path: "/tmp/rustup-init.sh"
@@ -43,6 +44,7 @@
     tauri_install_test_tools: false
     tauri_runtime_facts_path: "/etc/ansible/debian/facts/cli.tauri.yml"
     tauri_runtime_packages:
+      - xdg-utils
       - libwebkit2gtk-4.1-0
       - libgtk-3-0
     tauri_runtime_packages_optional:
@@ -524,6 +526,55 @@
         - tauri_enable | bool
         - tauri_mode_effective in ['apply', 'upgrade']
         - tauri_rust_visibility_manage_effective | bool
+
+    - name: Capture invoking user passwd entry
+      ansible.builtin.command:
+        argv:
+          - getent
+          - passwd
+          - "{{ tauri_invoking_user }}"
+      register: tauri_invoking_user_getent
+      changed_when: false
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_invoking_user | default('') | length > 0
+        - tauri_invoking_user != 'root'
+
+    - name: Assert invoking user exists
+      ansible.builtin.assert:
+        that:
+          - tauri_invoking_user_getent.stdout | default('') | length > 0
+        fail_msg: "Invoking user {{ tauri_invoking_user }} was not found."
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_invoking_user | default('') | length > 0
+        - tauri_invoking_user != 'root'
+
+    - name: Capture invoking user identity and home path
+      ansible.builtin.set_fact:
+        tauri_invoking_uid_effective: "{{ (tauri_invoking_user_getent.stdout | split(':'))[2] }}"
+        tauri_invoking_gid_effective: "{{ (tauri_invoking_user_getent.stdout | split(':'))[3] }}"
+        tauri_invoking_home_effective: "{{ (tauri_invoking_user_getent.stdout | split(':'))[5] | default('/home/' ~ tauri_invoking_user, true) }}"
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_invoking_user | default('') | length > 0
+        - tauri_invoking_user != 'root'
+
+    - name: Ensure invoking user's npm cache is owned by the invoking account
+      ansible.builtin.file:
+        path: "{{ tauri_invoking_home_effective }}/.npm"
+        state: directory
+        owner: "{{ tauri_invoking_uid_effective }}"
+        group: "{{ tauri_invoking_gid_effective }}"
+        recurse: true
+      when:
+        - tauri_enable | bool
+        - tauri_mode_effective in ['apply', 'upgrade']
+        - tauri_invoking_user | default('') | length > 0
+        - tauri_invoking_user != 'root'
 
     - name: Download rustup installer
       ansible.builtin.get_url:

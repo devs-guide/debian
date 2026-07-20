@@ -27,6 +27,11 @@
 ##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash
 
 
+## BUILD ENV:
+## 
+# env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_RUST_USER="$(id -un)" DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash -c 'wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash'
+##
+
 set -euo pipefail
 
 log() { printf '[setup.cli.tauri] %s\n' "$*" >&2; }
@@ -95,10 +100,9 @@ TAURI_INSTALL_APPIMAGE_TOOLS="${DEBIAN_CLI_TAURI_INSTALL_APPIMAGE_TOOLS:-0}"
 TAURI_INSTALL_TEST_TOOLS="${DEBIAN_CLI_TAURI_INSTALL_TEST_TOOLS:-0}"
 FACTS_DIR="${DEBIAN_CLI_TAURI_FACTS_DIR:-/etc/ansible/debian/facts}"
 TAURI_RUNTIME_FACTS_PATH="${DEBIAN_CLI_TAURI_RUNTIME_FACTS_PATH:-${FACTS_DIR}/cli.tauri.yml}"
+TAURI_INVOKING_USER="${DEBIAN_CLI_TAURI_INVOKING_USER:-}"
 REFRESH="${REFRESH:-0}"
-TAURI_INSTALL_RUNTIME_SET=0
-TAURI_INSTALL_BUILD_DEPS_SET=0
-TAURI_INSTALL_NODE_SET=0
+TAURI_RUNTIME_INCLUDES_XDG_UTILS=0
 TAURI_INSTALL_RUST_SET=0
 TAURI_INSTALL_CLI_SET=0
 declare -a FEATURE_GROUP_VARS_ARGS
@@ -129,9 +133,24 @@ reset.feature.tmp.cache() {
   esac
 }
 
+resolve.invoking.user() {
+  if [[ -n "${TAURI_INVOKING_USER}" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    TAURI_INVOKING_USER="${SUDO_USER}"
+    return 0
+  fi
+
+  TAURI_INVOKING_USER="$(id -un 2>/dev/null || true)"
+}
+
 collect.sudo.env.args() {
   local -n _out="$1"
   local name=""
+
+  resolve.invoking.user
 
   while IFS= read -r name; do
     case "${name}" in
@@ -140,6 +159,8 @@ collect.sudo.env.args() {
         ;;
     esac
   done < <(compgen -e)
+
+  _out+=("DEBIAN_CLI_TAURI_INVOKING_USER=${TAURI_INVOKING_USER}")
 }
 
 current.script.path() {
@@ -555,29 +576,28 @@ run.feature.playbook() {
   "${ANSIBLE_VENV_BIN}" -i localhost, -c local "${FEATURE_GROUP_VARS_ARGS[@]}" "$@" "${playbook_path}"
 }
 
-write.tauri.extra.vars.file() {
-  mkdir -p "${TMP_DIR}"
-  cat > "${TAURI_EXTRA_VARS_PATH}" <<EOF_VARS
----
-ansible_python_interpreter_managed: "/usr/bin/python3"
-tauri_enable: true
-tauri_mode: $(yaml.quote "${FEATURE_MODE}")
-tauri_profile: $(yaml.quote "${TAURI_PROFILE}")
-tauri_install_runtime: $(bool.yaml "${TAURI_INSTALL_RUNTIME}")
-tauri_install_build_deps: $(bool.yaml "${TAURI_INSTALL_BUILD_DEPS}")
-tauri_install_node: $(bool.yaml "${TAURI_INSTALL_NODE_EFFECTIVE}")
-tauri_install_node_requested: $(bool.yaml "${TAURI_INSTALL_NODE_REQUESTED}")
-tauri_install_node_effective: $(bool.yaml "${TAURI_INSTALL_NODE_EFFECTIVE}")
-tauri_node_install_scope: $(yaml.quote "${TAURI_NODE_INSTALL_SCOPE}")
-tauri_node_shared_nvm_dir: $(yaml.quote "${TAURI_NODE_SHARED_NVM_DIR}")
-tauri_node_nvm_dir: $(yaml.quote "${TAURI_NODE_NVM_DIR}")
-tauri_node_min_major: $(yaml.quote "${TAURI_NODE_MIN_MAJOR}")
-tauri_npm_min_major: $(yaml.quote "${TAURI_NPM_MIN_MAJOR}")
-tauri_node_current_version: $(yaml.quote "${TAURI_NODE_CURRENT_VERSION}")
-tauri_npm_current_version: $(yaml.quote "${TAURI_NPM_CURRENT_VERSION}")
+confirm.tauri.runtime.packages() {
+  if [[ ! -f "${TAURI_PLAYBOOK_PATH}" ]]; then
+    log.error "Tauri playbook missing: ${TAURI_PLAYBOOK_PATH}"
+    exit 1
+  fi
+
+  if grep -Eq '^[[:space:]]*-[[:space:]]*xdg-utils([[:space:]]|$)' "${TAURI_PLAYBOOK_PATH}"; then
+    TAURI_RUNTIME_INCLUDES_XDG_UTILS=1
+  else
+    TAURI_RUNTIME_INCLUDES_XDG_UTILS=0
+  fi
+
+  log "Tauri runtime includes mandatory xdg-utils: ${TAURI_RUNTIME_INCLUDES_XDG_UTILS}"
+
+  if ! is.true "${TAURI_RUNTIME_INCLUDES_XDG_UTILS}"; then
+    log.error "Fetched Tauri playbook must include xdg-utils in tauri_runtime_packages."
+    exit 1
+  fi
 tauri_install_rust: $(bool.yaml "${TAURI_INSTALL_RUST}")
 tauri_rust_toolchain: $(yaml.quote "${TAURI_RUST_TOOLCHAIN}")
 tauri_rust_user: $(yaml.quote "${TAURI_RUST_USER}")
+tauri_invoking_user: $(yaml.quote "${TAURI_INVOKING_USER}")
 tauri_install_cli: $(bool.yaml "${TAURI_INSTALL_CLI}")
 tauri_cli_method: $(yaml.quote "${TAURI_CLI_METHOD}")
 tauri_npm_package: $(yaml.quote "${TAURI_NPM_PACKAGE}")
@@ -612,6 +632,7 @@ run.tauri.feature() {
 }
 
 main() {
+  resolve.invoking.user
   ensure.root.or.sudo.reexec "$@"
   reset.feature.tmp.cache
   source.release.common
@@ -641,7 +662,4 @@ main() {
 
   ensure.local.ansible
   prepare.feature.files
-  run.tauri.feature
-}
-
-main "$@"
+  confirm.tauri.runtime.packages

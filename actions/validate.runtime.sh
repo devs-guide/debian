@@ -930,6 +930,14 @@ if ! grep -q 'resolve.profile.defaults' "${ROOT}/setup/cli/tauri.sh"; then
   echo "[validate.runtime][error] setup/cli/tauri.sh must compute runtime/build profile defaults"
   rc=1
 fi
+if ! grep -q 'DEBIAN_CLI_TAURI_INVOKING_USER' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must preserve the invoking user across sudo re-entry"
+  rc=1
+fi
+if ! grep -q 'tauri_invoking_user:' "${ROOT}/setup/cli/tauri.sh"; then
+  echo "[validate.runtime][error] setup/cli/tauri.sh must pass tauri_invoking_user into the Tauri playbook"
+  rc=1
+fi
 if grep -n '^  DEPS=' "${ROOT}/setup/cli/tauri.sh" >/dev/null; then
   echo "[validate.runtime][error] setup/cli/tauri.sh contains broken pasted one-liner"
   rc=1
@@ -1495,6 +1503,10 @@ if ! grep -q 'librsvg2-dev' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must include librsvg2-dev dependency"
   rc=1
 fi
+if ! grep -q 'xdg-utils' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must include xdg-utils runtime dependency"
+  rc=1
+fi
 if ! grep -q 'libwebkit2gtk-4.1-0' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must include libwebkit2gtk-4.1-0 runtime dependency"
   rc=1
@@ -1505,6 +1517,14 @@ if ! grep -q 'libgtk-3-0' "${ROOT}/ansible/cli/tauri.yml"; then
 fi
 if ! grep -q 'tauri_runtime_facts_path' "${ROOT}/ansible/cli/tauri.yml"; then
   echo "[validate.runtime][error] ansible/cli/tauri.yml must write Tauri runtime facts"
+  rc=1
+fi
+if ! grep -q 'tauri_invoking_home_effective' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must resolve the invoking user home path"
+  rc=1
+fi
+if ! grep -q '/.npm' "${ROOT}/ansible/cli/tauri.yml"; then
+  echo "[validate.runtime][error] ansible/cli/tauri.yml must repair invoking user .npm ownership"
   rc=1
 fi
 if ! grep -q '/etc/ansible/debian/facts/cli.tauri.yml' "${ROOT}/ansible/cli/tauri.yml"; then
