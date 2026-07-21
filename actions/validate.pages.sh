@@ -177,4 +177,20 @@ check_setup_feature_refs "setup/cli/nvidia.sh"
 check_setup_feature_refs "setup/hardware.sh"
 check_setup_feature_refs "setup/autologin.sh"
 
+check_nvidia_runner_runtime_support() {
+  local remote_runner="${TMPDIR}/setup/cli/nvidia"
+
+  if [[ ! -s "${remote_runner}" ]]; then
+    echo "[validate.pages][error] published NVIDIA runner was not fetched: ${remote_runner}"
+    rc=1
+    return
+  fi
+  if ! grep -Fq 'packages.yml' "${remote_runner}"; then
+    echo "[validate.pages][error] published NVIDIA runner must reference packages.yml"
+    rc=1
+  fi
+}
+
+check_nvidia_runner_runtime_support
+
 exit "${rc}"

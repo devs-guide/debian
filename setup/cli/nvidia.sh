@@ -41,6 +41,7 @@ NVIDIA_SELF_URL="${DEBIAN_NVIDIA_SELF_URL:-${PAGES_BASE_URL}/setup/cli/nvidia}"
 NVIDIA_SUDO_REEXEC="${DEBIAN_NVIDIA_SUDO_REEXEC:-0}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=("cli/nvidia.yml")
+RUNTIME_SUPPORT_REFS=("packages.yml")
 NVIDIA_PLAYBOOK_REL="cli/nvidia.yml"
 NVIDIA_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NVIDIA_PLAYBOOK_REL}"
 NVIDIA_EXTRA_VARS_PATH="${TMP_DIR}/cli.nvidia.extra-vars.yml"
@@ -396,11 +397,23 @@ ensure.root.or.sudo.reexec() {
 
 source.release.common() {
   local script_dir=""
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  if [[ -r "${script_dir}/${LOCAL_COMMON_HELPER}" ]]; then
-    # shellcheck source=setup/release.common.sh
-    source "${script_dir}/${LOCAL_COMMON_HELPER}"
-    return
+  local source_path="${BASH_SOURCE[0]:-}"
+
+  case "${source_path}" in
+    ""|-|/dev/fd/*|/proc/self/fd/*) ;;
+    *)
+      script_dir="$(cd "$(dirname "${source_path}")" && pwd)"
+      if [[ -r "${script_dir}/${LOCAL_COMMON_HELPER}" ]]; then
+        # shellcheck source=setup/release.common.sh
+        source "${script_dir}/${LOCAL_COMMON_HELPER}"
+        return
+      fi
+      ;;
+  esac
+
+  if ! command -v wget >/dev/null 2>&1; then
+    log.error "Cannot fetch the shared helper because wget is unavailable."
+    exit "${EXIT_BLOCKED}"
   fi
 
   mkdir -p "${TMP_DIR}"
@@ -427,11 +440,19 @@ use.local.feature.files() {
   local script_dir=""
   local repo_root=""
   local file=""
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local source_path="${BASH_SOURCE[0]:-}"
+
+  case "${source_path}" in
+    ""|-|/dev/fd/*|/proc/self/fd/*) return 1 ;;
+  esac
+  script_dir="$(cd "$(dirname "${source_path}")" && pwd)"
   repo_root="$(cd "${script_dir}/../.." && pwd)"
 
   for file in "${GROUP_VARS_FILES[@]}"; do
     [[ -r "${repo_root}/ansible/group_vars/${file}" ]] || return 1
+  done
+  for file in "${RUNTIME_SUPPORT_REFS[@]}"; do
+    [[ -s "${repo_root}/ansible/${file}" ]] || return 1
   done
   [[ -r "${repo_root}/ansible/${NVIDIA_PLAYBOOK_REL}" ]] || return 1
 
@@ -454,9 +475,39 @@ fetch.feature.file() {
   [[ -s "${destination}" ]] || { log.error "Feature file is empty: ${url}"; exit 1; }
 }
 
+fetch.runtime.support.file() {
+  local reference="$1"
+  local source_url="${PAGES_BASE_URL}/ansible/${reference}"
+  local destination="${PLAYBOOK_ROOT}/${reference}"
+
+  mkdir -p "$(dirname "${destination}")"
+  log "Fetching runtime support file: ${source_url}"
+  wget -qO "${destination}" "${source_url}" || {
+    log.error "Failed to fetch runtime support file: ${source_url}"
+    exit "${EXIT_BLOCKED}"
+  }
+  [[ -s "${destination}" ]] || {
+    log.error "Required runtime support file is missing or empty: ${destination}"
+    exit "${EXIT_BLOCKED}"
+  }
+}
+
+validate.runtime.support.files() {
+  local reference=""
+  local path=""
+  for reference in "${RUNTIME_SUPPORT_REFS[@]}"; do
+    path="${PLAYBOOK_ROOT}/${reference}"
+    if [[ ! -s "${path}" ]]; then
+      log.error "Required runtime support file is missing or empty: ${path}"
+      exit "${EXIT_BLOCKED}"
+    fi
+  done
+}
+
 prepare.feature.files() {
   local file=""
   if use.local.feature.files; then
+    validate.runtime.support.files
     return
   fi
 
@@ -464,8 +515,12 @@ prepare.feature.files() {
   for file in "${GROUP_VARS_FILES[@]}"; do
     fetch.feature.file "${PAGES_BASE_URL}/ansible/group_vars/${file}" "${PLAYBOOK_GROUP_VARS_DIR}/${file}"
   done
+  for file in "${RUNTIME_SUPPORT_REFS[@]}"; do
+    fetch.runtime.support.file "${file}"
+  done
   fetch.feature.file "${PAGES_BASE_URL}/ansible/${NVIDIA_PLAYBOOK_REL}" "${NVIDIA_PLAYBOOK_PATH}"
   reset.feature.extra.vars.args
+  validate.runtime.support.files
 }
 
 write.nvidia.extra.vars.file() {
@@ -611,6 +666,8 @@ main() {
   validate.configuration
 
   if [[ "${FEATURE_MODE}" == preflight ]]; then
+    reset.feature.tmp.cache
+    prepare.feature.files
     run.read.only.preflight
     return 0
   fi

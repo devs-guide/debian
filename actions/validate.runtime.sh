@@ -287,6 +287,43 @@ for f in "${files[@]}"; do
   fi
 done
 
+echo "[validate.runtime] checking NVIDIA runtime dependency contract..."
+if ! bash -n "${ROOT}/setup/cli/nvidia.sh"; then
+  echo "[validate.runtime][error] setup/cli/nvidia.sh must pass bash -n"
+  rc=1
+fi
+if ! awk '
+  /^RUNTIME_SUPPORT_REFS=\(/ {
+    print
+    if ($0 ~ /\)[[:space:]]*$/) { exit }
+    in_refs=1
+    next
+  }
+  in_refs {
+    print
+    if (/^\)[[:space:]]*$/) { exit }
+  }
+' "${ROOT}/setup/cli/nvidia.sh" | grep -Fq '"packages.yml"'; then
+  echo "[validate.runtime][error] setup/cli/nvidia.sh must declare packages.yml as a runtime support dependency"
+  rc=1
+fi
+if ! grep -Fq 'destination="${PLAYBOOK_ROOT}/${reference}"' "${ROOT}/setup/cli/nvidia.sh"; then
+  echo "[validate.runtime][error] setup/cli/nvidia.sh must stage runtime support files at the runtime root"
+  rc=1
+fi
+if ! grep -Fq 'validate.runtime.support.files' "${ROOT}/setup/cli/nvidia.sh"; then
+  echo "[validate.runtime][error] setup/cli/nvidia.sh must validate staged runtime support files"
+  rc=1
+fi
+if ! grep -Fq 'file: ../packages.yml' "${ROOT}/ansible/cli/nvidia.yml"; then
+  echo "[validate.runtime][error] ansible/cli/nvidia.yml must load the runtime-root package catalog"
+  rc=1
+fi
+if ! grep -Eq '^[[:space:]]*nvidia_runtime_support:' "${ROOT}/ansible/packages.yml"; then
+  echo "[validate.runtime][error] ansible/packages.yml must define nvidia_runtime_support"
+  rc=1
+fi
+
 echo "[validate.runtime] checking playlist references..."
 while IFS= read -r ref; do
   [[ -n "${ref}" ]] || continue
