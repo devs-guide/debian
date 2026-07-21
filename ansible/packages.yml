@@ -89,6 +89,20 @@ groups:
       - radeontop
       - nvidia-detect
       - firmware-amd-graphics
+  nvidia_runtime_support:
+    description: Opt-in NVIDIA driver/CUDA inventory and DKMS support; never installed by baseline playbooks.
+    packages:
+      - ca-certificates
+      - curl
+      - gnupg
+      - dkms
+      - kmod
+      - mokutil
+      - pciutils
+      - jq
+      - hwloc
+      - numactl
+      - nvtop
   dev_tools:
     description: Developer and shell utilities.
     packages:

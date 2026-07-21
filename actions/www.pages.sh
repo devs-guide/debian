@@ -51,6 +51,8 @@ main() {
     "setup/cli/startx.sh:setup/cli/startx"
     "setup/cli/tauri.sh:setup/cli/tauri.sh"
     "setup/cli/tauri.sh:setup/cli/tauri"
+    "setup/cli/nvidia.sh:setup/cli/nvidia.sh"
+    "setup/cli/nvidia.sh:setup/cli/nvidia"
     "readme.md:readme.md"
   )
 
@@ -69,6 +71,8 @@ main() {
   require_file "${ROOT}/setup/cli/codex.sh"
   require_file "${ROOT}/setup/cli/startx.sh"
   require_file "${ROOT}/setup/cli/tauri.sh"
+  require_file "${ROOT}/setup/cli/nvidia.sh"
+  require_file "${ROOT}/ansible/cli/nvidia.yml"
   require_file "${ROOT}/ansible/install.playbooks.txt"
 
   rm -rf "${PUBLISH_DIR}"

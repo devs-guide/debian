@@ -1,0 +1,435 @@
+---
+- name: "[debian]: opt-in NVIDIA driver and CUDA readiness"
+  hosts: all
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed }}"
+    nvidia_mode: preflight
+    nvidia_profile: llm
+    nvidia_driver_source: auto
+    nvidia_cuda_source: auto
+    nvidia_driver_channel: production
+    nvidia_driver_branch: "595"
+    nvidia_driver_version: ""
+    nvidia_cuda_version: ""
+    nvidia_kernel_module_flavor: auto
+    nvidia_gpu_select: all
+    nvidia_gpu_selection_source: auto
+    nvidia_require_gpu_count: ""
+    nvidia_require_compute_capabilities: ""
+    nvidia_persistence: auto
+    nvidia_nccl: auto
+    nvidia_run_p2p_test: false
+    nvidia_allow_no_gpu: false
+    nvidia_allow_source_migration: false
+    nvidia_allow_cuda_minor_compat: false
+    nvidia_allow_custom_repo: false
+    nvidia_skip_live_validate: false
+    nvidia_check_upstream: false
+    nvidia_latest_in_branch: false
+    nvidia_repo_base_url: ""
+    nvidia_keyring_url: ""
+    nvidia_keyring_sha256: ""
+    nvidia_key_fingerprint: ""
+    nvidia_facts_path: /etc/ansible/debian/facts/nvidia.yml
+    nvidia_env_path: /etc/ansible/debian/env/nvidia.env
+    nvidia_transaction_dir: /var/lib/ansible/debian/nvidia/transactions
+    nvidia_keyring_deb_path: /var/tmp/cuda-keyring_1.1-1_all.deb
+    nvidia_cuda_repo:
+      debian_release: "13"
+      architecture: amd64
+      base_url: https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64
+      keyring_url: https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
+      # Verified from the official package on 2026-07-21. Update only with an
+      # explicit repository-policy review when NVIDIA publishes a new keyring.
+      keyring_sha256: d0d4ef986a44400f9db33c600ef33a985175e7cc63d805a10e1839c7a1e78f5f
+    nvidia_cuda_driver_matrix:
+      "13.1":
+        status: tested
+        cuda_minor_compat_driver_min: "590.44.01"
+        toolkit_ga_driver_min: "590.44.01"
+        default_readiness_driver_min: "595.71.05"
+        supported_debian_releases: ["13"]
+        supported_architectures: [amd64]
+        nvidia_toolkit_package: cuda-toolkit-13-1
+        nvidia_compute_driver_packages:
+          open: [nvidia-driver-cuda, nvidia-kernel-open-dkms]
+          proprietary: [nvidia-driver-cuda, nvidia-kernel-dkms]
+    nvidia_nvidia_compute_driver_packages:
+      open: [nvidia-driver-cuda, nvidia-kernel-open-dkms]
+      proprietary: [nvidia-driver-cuda, nvidia-kernel-dkms]
+    # This is an NVIDIA-prerequisite approval, not an assertion that a model,
+    # PyTorch, KTransformers, FlashInfer, or TP2 has passed its own tests.
+    nvidia_llm_cuda_matrix:
+      - cuda_minor: "13.1"
+        driver_min: "595.71.05"
+        status: tested
+        approved_compute_capabilities: ["8.6"]
+
+  pre_tasks:
+    - name: Load canonical package catalog
+      ansible.builtin.include_vars:
+        file: ../packages.yml
+        name: nvidia_package_catalog
+
+    - name: Check Debian host marker
+      ansible.builtin.stat:
+        path: /etc/debian_version
+      register: nvidia_debian_marker
+
+    - name: Read Debian release, architecture, and running kernel
+      ansible.builtin.shell: |
+        set -euo pipefail
+        . /etc/os-release
+        printf 'release=%s\n' "${VERSION_ID:-unknown}"
+        printf 'codename=%s\n' "${VERSION_CODENAME:-unknown}"
+        printf 'architecture=%s\n' "$(dpkg --print-architecture)"
+        printf 'kernel=%s\n' "$(uname -r)"
+      args:
+        executable: /bin/bash
+      register: nvidia_platform
+      changed_when: false
+
+    - name: Normalize NVIDIA feature inputs
+      ansible.builtin.set_fact:
+        nvidia_mode_effective: "{{ nvidia_mode | lower }}"
+        nvidia_profile_effective: "{{ nvidia_profile | lower }}"
+        nvidia_driver_source_effective: "{{ nvidia_driver_source | lower }}"
+        nvidia_cuda_source_effective: "{{ nvidia_cuda_source | lower }}"
+        nvidia_module_flavor_effective: "{{ nvidia_kernel_module_flavor | lower }}"
+        nvidia_cuda_matrix_entry: "{{ nvidia_cuda_driver_matrix.get(nvidia_cuda_version, {}) }}"
+        nvidia_llm_matrix_entry: >-
+          {{
+            (nvidia_llm_cuda_matrix
+              | selectattr('cuda_minor', 'equalto', nvidia_cuda_version)
+              | list | first | default({}))
+          }}
+        nvidia_running_kernel_headers_package: >-
+          linux-headers-{{
+            (nvidia_platform.stdout_lines
+              | select('match', '^kernel=') | list | first
+              | regex_replace('^kernel=', ''))
+          }}
+
+    - name: Validate supported platform and mode
+      ansible.builtin.assert:
+        that:
+          - nvidia_debian_marker.stat.exists
+          - nvidia_platform.stdout is search('(?m)^release=13$')
+          - nvidia_platform.stdout is search('(?m)^architecture=amd64$')
+          - nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+        fail_msg: >-
+          NVIDIA managed modes currently support Debian 13 amd64 only, with
+          apply, validate, or upgrade selected by the runner.
+
+    - name: Validate profile/source/module policy
+      ansible.builtin.assert:
+        that:
+          - nvidia_profile_effective in ['driver', 'cuda', 'llm']
+          - nvidia_driver_source_effective in ['auto', 'debian', 'nvidia']
+          - nvidia_cuda_source_effective in ['none', 'auto', 'debian', 'nvidia']
+          - nvidia_module_flavor_effective in ['auto', 'open', 'proprietary']
+          - nvidia_driver_channel in ['production', 'new-feature']
+          - nvidia_driver_channel != 'new-feature' or nvidia_driver_branch | length > 0
+          - nvidia_profile_effective == 'driver' or nvidia_cuda_version | length > 0
+          - nvidia_profile_effective == 'driver' or nvidia_cuda_source_effective != 'none'
+        fail_msg: "Invalid NVIDIA profile, source, CUDA version, or module-flavor policy."
+
+    - name: Fail closed for unavailable CUDA compatibility entries
+      ansible.builtin.assert:
+        that:
+          - nvidia_profile_effective == 'driver' or nvidia_cuda_version | length == 0 or nvidia_cuda_matrix_entry | length > 0
+          - nvidia_profile_effective != 'llm' or nvidia_cuda_version | length == 0 or nvidia_llm_matrix_entry | length > 0
+          - nvidia_profile_effective != 'llm' or nvidia_cuda_version | length == 0 or nvidia_llm_matrix_entry.get('status', '') == 'tested'
+        fail_msg: >-
+          The requested CUDA minor is not approved for the selected profile.
+          This feature never substitutes another CUDA minor.
+
+    - name: Resolve module flavor for the initial supported driver policy
+      ansible.builtin.set_fact:
+        nvidia_module_flavor_resolved: >-
+          {{
+            nvidia_module_flavor_effective
+            if nvidia_module_flavor_effective != 'auto'
+            else ('open' if (nvidia_driver_branch | int) >= 560 else 'proprietary')
+          }}
+        nvidia_driver_pin_name: >-
+          nvidia-driver-pinning-{{ nvidia_driver_version if nvidia_driver_version | length > 0 else nvidia_driver_branch }}
+
+    - name: Reject unimplemented custom repository overrides
+      ansible.builtin.assert:
+        that:
+          - nvidia_repo_base_url | length == 0
+          - nvidia_keyring_url | length == 0
+          - nvidia_keyring_sha256 | length == 0
+          - nvidia_key_fingerprint | length == 0
+        fail_msg: >-
+          Custom NVIDIA mirrors are intentionally not enabled by this initial
+          implementation. The official Debian 13 NVIDIA repository is pinned
+          through a reviewed keyring checksum instead.
+
+    - name: Require explicit NVIDIA sources for mutating CUDA/LLM requests
+      ansible.builtin.assert:
+        that:
+          - nvidia_mode_effective not in ['apply', 'upgrade'] or nvidia_profile_effective == 'driver' or nvidia_cuda_source_effective == 'nvidia'
+          - nvidia_mode_effective not in ['apply', 'upgrade'] or nvidia_driver_source_effective == 'nvidia'
+        fail_msg: >-
+          The initial package implementation supports explicit NVIDIA-repository
+          applies only. auto never adds a third-party repository implicitly.
+
+    - name: Verify exact running-kernel headers are available before mutation
+      ansible.builtin.command:
+        argv: [apt-cache, show, "{{ nvidia_running_kernel_headers_package }}"]
+      changed_when: false
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Collect NVIDIA PCI inventory before package changes
+      ansible.builtin.command:
+        argv: [lspci, -Dnnk]
+      register: nvidia_pci_inventory
+      changed_when: false
+      failed_when: false
+
+    - name: Inspect existing NVIDIA package state
+      ansible.builtin.shell: |
+        set -euo pipefail
+        dpkg-query -W -f='${binary:Package} ${Version}\n' '*nvidia*' '*cuda*' 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      register: nvidia_existing_packages
+      changed_when: false
+
+  tasks:
+    - name: Download the official CUDA repository keyring package
+      ansible.builtin.get_url:
+        url: "{{ nvidia_cuda_repo.keyring_url }}"
+        dest: "{{ nvidia_keyring_deb_path }}"
+        checksum: "sha256:{{ nvidia_cuda_repo.keyring_sha256 }}"
+        owner: root
+        group: root
+        mode: '0644'
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Install the verified CUDA repository keyring package
+      ansible.builtin.apt:
+        deb: "{{ nvidia_keyring_deb_path }}"
+        state: present
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Verify CUDA repository source uses a keyring
+      ansible.builtin.shell: |
+        set -euo pipefail
+        source_file='/etc/apt/sources.list.d/cuda-debian13-x86_64.list'
+        test -r "${source_file}"
+        grep -Eq '^[[:space:]]*deb[[:space:]].*signed-by=.*developer\.download\.nvidia\.com/compute/cuda/repos/debian13/x86_64' "${source_file}"
+      args:
+        executable: /bin/bash
+      changed_when: false
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Refresh APT metadata after explicit NVIDIA repository configuration
+      ansible.builtin.apt:
+        update_cache: true
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Install branch or exact-version NVIDIA pinning package before drivers
+      ansible.builtin.apt:
+        name: "{{ nvidia_driver_pin_name }}"
+        state: present
+        install_recommends: false
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Resolve the driver package candidate inside the requested family
+      ansible.builtin.shell: |
+        set -euo pipefail
+        requested='{{ nvidia_driver_version if nvidia_driver_version | length > 0 else nvidia_driver_branch }}'
+        candidate=''
+        while IFS= read -r version; do
+          case "${version}" in
+            "${requested}"|"${requested}"-*) candidate="${version}"; break ;;
+          esac
+        done < <(apt-cache madison nvidia-driver-cuda | awk '{print $3}')
+        test -n "${candidate}"
+        printf '%s\n' "${candidate}"
+      args:
+        executable: /bin/bash
+      register: nvidia_driver_candidate
+      changed_when: false
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Resolve source-specific driver and CUDA package map
+      ansible.builtin.set_fact:
+        nvidia_driver_packages_resolved: "{{ nvidia_nvidia_compute_driver_packages[nvidia_module_flavor_resolved] }}"
+        nvidia_cuda_package_resolved: "{{ nvidia_cuda_matrix_entry.nvidia_toolkit_package if nvidia_profile_effective != 'driver' else '' }}"
+        nvidia_required_driver_version: >-
+          {{
+            nvidia_llm_matrix_entry.driver_min
+            if nvidia_profile_effective == 'llm'
+            else (
+              nvidia_cuda_matrix_entry.toolkit_ga_driver_min
+              if nvidia_profile_effective == 'cuda'
+              else ''
+            )
+          }}
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Verify candidate driver meets the selected CUDA readiness floor
+      ansible.builtin.command:
+        argv:
+          - dpkg
+          - --compare-versions
+          - "{{ nvidia_driver_candidate.stdout | trim }}"
+          - ge
+          - "{{ nvidia_required_driver_version }}"
+      changed_when: false
+      when:
+        - nvidia_mode_effective in ['apply', 'upgrade']
+        - nvidia_profile_effective != 'driver'
+
+    - name: Simulate the requested package transaction before installation
+      ansible.builtin.shell: |
+        set -euo pipefail
+        simulation_args=(--no-install-recommends)
+        if ! {{ nvidia_allow_source_migration | bool | ternary('true', 'false') }}; then
+          simulation_args+=(--no-remove)
+        fi
+        packages=(
+          '{{ nvidia_running_kernel_headers_package }}'
+          {% for package in nvidia_package_catalog.groups.nvidia_runtime_support.packages %}'{{ package }}'
+          {% endfor %}
+          '{{ nvidia_driver_pin_name }}'
+          {% for package in nvidia_driver_packages_resolved %}'{{ package }}={{ nvidia_driver_candidate.stdout | trim }}'
+          {% endfor %}
+          {% if nvidia_cuda_package_resolved | length > 0 %}'{{ nvidia_cuda_package_resolved }}'
+          {% endif %}
+        )
+        apt-get -s "${simulation_args[@]}" install "${packages[@]}"
+      args:
+        executable: /bin/bash
+      register: nvidia_transaction_simulation
+      changed_when: false
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Install source-neutral NVIDIA support packages and exact headers
+      ansible.builtin.apt:
+        name: "{{ nvidia_package_catalog.groups.nvidia_runtime_support.packages + [nvidia_running_kernel_headers_package] }}"
+        state: present
+        install_recommends: false
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Install the exact source-specific compute driver packages
+      ansible.builtin.apt:
+        name: "{{ nvidia_driver_packages_resolved | map('regex_replace', '^(.*)$', '\\1=' ~ (nvidia_driver_candidate.stdout | trim)) | list }}"
+        state: present
+        install_recommends: false
+      when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Install the exact requested CUDA toolkit minor without driver metapackages
+      ansible.builtin.apt:
+        name: "{{ nvidia_cuda_package_resolved }}"
+        state: present
+        install_recommends: false
+      when:
+        - nvidia_mode_effective in ['apply', 'upgrade']
+        - nvidia_cuda_package_resolved | length > 0
+
+  post_tasks:
+    - name: Collect loaded driver inventory without forcing module changes
+      ansible.builtin.command:
+        argv:
+          - nvidia-smi
+          - --query-gpu=index,name,uuid,pci.bus_id,memory.total,driver_version,compute_cap
+          - --format=csv,noheader
+      register: nvidia_smi_inventory
+      changed_when: false
+      failed_when: false
+
+    - name: Inspect installed CUDA compiler without conflating it with nvidia-smi
+      ansible.builtin.command:
+        argv: [nvcc, --version]
+      register: nvidia_nvcc_version
+      changed_when: false
+      failed_when: false
+
+    - name: Create managed NVIDIA fact and transaction directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /etc/ansible/debian/facts
+        - /etc/ansible/debian/env
+        - "{{ nvidia_transaction_dir }}"
+      when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+
+    - name: Persist the initial NVIDIA readiness facts
+      ansible.builtin.copy:
+        dest: "{{ nvidia_facts_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          nvidia:
+            schema_version: 1
+            generated_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+            mode: {{ nvidia_mode_effective | to_json }}
+            profile: {{ nvidia_profile_effective | to_json }}
+            platform:
+              distribution: Debian
+              release: "13"
+              architecture: amd64
+              kernel_headers_ready: true
+            source_policy:
+              driver_source: {{ nvidia_driver_source_effective | to_json }}
+              cuda_source: {{ nvidia_cuda_source_effective | to_json }}
+              driver_branch: {{ nvidia_driver_branch | to_json }}
+              source_migration_allowed: {{ nvidia_allow_source_migration | bool | to_json }}
+            driver:
+              requested_version: {{ nvidia_driver_version | to_json }}
+              candidate_package_version: {{ (nvidia_driver_candidate | default({'stdout': ''})).stdout | trim | to_json }}
+              kernel_module_flavor: {{ nvidia_module_flavor_resolved | to_json }}
+              nvidia_smi_ready: {{ (nvidia_smi_inventory.rc == 0) | to_json }}
+            cuda:
+              requested_minor: {{ nvidia_cuda_version | to_json }}
+              package_name: {{ nvidia_cuda_package_resolved | default('') | to_json }}
+              nvcc_ready: {{ (nvidia_nvcc_version.rc == 0) | to_json }}
+              nvcc_version: {{ nvidia_nvcc_version.stdout | default('') | trim | to_json }}
+              compile_test_ready: false
+            inventory:
+              selected_by: {{ nvidia_gpu_selection_source | to_json }}
+              requested_gpu_select: {{ nvidia_gpu_select | to_json }}
+              raw_nvidia_smi: {{ nvidia_smi_inventory.stdout | default('') | trim | to_json }}
+            readiness:
+              driver_ready: {{ (nvidia_smi_inventory.rc == 0) | to_json }}
+              cuda_runtime_ready: false
+              cuda_build_ready: false
+              llm_prerequisite_ready: false
+              llm_runtime_validated: false
+              reasons:
+                - "CUDA compile-and-run smoke validation is not implemented in this initial playbook phase."
+      when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+
+    - name: Persist source-neutral NVIDIA environment metadata
+      ansible.builtin.copy:
+        dest: "{{ nvidia_env_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          NVIDIA_DRIVER_BRANCH={{ nvidia_driver_branch }}
+          NVIDIA_KERNEL_MODULE_FLAVOR={{ nvidia_module_flavor_resolved }}
+          NVIDIA_CUDA_TOOLKIT_REQUESTED={{ nvidia_cuda_version }}
+          NVIDIA_LLM_PREREQUISITE_READY=0
+      when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+
+    - name: State remaining NVIDIA validation requirement
+      ansible.builtin.debug:
+        msg: >-
+          Installation/inventory phase completed. Live CUDA smoke, UUID-based GPU
+          selection, topology, P2P, persistence, and LLM prerequisite readiness
+          remain false until their dedicated validation phase is implemented.
