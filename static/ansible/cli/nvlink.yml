@@ -1,0 +1,715 @@
+---
+- name: Debian standalone CUDA, NVLink, and P2P validation
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    nvlink_mode: "apply"
+    nvlink_gpu_select: all
+    nvlink_gpu_selection_source: auto
+    nvlink_require_gpu_count: ""
+    nvlink_require_exact_gpu_count: ""
+    nvlink_require_compute_capabilities: ""
+    nvlink_require_nvlink: false
+    nvlink_expect_topology: ""
+    nvlink_run_p2p_test: false
+    nvlink_strict_p2p: false
+    nvlink_p2p_buffer_mib: 256
+    nvlink_p2p_iterations: 20
+    nvlink_official_samples: "off"
+    nvlink_cuda_samples_path: /opt/src/nvidia/cuda-samples-v13.1
+    nvlink_cuda_samples_tag: v13.1
+    nvlink_strict_official_samples: false
+    nvlink_run_nvbandwidth: false
+    nvlink_nvbandwidth_path: /opt/src/nvidia/nvbandwidth
+    nvlink_nvbandwidth_ref: ""
+    nvlink_install_build_tools: true
+    nvlink_nvidia_facts_path: /etc/ansible/debian/facts/nvidia.yml
+    nvlink_facts_path: /etc/ansible/debian/facts/nvlink.yml
+    nvlink_validated_env_path: /etc/ansible/debian/env/llm-nvidia-validated.sh
+    nvlink_cuda_home: /usr/local/cuda
+    nvlink_bin_dir: /opt/nvidia/bin
+    nvlink_share_dir: /opt/nvidia/share/nvlink
+    nvlink_log_root: /var/log/nvidia/nvlink
+    nvlink_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+    nvlink_log_dir: "{{ nvlink_log_root }}/{{ nvlink_run_id }}"
+    nvlink_smoke_binary: /opt/nvidia/bin/nvidia-cuda-smoke
+    nvlink_p2p_binary: /opt/nvidia/bin/nvidia-p2p-verify
+    nvlink_topology_parser: /opt/nvidia/share/nvlink/nvidia-topology-parser.py
+    nvlink_source_smoke: /opt/nvidia/share/nvlink/nvidia-cuda-smoke.cu
+    nvlink_source_p2p: /opt/nvidia/share/nvlink/nvidia-p2p-verify.cu
+
+  pre_tasks:
+    - name: Load canonical package catalog
+      ansible.builtin.include_vars:
+        file: ../packages.yml
+        name: nvlink_package_catalog
+
+    - name: Normalize NVLink feature inputs
+      ansible.builtin.set_fact:
+        nvlink_mode_effective: "{{ nvlink_mode | lower }}"
+        nvlink_requested_capabilities: "{{ nvlink_require_compute_capabilities.split(',') | reject('equalto', '') | list }}"
+
+    - name: Validate standalone NVLink policy
+      ansible.builtin.assert:
+        that:
+          - nvlink_mode_effective in ['apply', 'validate']
+          - nvlink_official_samples in ['off', 'existing', 'fetch']
+          - nvlink_cuda_samples_tag == 'v13.1'
+          - not nvlink_strict_p2p | bool or nvlink_run_p2p_test | bool
+          - not nvlink_require_nvlink | bool or nvlink_run_p2p_test | bool
+          - not nvlink_strict_official_samples | bool or nvlink_official_samples != 'off'
+          - not nvlink_run_nvbandwidth | bool or nvlink_nvbandwidth_ref | length > 0
+          - nvlink_mode_effective != 'validate' or nvlink_official_samples != 'fetch'
+        fail_msg: >-
+          Invalid standalone NVLink validation request. This feature supports
+          apply and validate only and never changes NVIDIA or CUDA installation.
+
+    - name: Require NVIDIA installation facts
+      ansible.builtin.stat:
+        path: "{{ nvlink_nvidia_facts_path }}"
+      register: nvlink_nvidia_facts_file
+
+    - name: Fail closed when NVIDIA installation facts are unavailable
+      ansible.builtin.assert:
+        that:
+          - nvlink_nvidia_facts_file.stat.exists
+        fail_msg: >-
+          NVIDIA installation facts are missing at {{ nvlink_nvidia_facts_path }}.
+          Run setup/cli/nvidia.sh successfully before NVLink validation.
+
+    - name: Load NVIDIA installation facts without taking ownership
+      ansible.builtin.slurp:
+        src: "{{ nvlink_nvidia_facts_path }}"
+      register: nvlink_nvidia_facts_raw
+
+    - name: Decode NVIDIA installation facts
+      ansible.builtin.set_fact:
+        nvlink_nvidia_facts: "{{ nvlink_nvidia_facts_raw.content | b64decode | from_yaml }}"
+
+    - name: Check live NVIDIA and CUDA prerequisite executables
+      ansible.builtin.shell: |
+        set -euo pipefail
+        test -x nvidia-smi
+        test -x '{{ nvlink_cuda_home }}/bin/nvcc'
+        test -r '{{ nvlink_cuda_home }}/include/cuda_runtime.h'
+        nvidia-smi >/dev/null
+        '{{ nvlink_cuda_home }}/bin/nvcc' --version >/dev/null
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Verify NVIDIA facts agree with live prerequisite state
+      ansible.builtin.assert:
+        that:
+          - nvlink_nvidia_facts.nvidia.driver.nvidia_smi_ready | default(false) | bool
+          - nvlink_nvidia_facts.nvidia.cuda.nvcc_ready | default(false) | bool
+          - nvlink_nvidia_facts.nvidia.cuda.cuda_home | default('') == nvlink_cuda_home
+        fail_msg: >-
+          NVIDIA facts are stale or incomplete for the live driver/CUDA state.
+          Re-run the NVIDIA feature instead of trusting stale facts.
+
+    - name: Collect live physical GPU inventory and resolve UUID/PCI selection
+      ansible.builtin.shell: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import csv
+        import io
+        import json
+        import os
+        import subprocess
+        import sys
+
+        query = [
+            "nvidia-smi",
+            "--query-gpu=index,name,uuid,pci.bus_id,memory.total,driver_version,compute_cap",
+            "--format=csv,noheader",
+        ]
+        completed = subprocess.run(query, check=True, capture_output=True, text=True)
+        inventory = []
+        for row in csv.reader(io.StringIO(completed.stdout), skipinitialspace=True):
+            if len(row) != 7:
+                raise SystemExit(f"unexpected nvidia-smi inventory row: {row!r}")
+            inventory.append({
+                "index": int(row[0]), "name": row[1], "uuid": row[2], "pci_bus_id": row[3],
+                "memory_total": row[4], "driver_version": row[5], "compute_capability": row[6],
+            })
+        if not inventory:
+            raise SystemExit("no physical NVIDIA GPUs were discovered")
+        inventory.sort(key=lambda item: item["pci_bus_id"])
+        requested = os.environ["NVLINK_GPU_SELECT"]
+        requested_capabilities = [item for item in os.environ.get("NVLINK_REQUIRED_CAPABILITIES", "").split(",") if item]
+        selected = inventory if requested == "all" else []
+        if requested != "all":
+            for token in requested.split(","):
+                matches = [item for item in inventory if token == item["uuid"] or token.lower() == item["pci_bus_id"].lower()]
+                if len(matches) != 1:
+                    raise SystemExit(f"selection {token!r} resolves to {len(matches)} physical GPUs")
+                if matches[0] in selected:
+                    raise SystemExit(f"selection {token!r} duplicates a GPU")
+                selected.append(matches[0])
+        minimum = int(os.environ.get("NVLINK_REQUIRE_GPU_COUNT") or 0)
+        exact_text = os.environ.get("NVLINK_REQUIRE_EXACT_GPU_COUNT") or ""
+        if len(selected) < minimum:
+            raise SystemExit(f"selected {len(selected)} GPUs, below required minimum {minimum}")
+        if exact_text and len(selected) != int(exact_text):
+            raise SystemExit(f"selected {len(selected)} GPUs, expected exactly {exact_text}")
+        if requested_capabilities:
+            invalid = [item for item in selected if item["compute_capability"] not in requested_capabilities]
+            if invalid:
+                raise SystemExit("selected GPUs do not meet required compute capabilities: " + ", ".join(item["uuid"] for item in invalid))
+        print(json.dumps({"inventory": inventory, "selected": selected}, sort_keys=True))
+        PY
+      args:
+        executable: /bin/bash
+      environment:
+        NVLINK_GPU_SELECT: "{{ nvlink_gpu_select }}"
+        NVLINK_REQUIRED_CAPABILITIES: "{{ nvlink_require_compute_capabilities }}"
+        NVLINK_REQUIRE_GPU_COUNT: "{{ nvlink_require_gpu_count }}"
+        NVLINK_REQUIRE_EXACT_GPU_COUNT: "{{ nvlink_require_exact_gpu_count }}"
+      register: nvlink_selection_raw
+      changed_when: false
+
+    - name: Persist resolved GPU selection for this run
+      ansible.builtin.set_fact:
+        nvlink_selection: "{{ nvlink_selection_raw.stdout | from_json }}"
+        nvlink_selected_uuids: "{{ (nvlink_selection_raw.stdout | from_json).selected | map(attribute='uuid') | list }}"
+        nvlink_selected_architectures: "{{ (nvlink_selection_raw.stdout | from_json).selected | map(attribute='compute_capability') | map('replace', '.', '') | unique | list }}"
+
+    - name: Reject MIG inventory for the first standalone implementation
+      ansible.builtin.command:
+        argv: [nvidia-smi, -L]
+      register: nvlink_gpu_list
+      changed_when: false
+
+    - name: Require physical non-MIG GPU selection
+      ansible.builtin.assert:
+        that:
+          - nvlink_selection.selected | length > 0
+          - nvlink_gpu_list.stdout is not search('MIG')
+          - not nvlink_run_p2p_test | bool or nvlink_selection.selected | length == 2
+        fail_msg: >-
+          NVLink validation requires physical GPUs. The P2P helper intentionally
+          accepts exactly two explicitly selected physical GPUs per run.
+
+    - name: Inspect CUDA compiler version and supported architecture list
+      ansible.builtin.shell: |
+        set -euo pipefail
+        '{{ nvlink_cuda_home }}/bin/nvcc' --version
+        printf '\n-- gpu architectures --\n'
+        '{{ nvlink_cuda_home }}/bin/nvcc' --list-gpu-arch
+        printf '\n-- gpu code --\n'
+        '{{ nvlink_cuda_home }}/bin/nvcc' --list-gpu-code
+      args:
+        executable: /bin/bash
+      register: nvlink_nvcc_inspection
+      changed_when: false
+
+    - name: Verify selected CUDA architectures are supported by nvcc
+      ansible.builtin.assert:
+        that:
+          - nvlink_selected_architectures | length > 0
+          - nvlink_nvcc_inspection.stdout is search('compute_' ~ item)
+        fail_msg: "nvcc does not advertise compute_{{ item }} for a selected GPU."
+      loop: "{{ nvlink_selected_architectures }}"
+
+  tasks:
+    - name: Install opt-in source-neutral NVLink validation support packages
+      ansible.builtin.apt:
+        name: >-
+          {{
+            nvlink_package_catalog.groups.nvlink_validation_support.packages
+            + (
+              nvlink_package_catalog.groups.nvlink_bandwidth_optional.packages
+              if nvlink_run_nvbandwidth | bool else []
+            )
+          }}
+        state: present
+        install_recommends: false
+      when:
+        - nvlink_mode_effective == 'apply'
+        - nvlink_install_build_tools | bool
+
+    - name: Create managed NVLink directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - "{{ nvlink_bin_dir }}"
+        - "{{ nvlink_share_dir }}"
+        - "{{ nvlink_log_root }}"
+        - "{{ nvlink_log_dir }}"
+        - /etc/ansible/debian/facts
+        - /etc/ansible/debian/env
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Capture NVIDIA topology and link diagnostics
+      ansible.builtin.shell: |
+        set -uo pipefail
+        capture() {
+          name="$1"
+          shift
+          {
+            printf '# command:'
+            printf ' %q' "$@"
+            printf '\n'
+            "$@"
+          } > '{{ nvlink_log_dir }}/'"${name}" 2>&1
+          status=$?
+          printf '%s\n' "${status}" > '{{ nvlink_log_dir }}/'"${name}".rc
+          return 0
+        }
+        capture inventory.csv nvidia-smi --query-gpu=index,name,uuid,pci.bus_id,memory.total,driver_version,compute_cap --format=csv,noheader
+        capture nvidia-smi.txt nvidia-smi
+        capture nvidia-smi-list.txt nvidia-smi -L
+        capture topology.txt nvidia-smi topo -m
+        capture topology-p2p-nvlink.txt nvidia-smi topo -p2p n
+        capture topology-p2p-read.txt nvidia-smi topo -p2p r
+        capture topology-p2p-write.txt nvidia-smi topo -p2p w
+        capture topology-p2p-atomics.txt nvidia-smi topo -p2p a
+        capture topology-p2p-pcie.txt nvidia-smi topo -p2p p
+        capture nvlink-status.txt nvidia-smi nvlink -s
+        capture nvlink-capabilities.txt nvidia-smi nvlink -c
+        capture nvlink-remote-pci.txt nvidia-smi nvlink -p
+        capture nvlink-errors.txt nvidia-smi nvlink -e
+        capture nvlink-counters-before.txt nvidia-smi nvlink -gt d
+      args:
+        executable: /bin/bash
+      changed_when: false
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Install managed NVLink status helper
+      ansible.builtin.copy:
+        dest: "{{ nvlink_bin_dir }}/nvidia-nvlink-status"
+        owner: root
+        group: root
+        mode: '0755'
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          facts='/etc/ansible/debian/facts/nvlink.yml'
+          test -r "${facts}"
+          cat "${facts}"
+      when: nvlink_mode_effective == 'apply'
+
+    - name: Install managed NVLink validation summary helper
+      ansible.builtin.copy:
+        dest: "{{ nvlink_bin_dir }}/nvidia-nvlink-validate"
+        owner: root
+        group: root
+        mode: '0755'
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          facts='/etc/ansible/debian/facts/nvlink.yml'
+          test -r "${facts}"
+          printf 'latest validation log: '
+          readlink -f /var/log/nvidia/nvlink/latest || true
+          grep -E 'llm_transport_prerequisite_ready|nvlink_active|p2p_bidirectional_ready' "${facts}"
+      when: nvlink_mode_effective == 'apply'
+
+    - name: Install audited CUDA sources and topology parser
+      ansible.builtin.copy:
+        src: "../files/nvlink/{{ item.source }}"
+        dest: "{{ nvlink_share_dir }}/{{ item.destination }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - { source: nvidia-cuda-smoke.cu, destination: nvidia-cuda-smoke.cu, mode: '0644' }
+        - { source: nvidia-p2p-verify.cu, destination: nvidia-p2p-verify.cu, mode: '0644' }
+        - { source: nvidia-topology-parser.py, destination: nvidia-topology-parser.py, mode: '0755' }
+      register: nvlink_audited_sources
+      when: nvlink_mode_effective == 'apply'
+
+    - name: Check existing CUDA helper binaries
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ nvlink_smoke_binary }}"
+        - "{{ nvlink_p2p_binary }}"
+        - "{{ nvlink_topology_parser }}"
+      register: nvlink_existing_helpers
+
+    - name: Compile audited CUDA helpers for selected architectures
+      ansible.builtin.shell: |
+        set -euo pipefail
+        gencode=()
+        for architecture in {{ nvlink_selected_architectures | join(' ') }}; do
+          gencode+=( -gencode "arch=compute_${architecture},code=sm_${architecture}" )
+        done
+        '{{ nvlink_cuda_home }}/bin/nvcc' -O3 -std=c++17 -lineinfo "${gencode[@]}" '{{ nvlink_source_smoke }}' -o '{{ nvlink_smoke_binary }}'
+        '{{ nvlink_cuda_home }}/bin/nvcc' -O3 -std=c++17 -lineinfo "${gencode[@]}" '{{ nvlink_source_p2p }}' -o '{{ nvlink_p2p_binary }}'
+      args:
+        executable: /bin/bash
+      register: nvlink_compile_helpers
+      changed_when: true
+      when:
+        - nvlink_mode_effective == 'apply'
+        - nvlink_audited_sources.changed or not (nvlink_existing_helpers.results | map(attribute='stat.exists') | min)
+
+    - name: Record CUDA helper compilation output
+      ansible.builtin.copy:
+        dest: "{{ nvlink_log_dir }}/compile-helpers.txt"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          {{ nvlink_compile_helpers.stdout | default('existing helpers reused') }}
+          {{ nvlink_compile_helpers.stderr | default('') }}
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Require installed audited CUDA helpers for validation
+      ansible.builtin.assert:
+        that:
+          - nvlink_existing_helpers.results | map(attribute='stat.exists') | min or nvlink_mode_effective == 'apply'
+        fail_msg: >-
+          validate requires helpers built by a prior apply. Run setup/cli/nvlink.sh
+          apply before a non-mutating validation run.
+
+    - name: Calculate audited source and binary SHA-256 values
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        checksum_algorithm: sha256
+      loop:
+        - "{{ nvlink_source_smoke }}"
+        - "{{ nvlink_source_p2p }}"
+        - "{{ nvlink_smoke_binary }}"
+        - "{{ nvlink_p2p_binary }}"
+      register: nvlink_artifact_hashes
+
+    - name: Require source and binary artifacts for the validation record
+      ansible.builtin.assert:
+        that:
+          - nvlink_artifact_hashes.results | map(attribute='stat.exists') | min
+        fail_msg: "NVLink validation cannot persist a complete build record because an audited artifact is missing."
+
+    - name: Run deterministic CUDA smoke test once per selected UUID
+      ansible.builtin.shell: |
+        set -euo pipefail
+        '{{ nvlink_smoke_binary }}' | tee '{{ nvlink_log_dir }}/smoke-{{ item.uuid }}.jsonl'
+      args:
+        executable: /bin/bash
+      environment:
+        CUDA_DEVICE_ORDER: PCI_BUS_ID
+        CUDA_VISIBLE_DEVICES: "{{ item.uuid }}"
+      loop: "{{ nvlink_selection.selected }}"
+      register: nvlink_smoke_runs
+      changed_when: false
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Parse CUDA smoke test output
+      ansible.builtin.set_fact:
+        nvlink_smoke_results: "{{ nvlink_smoke_runs.results | map(attribute='stdout') | map('from_json') | list }}"
+        nvlink_smoke_all_passed: "{{ (nvlink_smoke_runs.results | map(attribute='rc') | select('equalto', 0) | list | length) == (nvlink_selection.selected | length) }}"
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Require every selected GPU to pass CUDA smoke
+      ansible.builtin.assert:
+        that:
+          - nvlink_smoke_all_passed | bool
+        fail_msg: "At least one selected GPU failed its isolated deterministic CUDA smoke test."
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Parse selected pair topology route
+      ansible.builtin.command:
+        argv:
+          - "{{ nvlink_topology_parser }}"
+          - --topology
+          - "{{ nvlink_log_dir }}/topology.txt"
+          - --source-index
+          - "{{ nvlink_selection.selected[0].index | string }}"
+          - --destination-index
+          - "{{ nvlink_selection.selected[1].index | string }}"
+      register: nvlink_topology_parse
+      changed_when: false
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_selection.selected | length >= 2
+
+    - name: Set topology classification
+      ansible.builtin.set_fact:
+        nvlink_pair_topology: "{{ nvlink_topology_parse.stdout | from_json }}"
+        nvlink_route: "{{ (nvlink_topology_parse.stdout | from_json).route }}"
+        nvlink_link_status_active: "{{ lookup('file', nvlink_log_dir ~ '/nvlink-status.txt') is search('(?mi)link\\s+[0-9]+:\\s+active') }}"
+        nvlink_link_status_supported: "{{ (lookup('file', nvlink_log_dir ~ '/nvlink-status.txt.rc') | trim) == '0' }}"
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_selection.selected | length >= 2
+
+    - name: Require requested NVLink topology token
+      # Reference dual RTX 3090 hosts request NV4: four bonded NVLink links.
+      # This is evidence of an interconnect, never unified 48 GiB VRAM.
+      ansible.builtin.assert:
+        that:
+          - not nvlink_require_nvlink | bool or nvlink_route is match('^NV[0-9]+$')
+          - nvlink_expect_topology | length == 0 or nvlink_route == nvlink_expect_topology
+          - not nvlink_require_nvlink | bool or not (nvlink_link_status_supported | bool) or nvlink_link_status_active | bool
+        fail_msg: "Selected GPU pair route {{ nvlink_route | default('unavailable') }} does not satisfy requested NVLink topology."
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_selection.selected | length >= 2
+
+    - name: Run opt-in directed CUDA P2P validation
+      ansible.builtin.shell: |
+        set -euo pipefail
+        '{{ nvlink_p2p_binary }}' \
+          --buffer-mib='{{ nvlink_p2p_buffer_mib }}' \
+          --iterations='{{ nvlink_p2p_iterations }}' \
+          --source-uuid='{{ nvlink_selection.selected[0].uuid }}' \
+          --destination-uuid='{{ nvlink_selection.selected[1].uuid }}' \
+          | tee '{{ nvlink_log_dir }}/p2p.jsonl'
+      args:
+        executable: /bin/bash
+      environment:
+        CUDA_DEVICE_ORDER: PCI_BUS_ID
+        CUDA_VISIBLE_DEVICES: "{{ nvlink_selected_uuids | join(',') }}"
+      register: nvlink_p2p_run
+      changed_when: false
+      failed_when: false
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_run_p2p_test | bool
+
+    - name: Record opt-in P2P result
+      ansible.builtin.set_fact:
+        nvlink_p2p_results: "{{ nvlink_p2p_run.stdout_lines | map('from_json') | list }}"
+        nvlink_p2p_passed: "{{ nvlink_p2p_run.rc == 0 }}"
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_run_p2p_test | bool
+
+    - name: Enforce requested P2P correctness
+      ansible.builtin.assert:
+        that:
+          - nvlink_p2p_passed | bool
+        fail_msg: "Requested CUDA P2P validation did not pass in both directions."
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_run_p2p_test | bool
+        - nvlink_strict_p2p | bool or nvlink_require_nvlink | bool
+
+    - name: Capture NVLink traffic counters after P2P diagnostic
+      ansible.builtin.shell: |
+        set -uo pipefail
+        {
+          printf '# command: nvidia-smi nvlink -gt d\n'
+          nvidia-smi nvlink -gt d
+        } > '{{ nvlink_log_dir }}/nvlink-counters-after.txt' 2>&1 || true
+      args:
+        executable: /bin/bash
+      changed_when: false
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_run_p2p_test | bool
+
+    - name: Fetch pinned CUDA Samples only when explicitly requested
+      ansible.builtin.git:
+        repo: https://github.com/NVIDIA/cuda-samples.git
+        dest: "{{ nvlink_cuda_samples_path }}"
+        version: "{{ nvlink_cuda_samples_tag }}"
+        depth: 1
+        single_branch: true
+        update: false
+      when:
+        - nvlink_mode_effective == 'apply'
+        - nvlink_official_samples == 'fetch'
+
+    - name: Verify requested CUDA Samples checkout and run corroborating tests
+      ansible.builtin.shell: |
+        set -uo pipefail
+        source_dir='{{ nvlink_cuda_samples_path }}'
+        build_dir="${source_dir}/build-debian-sm86"
+        test -d "${source_dir}/.git"
+        test "$(git -C "${source_dir}" describe --tags --exact-match)" = '{{ nvlink_cuda_samples_tag }}'
+        if [ '{{ nvlink_mode_effective }}' = apply ]; then
+          cmake -S "${source_dir}" -B "${build_dir}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER='{{ nvlink_cuda_home }}/bin/nvcc' \
+            -DCMAKE_CUDA_ARCHITECTURES='{{ nvlink_selected_architectures | join(';') }}'
+          cmake --build "${build_dir}" --target deviceQuery simpleP2P p2pBandwidthLatencyTest
+        fi
+        export CUDA_DEVICE_ORDER=PCI_BUS_ID
+        export CUDA_VISIBLE_DEVICES='{{ nvlink_selected_uuids | join(',') }}'
+        "${build_dir}/bin/x86_64/linux/release/deviceQuery"
+        "${build_dir}/bin/x86_64/linux/release/simpleP2P"
+        "${build_dir}/bin/x86_64/linux/release/p2pBandwidthLatencyTest"
+      args:
+        executable: /bin/bash
+      register: nvlink_official_samples_run
+      changed_when: false
+      failed_when: false
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_official_samples in ['existing', 'fetch']
+
+    - name: Record optional CUDA Samples result
+      ansible.builtin.copy:
+        dest: "{{ nvlink_log_dir }}/official-samples.txt"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          status: {{ 'passed' if (nvlink_official_samples_run.rc | default(1)) == 0 else ('not_requested' if nvlink_official_samples == 'off' else 'failed') }}
+          tag: {{ nvlink_cuda_samples_tag }}
+          stdout: {{ nvlink_official_samples_run.stdout | default('') | to_json }}
+          stderr: {{ nvlink_official_samples_run.stderr | default('') | to_json }}
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Enforce strict optional CUDA Samples request
+      ansible.builtin.assert:
+        that:
+          - nvlink_official_samples_run.rc | default(1) == 0
+        fail_msg: "Strict CUDA Samples validation failed."
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_strict_official_samples | bool
+
+    - name: Run optional existing NVBandwidth binary
+      ansible.builtin.command:
+        argv: ["{{ nvlink_nvbandwidth_path }}/nvbandwidth"]
+      register: nvlink_nvbandwidth_run
+      changed_when: false
+      failed_when: false
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_run_nvbandwidth | bool
+
+    - name: Write NVLink build manifest
+      ansible.builtin.copy:
+        dest: "{{ nvlink_share_dir }}/build-manifest.yml"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          generated_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+          compiler: {{ nvlink_cuda_home }}/bin/nvcc
+          compiler_output: {{ nvlink_nvcc_inspection.stdout | to_json }}
+          requested_architectures: {{ nvlink_selected_architectures | to_json }}
+          source_sha256:
+            smoke: "{{ nvlink_artifact_hashes.results[0].stat.checksum }}"
+            p2p: "{{ nvlink_artifact_hashes.results[1].stat.checksum }}"
+      when: nvlink_mode_effective == 'apply'
+
+    - name: Derive standalone NVLink readiness
+      ansible.builtin.set_fact:
+        nvlink_topology_active: "{{ nvlink_route | default('') is match('^NV[0-9]+$') }}"
+        nvlink_p2p_ready: "{{ (nvlink_run_p2p_test | bool) and (nvlink_p2p_passed | default(false) | bool) }}"
+        nvlink_transport_ready: >-
+          {{
+            (nvlink_smoke_all_passed | bool)
+            and (nvlink_route | default('') is match('^NV[0-9]+$'))
+            and (not (nvlink_link_status_supported | default(false) | bool) or (nvlink_link_status_active | default(false) | bool))
+            and (nvlink_p2p_passed | default(false) | bool)
+          }}
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Write validated NVIDIA environment overlay only after transport readiness
+      ansible.builtin.copy:
+        dest: "{{ nvlink_validated_env_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by the standalone Debian NVLink validation feature.
+          export CUDA_DEVICE_ORDER='PCI_BUS_ID'
+          export CUDA_VISIBLE_DEVICES='{{ nvlink_selected_uuids | join(',') }}'
+          export CMAKE_CUDA_ARCHITECTURES='{{ nvlink_selected_architectures | join(';') }}'
+          export TORCH_CUDA_ARCH_LIST='{{ nvlink_selection.selected | map(attribute='compute_capability') | unique | join(';') }}'
+          export FLASHINFER_CUDA_ARCH_LIST='{{ nvlink_selection.selected | map(attribute='compute_capability') | unique | join(';') }}'
+          unset GGML_CUDA_ENABLE_UNIFIED_MEMORY
+          unset GGML_CUDA_P2P
+          unset GGML_CUDA_PEER_MAX_BATCH_SIZE
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_transport_ready | bool
+
+    - name: Persist NVLink validation facts atomically after mandatory gates pass
+      ansible.builtin.copy:
+        dest: "{{ nvlink_facts_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          nvlink:
+            schema_version: 1
+            generated_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+            mode: {{ nvlink_mode_effective | to_json }}
+            nvidia_prerequisite:
+              facts_path: {{ nvlink_nvidia_facts_path | to_json }}
+              nvidia_smi_ready: true
+              nvcc_ready: true
+              cuda_home: {{ nvlink_cuda_home | to_json }}
+              driver_version: {{ nvlink_selection.selected[0].driver_version | default('') | to_json }}
+            selection:
+              source: {{ nvlink_gpu_selection_source | to_json }}
+              selected_uuids: {{ nvlink_selected_uuids | to_json }}
+              selected_pci_bus_ids: {{ nvlink_selection.selected | map(attribute='pci_bus_id') | list | to_json }}
+              current_indices: {{ nvlink_selection.selected | map(attribute='index') | list | to_json }}
+              compute_capabilities: {{ nvlink_selection.selected | map(attribute='compute_capability') | unique | list | to_json }}
+              cmake_cuda_architectures: {{ nvlink_selected_architectures | to_json }}
+            compiler:
+              path: {{ (nvlink_cuda_home ~ '/bin/nvcc') | to_json }}
+              requested_architectures: {{ nvlink_selected_architectures | to_json }}
+              architectures_supported: true
+              smoke_binary_sha256: {{ nvlink_artifact_hashes.results[2].stat.checksum | to_json }}
+              p2p_binary_sha256: {{ nvlink_artifact_hashes.results[3].stat.checksum | to_json }}
+            cuda_smoke:
+              passed: {{ nvlink_smoke_all_passed | to_json }}
+              per_gpu: {{ nvlink_smoke_results | to_json }}
+            topology:
+              raw_log: {{ (nvlink_log_dir ~ '/topology.txt') | to_json }}
+              route: {{ nvlink_route | default('') | to_json }}
+              classification: >-
+                {{
+                  (
+                    'nvlink_active'
+                    if (nvlink_topology_active | bool) and (not (nvlink_link_status_supported | default(false) | bool) or (nvlink_link_status_active | default(false) | bool))
+                    else ('nvlink_inactive' if (nvlink_topology_active | bool) else 'pcie_only')
+                  ) | to_json
+                }}
+              bonded_nvlink_count: {{ (nvlink_pair_topology | default({})).bonded_nvlink_count | default(0) | to_json }}
+              link_status_active: {{ nvlink_link_status_active | default(false) | to_json }}
+            p2p:
+              requested: {{ nvlink_run_p2p_test | to_json }}
+              tested: {{ nvlink_run_p2p_test | to_json }}
+              passed: {{ nvlink_p2p_passed | default(false) | to_json }}
+              results: {{ nvlink_p2p_results | default([]) | to_json }}
+              log: {{ (nvlink_log_dir ~ '/p2p.jsonl') | to_json }}
+            official_samples:
+              requested: {{ (nvlink_official_samples != 'off') | to_json }}
+              tag: {{ nvlink_cuda_samples_tag | to_json }}
+              status: {{ ('passed' if (nvlink_official_samples_run.rc | default(1)) == 0 else ('not_requested' if nvlink_official_samples == 'off' else 'failed')) | to_json }}
+            readiness:
+              cuda_smoke_ready: {{ nvlink_smoke_all_passed | to_json }}
+              topology_ready: {{ ((nvlink_topology_active | bool) and (not (nvlink_link_status_supported | default(false) | bool) or (nvlink_link_status_active | default(false) | bool))) | to_json }}
+              nvlink_required: {{ nvlink_require_nvlink | to_json }}
+              nvlink_active: {{ nvlink_topology_active | to_json }}
+              p2p_bidirectional_ready: {{ nvlink_p2p_ready | to_json }}
+              llm_transport_prerequisite_ready: {{ nvlink_transport_ready | to_json }}
+              llm_runtime_validated: false
+              reasons: []
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Update stable latest NVLink log link after successful validation
+      ansible.builtin.file:
+        src: "{{ nvlink_log_dir }}"
+        dest: "{{ nvlink_log_root }}/latest"
+        state: link
+        force: true
+      when: nvlink_mode_effective in ['apply', 'validate']
+
+    - name: Report standalone NVLink checkpoint
+      ansible.builtin.debug:
+        msg:
+          - "NVIDIA installation prerequisite: PASS"
+          - "Selected physical GPUs: PASS ({{ nvlink_selection.selected | length }})"
+          - "Per-GPU CUDA smoke: PASS"
+          - "GPU topology: {{ nvlink_route | default('unavailable') }}"
+          - "CUDA P2P requested/passed: {{ nvlink_run_p2p_test }}/{{ nvlink_p2p_passed | default(false) }}"
+          - "LLM transport prerequisite: {{ 'READY' if nvlink_transport_ready | bool else 'NOT READY' }}"
+          - "NVLink does not combine two 24 GiB framebuffers into automatic 48 GiB VRAM."

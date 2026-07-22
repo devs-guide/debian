@@ -13,27 +13,18 @@ FILES=(
   "setup/debian.sh:setup/debian.sh"
   "setup/metal.sh:setup/metal.sh"
   "setup/hardware.sh:setup/hardware.sh"
-  "setup/hardware:setup/hardware.sh"
   "setup/autologin.sh:setup/autologin.sh"
-  "setup/autologin:setup/autologin.sh"
   "setup/release.common.sh:setup/release.common.sh"
   "setup/cli/node.sh:setup/cli/node.sh"
-  "setup/cli/node:setup/cli/node.sh"
   "setup/cli/kiosk.app.sh:setup/cli/kiosk.app.sh"
-  "setup/cli/kiosk.app:setup/cli/kiosk.app.sh"
   "setup/cli/x11.sh:setup/cli/x11.sh"
-  "setup/cli/x11:setup/cli/x11.sh"
   "setup/cli/openbox.sh:setup/cli/openbox.sh"
-  "setup/cli/openbox:setup/cli/openbox.sh"
   "setup/cli/touchscreen.sh:setup/cli/touchscreen.sh"
-  "setup/cli/touchscreen:setup/cli/touchscreen.sh"
   "setup/cli/codex.sh:setup/cli/codex.sh"
   "setup/cli/startx.sh:setup/cli/startx.sh"
-  "setup/cli/startx:setup/cli/startx.sh"
   "setup/cli/tauri.sh:setup/cli/tauri.sh"
-  "setup/cli/tauri:setup/cli/tauri.sh"
   "setup/cli/nvidia.sh:setup/cli/nvidia.sh"
-  "setup/cli/nvidia:setup/cli/nvidia.sh"
+  "setup/cli/nvlink.sh:setup/cli/nvlink.sh"
   "readme.md:readme.md"
   "ansible/install.playbooks.txt:ansible/install.playbooks.txt"
   "ansible/bootstrap.yml:ansible/bootstrap.yml"
@@ -46,6 +37,10 @@ FILES=(
   "ansible/sources.yml:ansible/sources.yml"
   "ansible/cli/tauri.yml:ansible/cli/tauri.yml"
   "ansible/cli/nvidia.yml:ansible/cli/nvidia.yml"
+  "ansible/cli/nvlink.yml:ansible/cli/nvlink.yml"
+  "ansible/files/nvlink/nvidia-cuda-smoke.cu:ansible/files/nvlink/nvidia-cuda-smoke.cu"
+  "ansible/files/nvlink/nvidia-p2p-verify.cu:ansible/files/nvlink/nvidia-p2p-verify.cu"
+  "ansible/files/nvlink/nvidia-topology-parser.py:ansible/files/nvlink/nvidia-topology-parser.py"
   "ansible/cli/x11.yml:ansible/cli/x11.yml"
   "ansible/cli/openbox.yml:ansible/cli/openbox.yml"
   "ansible/cli/touchscreen.yml:ansible/cli/touchscreen.yml"
@@ -174,6 +169,7 @@ check_setup_feature_refs "setup/cli/codex.sh"
 check_setup_feature_refs "setup/cli/startx.sh"
 check_setup_feature_refs "setup/cli/tauri.sh"
 check_setup_feature_refs "setup/cli/nvidia.sh"
+check_setup_feature_refs "setup/cli/nvlink.sh"
 check_setup_feature_refs "setup/hardware.sh"
 check_setup_feature_refs "setup/autologin.sh"
 
@@ -192,5 +188,23 @@ check_nvidia_runner_runtime_support() {
 }
 
 check_nvidia_runner_runtime_support
+
+check_nvlink_runner_runtime_support() {
+  local remote_runner="${TMPDIR}/setup/cli/nvlink"
+
+  if [[ ! -s "${remote_runner}" ]]; then
+    echo "[validate.pages][error] published NVLink runner was not fetched: ${remote_runner}"
+    rc=1
+    return
+  fi
+  for reference in packages.yml files/nvlink/nvidia-cuda-smoke.cu files/nvlink/nvidia-p2p-verify.cu files/nvlink/nvidia-topology-parser.py; do
+    if ! grep -Fq "${reference}" "${remote_runner}"; then
+      echo "[validate.pages][error] published NVLink runner must reference ${reference}"
+      rc=1
+    fi
+  done
+}
+
+check_nvlink_runner_runtime_support
 
 exit "${rc}"

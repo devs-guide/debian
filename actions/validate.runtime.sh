@@ -249,6 +249,7 @@ files=(
   "setup/cli/startx.sh"
   "setup/cli/tauri.sh"
   "setup/cli/nvidia.sh"
+  "setup/cli/nvlink.sh"
   "actions/www.pages.sh"
   "actions/validate.runtime.sh"
   "actions/validate.pages.sh"
@@ -268,6 +269,10 @@ files=(
   "ansible/cli/touchscreen.yml"
   "ansible/cli/tauri.yml"
   "ansible/cli/nvidia.yml"
+  "ansible/cli/nvlink.yml"
+  "ansible/files/nvlink/nvidia-cuda-smoke.cu"
+  "ansible/files/nvlink/nvidia-p2p-verify.cu"
+  "ansible/files/nvlink/nvidia-topology-parser.py"
   "ansible/cli/startx.yml"
   "ansible/autologin.yml"
   "ansible/group_vars/all.yml"
@@ -321,6 +326,74 @@ if ! grep -Fq 'file: ../packages.yml' "${ROOT}/ansible/cli/nvidia.yml"; then
 fi
 if ! grep -Eq '^[[:space:]]*nvidia_runtime_support:' "${ROOT}/ansible/packages.yml"; then
   echo "[validate.runtime][error] ansible/packages.yml must define nvidia_runtime_support"
+  rc=1
+fi
+if ! grep -Fq 'nvidia_llm_shell_path' "${ROOT}/ansible/cli/nvidia.yml"; then
+  echo "[validate.runtime][error] ansible/cli/nvidia.yml must manage the CUDA shell environment fragment"
+  rc=1
+fi
+if ! grep -Fq 'export CUDA_HOME=' "${ROOT}/ansible/cli/nvidia.yml"; then
+  echo "[validate.runtime][error] ansible/cli/nvidia.yml must export CUDA_HOME after compiler validation"
+  rc=1
+fi
+if grep -Fq 'LD_LIBRARY_PATH' "${ROOT}/ansible/cli/nvidia.yml"; then
+  echo "[validate.runtime][error] ansible/cli/nvidia.yml must not introduce global LD_LIBRARY_PATH"
+  rc=1
+fi
+
+echo "[validate.runtime] checking NVLink validation feature contract..."
+if ! bash -n "${ROOT}/setup/cli/nvlink.sh"; then
+  echo "[validate.runtime][error] setup/cli/nvlink.sh must pass bash -n"
+  rc=1
+fi
+for required_ref in \
+  '"packages.yml"' \
+  '"files/nvlink/nvidia-cuda-smoke.cu"' \
+  '"files/nvlink/nvidia-p2p-verify.cu"' \
+  '"files/nvlink/nvidia-topology-parser.py"'; do
+  if ! grep -Fq "${required_ref}" "${ROOT}/setup/cli/nvlink.sh"; then
+    echo "[validate.runtime][error] setup/cli/nvlink.sh must stage ${required_ref}"
+    rc=1
+  fi
+done
+for marker in nvlink.yml llm-nvidia-validated.sh nvidia-cuda-smoke nvidia-p2p-verify nvidia-topology-parser.py NV4 CUDA_VISIBLE_DEVICES; do
+  if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
+    echo "[validate.runtime][error] ansible/cli/nvlink.yml missing required marker: ${marker}"
+    rc=1
+  fi
+done
+if grep -Eq 'nvidia-driver|cuda-toolkit|cuda-keyring|grub|mokutil|update-initramfs|LD_LIBRARY_PATH' "${ROOT}/ansible/cli/nvlink.yml"; then
+  echo "[validate.runtime][error] NVLink playbook must not mutate NVIDIA/CUDA installation, boot state, or global library paths"
+  rc=1
+fi
+if grep -Eq 'GGML_CUDA_P2P=|GGML_CUDA_ENABLE_UNIFIED_MEMORY=' "${ROOT}/ansible/cli/nvlink.yml"; then
+  echo "[validate.runtime][error] NVLink playbook must not enable application P2P or Unified Memory globally"
+  rc=1
+fi
+if ! sed -n '/nvlink_validation_support:/,/^[^[:space:]]/p' "${ROOT}/ansible/packages.yml" | grep -Eq 'build-essential|cmake|ninja-build|git|jq|pciutils'; then
+  echo "[validate.runtime][error] nvlink_validation_support package group is incomplete"
+  rc=1
+fi
+if ! sed -n '/nvlink_bandwidth_optional:/,/^[^[:space:]]/p' "${ROOT}/ansible/packages.yml" | grep -Fq 'libboost-program-options-dev'; then
+  echo "[validate.runtime][error] nvlink_bandwidth_optional package group is incomplete"
+  rc=1
+fi
+if grep -qx 'cli/nvlink.yml' "${ROOT}/ansible/install.playbooks.txt"; then
+  echo "[validate.runtime][error] ansible/install.playbooks.txt must not include cli/nvlink.yml"
+  rc=1
+fi
+if ! grep -Fq 'cudaGetDeviceCount' "${ROOT}/ansible/files/nvlink/nvidia-cuda-smoke.cu" || ! grep -Fq 'cudaDeviceSynchronize' "${ROOT}/ansible/files/nvlink/nvidia-cuda-smoke.cu"; then
+  echo "[validate.runtime][error] CUDA smoke helper must enumerate and synchronize CUDA work"
+  rc=1
+fi
+if ! grep -Fq 'cudaDeviceCanAccessPeer' "${ROOT}/ansible/files/nvlink/nvidia-p2p-verify.cu" || ! grep -Fq 'cudaMemcpyPeerAsync' "${ROOT}/ansible/files/nvlink/nvidia-p2p-verify.cu"; then
+  echo "[validate.runtime][error] P2P helper must test directed peer access and peer copies"
+  rc=1
+fi
+if ! validate_yaml_file "${ROOT}/ansible/cli/nvlink.yml"; then
+  rc=1
+fi
+if ! validate_shell_payloads "${ROOT}/ansible/cli/nvlink.yml"; then
   rc=1
 fi
 
