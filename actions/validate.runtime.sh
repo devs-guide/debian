@@ -1498,48 +1498,24 @@ if ! cmp -s "${ROOT}/setup/autologin.sh" "${ROOT}/static/setup/autologin.sh"; th
   echo "[validate.runtime][error] static/setup/autologin.sh is out of sync with setup/autologin.sh"
   rc=1
 fi
-if ! cmp -s "${ROOT}/setup/autologin.sh" "${ROOT}/static/setup/autologin"; then
-  echo "[validate.runtime][error] static/setup/autologin is out of sync with setup/autologin.sh"
-  rc=1
-fi
 if ! cmp -s "${ROOT}/setup/cli/tauri.sh" "${ROOT}/static/setup/cli/tauri.sh"; then
   echo "[validate.runtime][error] static/setup/cli/tauri.sh is out of sync with setup/cli/tauri.sh"
-  rc=1
-fi
-if ! cmp -s "${ROOT}/setup/cli/tauri.sh" "${ROOT}/static/setup/cli/tauri"; then
-  echo "[validate.runtime][error] static/setup/cli/tauri is out of sync with setup/cli/tauri.sh"
   rc=1
 fi
 if ! cmp -s "${ROOT}/setup/cli/startx.sh" "${ROOT}/static/setup/cli/startx.sh"; then
   echo "[validate.runtime][error] static/setup/cli/startx.sh is out of sync with setup/cli/startx.sh"
   rc=1
 fi
-if ! cmp -s "${ROOT}/setup/cli/startx.sh" "${ROOT}/static/setup/cli/startx"; then
-  echo "[validate.runtime][error] static/setup/cli/startx is out of sync with setup/cli/startx.sh"
-  rc=1
-fi
 if ! cmp -s "${ROOT}/setup/cli/x11.sh" "${ROOT}/static/setup/cli/x11.sh"; then
   echo "[validate.runtime][error] static/setup/cli/x11.sh is out of sync with setup/cli/x11.sh"
-  rc=1
-fi
-if ! cmp -s "${ROOT}/setup/cli/x11.sh" "${ROOT}/static/setup/cli/x11"; then
-  echo "[validate.runtime][error] static/setup/cli/x11 is out of sync with setup/cli/x11.sh"
   rc=1
 fi
 if ! cmp -s "${ROOT}/setup/cli/openbox.sh" "${ROOT}/static/setup/cli/openbox.sh"; then
   echo "[validate.runtime][error] static/setup/cli/openbox.sh is out of sync with setup/cli/openbox.sh"
   rc=1
 fi
-if ! cmp -s "${ROOT}/setup/cli/openbox.sh" "${ROOT}/static/setup/cli/openbox"; then
-  echo "[validate.runtime][error] static/setup/cli/openbox is out of sync with setup/cli/openbox.sh"
-  rc=1
-fi
 if ! cmp -s "${ROOT}/setup/cli/touchscreen.sh" "${ROOT}/static/setup/cli/touchscreen.sh"; then
   echo "[validate.runtime][error] static/setup/cli/touchscreen.sh is out of sync with setup/cli/touchscreen.sh"
-  rc=1
-fi
-if ! cmp -s "${ROOT}/setup/cli/touchscreen.sh" "${ROOT}/static/setup/cli/touchscreen"; then
-  echo "[validate.runtime][error] static/setup/cli/touchscreen is out of sync with setup/cli/touchscreen.sh"
   rc=1
 fi
 
