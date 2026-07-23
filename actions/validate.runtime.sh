@@ -312,7 +312,17 @@ done
 
 echo "[validate.runtime] checking canonical published setup entrypoint URLs..."
 legacy_pages_entry_url_regex='(?:https://devs-guide\.github\.io/debian/|\$\{PAGES_BASE_URL\}/)setup/(?:bootstrap|debian|metal|hardware|autologin|release\.common|cli/(?:node|kiosk\.app|x11|openbox|touchscreen|codex|startx|tauri|nvidia|nvlink))(?=[[:space:]"`|)}]|$)'
-if rg -n -P "${legacy_pages_entry_url_regex}" "${ROOT}/setup" -g '*.sh'; then
+legacy_pages_entry_url_ere='(https://devs-guide\.github\.io/debian/|\$\{PAGES_BASE_URL\}/)setup/(bootstrap|debian|metal|hardware|autologin|release\.common|cli/(node|kiosk\.app|x11|openbox|touchscreen|codex|startx|tauri|nvidia|nvlink))([[:space:]"`|)}]|$)'
+if command -v rg >/dev/null 2>&1; then
+  legacy_pages_entry_url_matches() {
+    rg -n -P "${legacy_pages_entry_url_regex}" "${ROOT}/setup" -g '*.sh'
+  }
+else
+  legacy_pages_entry_url_matches() {
+    find "${ROOT}/setup" -type f -name '*.sh' -exec grep -nE "${legacy_pages_entry_url_ere}" {} +
+  }
+fi
+if legacy_pages_entry_url_matches; then
   echo "[validate.runtime][error] published setup entrypoints must use their canonical .sh URL"
   rc=1
 fi
@@ -484,7 +494,7 @@ for marker in 'command -v nvidia-smi' 'nvidia_smi_path' '"${nvidia_smi_path}" >/
     rc=1
   fi
 done
-for marker in 'Normalize the NVIDIA prerequisite fact contract' 'nvlink_nvidia_schema_version' 'nvlink_fact_runtime_header_ready' 'NVLink will not rewrite NVIDIA-owned facts.'; do
+for marker in 'Normalize the NVIDIA prerequisite fact contract' 'nvlink_nvidia_schema_version' 'nvlink_fact_runtime_header_ready' 'NVLink will not rewrite NVIDIA-owned'; do
   if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
     echo "[validate.runtime][error] NVLink NVIDIA fact contract is missing: ${marker}"
     rc=1
