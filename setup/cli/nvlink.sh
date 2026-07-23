@@ -3,6 +3,12 @@
 ## Standalone CUDA, NVLink, and P2P validation runner.
 ## It validates an existing NVIDIA/CUDA installation; it never installs drivers,
 ## CUDA toolkits, repositories, kernel modules, or boot configuration.
+## EXAMPLE:
+
+# Validate dual RTX 3090 (SM 8.6) NVLink NV4, run strict P2P diagnostics,
+# fetch CUDA 13.1 samples, and install required build tools.
+# wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | bash -s -- apply --gpu=all --require-exact-gpu-count=2 --require-compute-capability=8.6 --require-nvlink --expect-topology=NV4 --run-p2p-test --strict-p2p --p2p-buffer-mib=256 --p2p-iterations=20 --official-samples=fetch --cuda-samples-tag=v13.1 --install-build-tools
+
 
 set -euo pipefail
 
@@ -230,8 +236,8 @@ interactive.gpu.selection() {
 current.script.path() { local source_path="${BASH_SOURCE[0]:-}"; case "${source_path}" in ''|-|/dev/fd/*|/proc/self/fd/*) return 1 ;; esac; [[ -r "${source_path}" ]] || return 1; readlink -f "${source_path}" 2>/dev/null || printf '%s\n' "${source_path}"; }
 
 collect.sudo.env.args() {
-  local -n output="$1" name=""
-  output=()
+  local -n output="$1"
+  local name=""
   while IFS= read -r name; do
     case "${name}" in DEBIAN_NVLINK_*|PAGES_BASE_URL|TMP_ROOT_DIR|TMP_DIR|REFRESH) output+=("${name}=${!name}") ;; esac
   done < <(compgen -e)
