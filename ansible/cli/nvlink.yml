@@ -104,15 +104,48 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: Normalize the NVIDIA prerequisite fact contract
+      ansible.builtin.set_fact:
+        nvlink_nvidia_schema_version: >-
+          {{ nvlink_nvidia_facts.nvidia.schema_version | default(0) | int }}
+        nvlink_fact_generated_at: >-
+          {{ nvlink_nvidia_facts.nvidia.generated_at | default('unknown') }}
+        nvlink_fact_nvidia_smi_ready: >-
+          {{ nvlink_nvidia_facts.nvidia.driver.nvidia_smi_ready | default(false) | bool }}
+        nvlink_fact_nvidia_smi_rc: >-
+          {{ nvlink_nvidia_facts.nvidia.driver.nvidia_smi_rc | default('unknown') }}
+        nvlink_fact_nvcc_ready: >-
+          {{ nvlink_nvidia_facts.nvidia.cuda.nvcc_ready | default(false) | bool }}
+        nvlink_fact_nvcc_rc: >-
+          {{ nvlink_nvidia_facts.nvidia.cuda.nvcc_rc | default('unknown') }}
+        nvlink_fact_cuda_home: >-
+          {{ nvlink_nvidia_facts.nvidia.cuda.cuda_home | default('') }}
+        nvlink_fact_runtime_header_ready: >-
+          {{ nvlink_nvidia_facts.nvidia.cuda.runtime_header_ready | default(false) | bool }}
+
     - name: Verify NVIDIA facts agree with live prerequisite state
       ansible.builtin.assert:
         that:
-          - nvlink_nvidia_facts.nvidia.driver.nvidia_smi_ready | default(false) | bool
-          - nvlink_nvidia_facts.nvidia.cuda.nvcc_ready | default(false) | bool
-          - nvlink_nvidia_facts.nvidia.cuda.cuda_home | default('') == nvlink_cuda_home
+          - nvlink_nvidia_schema_version | int == 1
+          - nvlink_fact_nvidia_smi_ready | bool
+          - nvlink_fact_nvcc_ready | bool
+          - nvlink_fact_cuda_home == nvlink_cuda_home
+          - nvlink_fact_runtime_header_ready | bool
         fail_msg: >-
-          NVIDIA facts are stale or incomplete for the live driver/CUDA state.
-          Re-run the NVIDIA feature instead of trusting stale facts.
+          NVIDIA prerequisite facts do not match the working live driver/CUDA
+          state. facts_path={{ nvlink_nvidia_facts_path }},
+          schema_version={{ nvlink_nvidia_schema_version }},
+          generated_at={{ nvlink_fact_generated_at }},
+          nvidia_smi_ready={{ nvlink_fact_nvidia_smi_ready }},
+          nvidia_smi_rc={{ nvlink_fact_nvidia_smi_rc }},
+          nvcc_ready={{ nvlink_fact_nvcc_ready }},
+          nvcc_rc={{ nvlink_fact_nvcc_rc }},
+          runtime_header_ready={{ nvlink_fact_runtime_header_ready }},
+          facts_cuda_home={{ nvlink_fact_cuda_home | to_json }},
+          expected_cuda_home={{ nvlink_cuda_home | to_json }}. Run
+          setup/cli/nvidia.sh in validate mode with the installed driver/CUDA
+          policy before rerunning NVLink. NVLink will not rewrite NVIDIA-owned
+          facts.
 
     - name: Collect live physical GPU inventory and resolve UUID/PCI selection
       ansible.builtin.shell: |

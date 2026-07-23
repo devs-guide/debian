@@ -406,6 +406,33 @@ if grep -Fq 'LD_LIBRARY_PATH' "${ROOT}/ansible/cli/nvidia.yml"; then
   echo "[validate.runtime][error] ansible/cli/nvidia.yml must not introduce global LD_LIBRARY_PATH"
   rc=1
 fi
+if ! grep -Fq -- '--skip-live-validate cannot be combined with validate mode.' "${ROOT}/setup/cli/nvidia.sh"; then
+  echo "[validate.runtime][error] NVIDIA runner must reject --skip-live-validate in validate mode"
+  rc=1
+fi
+if ! grep -Fq 'Reject skipped live validation in validate mode' "${ROOT}/ansible/cli/nvidia.yml"; then
+  echo "[validate.runtime][error] NVIDIA playbook must reject skipped live validation in validate mode"
+  rc=1
+fi
+if ! grep -Fq 'Check the package-managed CUDA runtime header' "${ROOT}/ansible/cli/nvidia.yml" || \
+   ! grep -Fq 'Determine CUDA runtime header readiness' "${ROOT}/ansible/cli/nvidia.yml"; then
+  echo "[validate.runtime][error] NVIDIA facts must include CUDA runtime-header readiness"
+  rc=1
+fi
+if ! awk '
+  /Check the package-managed CUDA runtime header/ { header = NR }
+  /Persist the initial NVIDIA readiness facts/ { facts = NR }
+  END { exit !(header > 0 && facts > header) }
+' "${ROOT}/ansible/cli/nvidia.yml"; then
+  echo "[validate.runtime][error] NVIDIA must check the CUDA runtime header before persisting facts"
+  rc=1
+fi
+for marker in 'nvidia_smi_rc:' 'nvcc_rc:' 'runtime_header_ready:' 'Fail NVIDIA validation when requested live prerequisites are unavailable'; do
+  if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvidia.yml"; then
+    echo "[validate.runtime][error] NVIDIA fact refresh contract is missing: ${marker}"
+    rc=1
+  fi
+done
 
 echo "[validate.runtime] checking Phase 1 strict sudo runner contract..."
 for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
@@ -457,6 +484,21 @@ for marker in 'command -v nvidia-smi' 'nvidia_smi_path' '"${nvidia_smi_path}" >/
     rc=1
   fi
 done
+for marker in 'Normalize the NVIDIA prerequisite fact contract' 'nvlink_nvidia_schema_version' 'nvlink_fact_runtime_header_ready' 'NVLink will not rewrite NVIDIA-owned facts.'; do
+  if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
+    echo "[validate.runtime][error] NVLink NVIDIA fact contract is missing: ${marker}"
+    rc=1
+  fi
+done
+if awk '
+  /ansible\.builtin\.(copy|template|file|lineinfile|blockinfile|assemble):/ { writer = 1; next }
+  /^[[:space:]]*-[[:space:]]+name:/ { writer = 0 }
+  writer && /[[:space:]](dest|path): "\{\{ nvlink_nvidia_facts_path \}\}"/ { bad = 1 }
+  END { exit !bad }
+' "${ROOT}/ansible/cli/nvlink.yml"; then
+  echo "[validate.runtime][error] NVLink must not write NVIDIA-owned facts"
+  rc=1
+fi
 if grep -Eq 'nvidia-driver|cuda-toolkit|cuda-keyring|grub|mokutil|update-initramfs|LD_LIBRARY_PATH' "${ROOT}/ansible/cli/nvlink.yml"; then
   echo "[validate.runtime][error] NVLink playbook must not mutate NVIDIA/CUDA installation, boot state, or global library paths"
   rc=1

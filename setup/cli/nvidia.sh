@@ -107,7 +107,7 @@ Options:
   --allow-source-migration
   --allow-no-gpu
   --allow-cuda-minor-compat
-  --skip-live-validate
+  --skip-live-validate            Apply/upgrade only; cannot be combined with validate.
   --check-upstream
   --latest-in-branch
   --help
@@ -268,6 +268,10 @@ validate.configuration() {
   validate.boolean DEBIAN_NVIDIA_SKIP_LIVE_VALIDATE "${NVIDIA_SKIP_LIVE_VALIDATE}"
   validate.boolean DEBIAN_NVIDIA_CHECK_UPSTREAM "${NVIDIA_CHECK_UPSTREAM}"
   validate.boolean DEBIAN_NVIDIA_LATEST_IN_BRANCH "${NVIDIA_LATEST_IN_BRANCH}"
+
+  if [[ "${FEATURE_MODE}" == validate ]] && is.true "${NVIDIA_SKIP_LIVE_VALIDATE}"; then
+    invalid "--skip-live-validate cannot be combined with validate mode."
+  fi
 
   if [[ -n "${NVIDIA_DRIVER_BRANCH}" && ! "${NVIDIA_DRIVER_BRANCH}" =~ ^[0-9]+$ ]]; then
     invalid "Driver branch must be a numeric branch, for example 595."

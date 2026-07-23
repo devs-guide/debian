@@ -93,6 +93,13 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | \
     --nccl=auto
 ```
 
+`validate` refreshes NVIDIA-owned readiness facts at
+`/etc/ansible/debian/facts/nvidia.yml`. It requires `nvidia-smi` for every
+profile and, for `cuda` and `llm`, also requires the package-managed `nvcc`
+and readable `/usr/local/cuda/include/cuda_runtime.h`. It cannot be combined
+with `--skip-live-validate`; a failed validation records the live failure in
+the facts rather than reporting a stale ready state.
+
 Then confirm the driver inventory and compiler from an interactive shell:
 
 ```bash
