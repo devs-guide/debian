@@ -91,10 +91,14 @@
     - name: Check live NVIDIA and CUDA prerequisite executables
       ansible.builtin.shell: |
         set -euo pipefail
-        test -x nvidia-smi
+        nvidia_smi_path="$(command -v nvidia-smi || true)"
+        if [[ -z "${nvidia_smi_path}" || ! -x "${nvidia_smi_path}" ]]; then
+          printf 'nvidia-smi is not an executable resolved through PATH: %s\n' "${nvidia_smi_path:-missing}" >&2
+          exit 1
+        fi
         test -x '{{ nvlink_cuda_home }}/bin/nvcc'
         test -r '{{ nvlink_cuda_home }}/include/cuda_runtime.h'
-        nvidia-smi >/dev/null
+        "${nvidia_smi_path}" >/dev/null
         '{{ nvlink_cuda_home }}/bin/nvcc' --version >/dev/null
       args:
         executable: /bin/bash

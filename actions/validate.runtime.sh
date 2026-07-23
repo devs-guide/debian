@@ -447,6 +447,16 @@ for marker in nvlink.yml llm-nvidia-validated.sh nvidia-cuda-smoke nvidia-p2p-ve
     rc=1
   fi
 done
+if grep -Fq 'test -x nvidia-smi' "${ROOT}/ansible/cli/nvlink.yml"; then
+  echo "[validate.runtime][error] NVLink prerequisite validation must resolve nvidia-smi through PATH, not test a relative filename"
+  rc=1
+fi
+for marker in 'command -v nvidia-smi' 'nvidia_smi_path' '"${nvidia_smi_path}" >/dev/null'; do
+  if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
+    echo "[validate.runtime][error] NVLink prerequisite validation is missing resolved nvidia-smi check: ${marker}"
+    rc=1
+  fi
+done
 if grep -Eq 'nvidia-driver|cuda-toolkit|cuda-keyring|grub|mokutil|update-initramfs|LD_LIBRARY_PATH' "${ROOT}/ansible/cli/nvlink.yml"; then
   echo "[validate.runtime][error] NVLink playbook must not mutate NVIDIA/CUDA installation, boot state, or global library paths"
   rc=1
