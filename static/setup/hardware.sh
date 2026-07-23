@@ -4,7 +4,7 @@
 ## Local usage:
 ##   ./setup/hardware.sh [preflight|apply]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/hardware | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/hardware.sh | bash
 
 set -euo pipefail
 
@@ -43,7 +43,7 @@ DEBIAN_HARDWARE_CPUPOWER_ENABLE="${DEBIAN_HARDWARE_CPUPOWER_ENABLE:-0}"
 DEBIAN_HARDWARE_USB_AUTOSUSPEND_DISABLE="${DEBIAN_HARDWARE_USB_AUTOSUSPEND_DISABLE:-0}"
 DEBIAN_HARDWARE_DISABLE_CONSOLE_BLANKING="${DEBIAN_HARDWARE_DISABLE_CONSOLE_BLANKING:-0}"
 DEBIAN_HARDWARE_POWER_POLICY="${DEBIAN_HARDWARE_POWER_POLICY:-0}"
-HARDWARE_SELF_URL="${DEBIAN_HARDWARE_SELF_URL:-${PAGES_BASE_URL}/setup/hardware}"
+HARDWARE_SELF_URL="${DEBIAN_HARDWARE_SELF_URL:-${PAGES_BASE_URL}/setup/hardware.sh}"
 HARDWARE_SUDO_REEXEC="${DEBIAN_HARDWARE_SUDO_REEXEC:-0}"
 REFRESH="${REFRESH:-0}"
 declare -a FEATURE_GROUP_VARS_ARGS
@@ -345,7 +345,7 @@ run.preflight() {
   command -v nvme >/dev/null 2>&1 && nvme list || true
 
   log "Apply command:"
-  log "  wget -qO- ${PAGES_BASE_URL}/setup/hardware | bash"
+  log "  wget -qO- ${PAGES_BASE_URL}/setup/hardware.sh | bash"
 }
 
 run.hardware.feature() {

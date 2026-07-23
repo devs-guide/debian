@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Published path: https://devs-guide.github.io/debian/setup/cli/x11
+# Published path: https://devs-guide.github.io/debian/setup/cli/x11.sh
 ## Minimal Debian X11 setup runner.
 ## Local usage:
 ##   ./setup/cli/x11.sh [preflight|apply|disable]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/x11 | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/x11.sh | bash
 
 set -euo pipefail
 
@@ -196,7 +196,7 @@ ensure.root.or.sudo.reexec() {
   fi
 
   if command -v wget >/dev/null 2>&1; then
-    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${PAGES_BASE_URL}/setup/cli/x11" "$@"
+    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${PAGES_BASE_URL}/setup/cli/x11.sh" "$@"
   fi
 
   log.error "Cannot re-enter with sudo from stdin because wget is unavailable."
@@ -302,7 +302,7 @@ run.preflight() {
   log "Install X11 packages: ${X11_INSTALL_PACKAGES}"
   log "Packages: ${X11_PACKAGES}"
   log "Apply command:"
-  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/x11 | bash"
+  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/x11.sh | bash"
 }
 
 run.x11.feature() {

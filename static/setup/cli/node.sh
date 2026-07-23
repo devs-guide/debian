@@ -4,7 +4,7 @@
 ## Local usage:
 ##   ./setup/cli/node.sh [preflight|apply|upgrade]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/node | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/node.sh | bash
 
 set -euo pipefail
 
@@ -47,7 +47,7 @@ NODE_CREATE_SYSTEM_SYMLINKS="${DEBIAN_NODE_CREATE_SYSTEM_SYMLINKS:-1}"
 NODE_ENABLE_COREPACK="${DEBIAN_NODE_ENABLE_COREPACK:-0}"
 FACTS_DIR="${DEBIAN_NODE_FACTS_DIR:-/etc/ansible/debian/facts}"
 NODE_RUNTIME_FACTS_PATH="${DEBIAN_NODE_RUNTIME_FACTS_PATH:-${FACTS_DIR}/node.yml}"
-NODE_SELF_URL="${DEBIAN_NODE_SELF_URL:-${PAGES_BASE_URL}/setup/cli/node}"
+NODE_SELF_URL="${DEBIAN_NODE_SELF_URL:-${PAGES_BASE_URL}/setup/cli/node.sh}"
 NODE_SUDO_REEXEC="${DEBIAN_NODE_SUDO_REEXEC:-0}"
 REFRESH="${REFRESH:-0}"
 declare -a FEATURE_GROUP_VARS_ARGS
@@ -422,7 +422,7 @@ run.preflight() {
   fi
 
   log "Apply command:"
-  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/node | bash"
+  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/node.sh | bash"
 }
 
 run.node.feature() {

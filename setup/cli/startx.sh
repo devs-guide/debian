@@ -4,7 +4,7 @@
 ## Local usage:
 ##   ./setup/cli/startx.sh [preflight|apply|disable]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/startx | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/startx.sh | bash
 
 set -euo pipefail
 
@@ -20,7 +20,7 @@ LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-STARTX_SELF_URL="${DEBIAN_STARTX_SELF_URL:-${PAGES_BASE_URL}/setup/cli/startx}"
+STARTX_SELF_URL="${DEBIAN_STARTX_SELF_URL:-${PAGES_BASE_URL}/setup/cli/startx.sh}"
 STARTX_SUDO_REEXEC="${DEBIAN_STARTX_SUDO_REEXEC:-0}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=(
@@ -325,7 +325,7 @@ run.preflight() {
   log "Manage xinitrc: ${STARTX_MANAGE_XINITRC}"
   log "Manage wrapper: ${STARTX_MANAGE_WRAPPER}"
   log "Apply command:"
-  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/startx | bash"
+  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/startx.sh | bash"
 }
 
 run.startx.feature() {

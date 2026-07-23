@@ -4,10 +4,10 @@
 ## Local usage:
 ##   ./setup/autologin.sh [preflight|apply|disable]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/autologin | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/autologin.sh | bash
 
 ## EXAMPLE:
-# env DEBIAN_AUTOLOGIN_ENABLE=1 DEBIAN_AUTOLOGIN_MODE=apply DEBIAN_AUTOLOGIN_USER=app DEBIAN_AUTOLOGIN_TTY=tty1 DEBIAN_AUTOLOGIN_ACTION=shell bash -c 'wget -qO-  https://devs-guide.github.io/debian/setup/autologin | bash'
+# env DEBIAN_AUTOLOGIN_ENABLE=1 DEBIAN_AUTOLOGIN_MODE=apply DEBIAN_AUTOLOGIN_USER=app DEBIAN_AUTOLOGIN_TTY=tty1 DEBIAN_AUTOLOGIN_ACTION=shell bash -c 'wget -qO- https://devs-guide.github.io/debian/setup/autologin.sh | bash'
 
 
 set -euo pipefail
@@ -45,7 +45,7 @@ AUTOLOGIN_MARKER_ENABLE="${DEBIAN_AUTOLOGIN_MARKER_ENABLE:-1}"
 AUTOLOGIN_MARKER_PATH="${DEBIAN_AUTOLOGIN_MARKER_PATH:-/home/${AUTOLOGIN_USER}/.cache/autologin-${AUTOLOGIN_TTY}.ok}"
 FACTS_DIR="${DEBIAN_AUTOLOGIN_FACTS_DIR:-/etc/ansible/debian/facts}"
 AUTOLOGIN_RUNTIME_FACTS_PATH="${DEBIAN_AUTOLOGIN_RUNTIME_FACTS_PATH:-${FACTS_DIR}/autologin.yml}"
-AUTOLOGIN_SELF_URL="${DEBIAN_AUTOLOGIN_SELF_URL:-${PAGES_BASE_URL}/setup/autologin}"
+AUTOLOGIN_SELF_URL="${DEBIAN_AUTOLOGIN_SELF_URL:-${PAGES_BASE_URL}/setup/autologin.sh}"
 AUTOLOGIN_SUDO_REEXEC="${DEBIAN_AUTOLOGIN_SUDO_REEXEC:-0}"
 REFRESH="${REFRESH:-0}"
 AUTOLOGIN_ENABLE_SET=0

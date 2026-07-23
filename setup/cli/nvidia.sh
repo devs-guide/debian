@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Published path: https://devs-guide.github.io/debian/setup/cli/nvidia
+# Published path: https://devs-guide.github.io/debian/setup/cli/nvidia.sh
 ## Opt-in Debian NVIDIA driver and CUDA readiness runner.
 ##
 ## Local usage:
 ##   ./setup/cli/nvidia.sh [preflight|apply|validate|upgrade] [options]
 ##
 ## Published usage (read-only by default):
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia | bash
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia | bash -s -- preflight
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash -s -- preflight
 ##
 ## An installation is always explicit. For example:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia | bash -s -- apply \
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash -s -- apply \
 ##     --profile=llm --driver-source=nvidia --cuda-source=nvidia \
 ##     --cuda-version=<approved-exact-minor>
 ##
@@ -37,7 +37,7 @@ LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-NVIDIA_SELF_URL="${DEBIAN_NVIDIA_SELF_URL:-${PAGES_BASE_URL}/setup/cli/nvidia}"
+NVIDIA_SELF_URL="${DEBIAN_NVIDIA_SELF_URL:-${PAGES_BASE_URL}/setup/cli/nvidia.sh}"
 NVIDIA_SUDO_REEXEC="${DEBIAN_NVIDIA_SUDO_REEXEC:-0}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=("cli/nvidia.yml")

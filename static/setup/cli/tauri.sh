@@ -4,7 +4,7 @@
 ## Local usage:
 ##   ./setup/cli/tauri.sh [preflight|apply|upgrade]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri.sh | bash
 ##
 ## IMPORTANT:
 ## Do not put DEBIAN_CLI_TAURI_* assignments before wget in a wget|bash pipeline.
@@ -18,18 +18,18 @@
 ##   export DEBIAN_CLI_TAURI_INSTALL_RUST=1
 ##   export DEBIAN_CLI_TAURI_INSTALL_CLI=1
 ##   export DEBIAN_CLI_TAURI_CLI_METHOD=npm
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri.sh | bash
 ##
 ## Correct one-liner usage:
-##   env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash -c 'wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash'
+##   env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash -c 'wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri.sh | bash'
 ##
 ## Alternative right-side pipe usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri.sh | env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash
 
 
 ## BUILD ENV:
 ##
-# env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_RUST_USER="$(id -un)" DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash -c 'wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | bash'
+# env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_RUST_USER="$(id -un)" DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash -c 'wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri.sh | bash'
 ##
 
 set -euo pipefail
@@ -46,7 +46,7 @@ LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-TAURI_SELF_URL="${DEBIAN_CLI_TAURI_SELF_URL:-${PAGES_BASE_URL}/setup/cli/tauri}"
+TAURI_SELF_URL="${DEBIAN_CLI_TAURI_SELF_URL:-${PAGES_BASE_URL}/setup/cli/tauri.sh}"
 TAURI_SUDO_REEXEC="${DEBIAN_CLI_TAURI_SUDO_REEXEC:-0}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 RELEASE_GROUP_VARS_FILE="${DEBIAN_CLI_TAURI_RELEASE_GROUP_VARS_FILE:-}"

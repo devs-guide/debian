@@ -4,7 +4,7 @@
 ## Local usage:
 ##   ./setup/cli/kiosk.app.sh [preflight|apply|disable]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/kiosk.app | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/kiosk.app.sh | bash
 ##
 ## Kiosk orchestration order (apply mode) by default:
 ##   1) x11 feature
@@ -27,7 +27,7 @@ log() { printf '[setup.cli.kiosk.app] %s\n' "$*" >&2; }
 log.error() { printf '[setup.cli.kiosk.app][error] %s\n' "$*" >&2; }
 
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
-AUTOAPP_SELF_URL="${DEBIAN_AUTOAPP_SELF_URL:-${PAGES_BASE_URL}/setup/cli/kiosk.app}"
+AUTOAPP_SELF_URL="${DEBIAN_AUTOAPP_SELF_URL:-${PAGES_BASE_URL}/setup/cli/kiosk.app.sh}"
 AUTOAPP_DEFAULT_STARTX_COMMAND="${DEBIAN_AUTOAPP_STARTX_DEFAULT_COMMAND:-/usr/local/bin/kiosk-startx}"
 FEATURE_MODE="${1:-${DEBIAN_AUTOAPP_MODE:-apply}}"
 AUTOAPP_ENABLE="${DEBIAN_AUTOAPP_ENABLE:-}"
@@ -314,7 +314,7 @@ run.local.feature() {
 run.remote.feature() {
   local feature="$1"
   local collect_fn="$2"
-  local url="${AUTOAPP_RUNNER_PREFIX}/${feature}"
+  local url="${AUTOAPP_RUNNER_PREFIX}/${feature}.sh"
   local -a feature_env
 
   "${collect_fn}" feature_env
@@ -381,8 +381,8 @@ run.autologin() {
     return 0
   fi
 
-  log "Using published runner: ${PAGES_BASE_URL}/setup/autologin"
-  env "${autologin_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${PAGES_BASE_URL}/setup/autologin" "${FEATURE_MODE}"
+  log "Using published runner: ${PAGES_BASE_URL}/setup/autologin.sh"
+  env "${autologin_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${PAGES_BASE_URL}/setup/autologin.sh" "${FEATURE_MODE}"
 }
 
 resolve.run.flags() {

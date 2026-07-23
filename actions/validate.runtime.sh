@@ -292,6 +292,13 @@ for f in "${files[@]}"; do
   fi
 done
 
+echo "[validate.runtime] checking canonical published setup entrypoint URLs..."
+legacy_pages_entry_url_regex='(?:https://devs-guide\.github\.io/debian/|\$\{PAGES_BASE_URL\}/)setup/(?:bootstrap|debian|metal|hardware|autologin|release\.common|cli/(?:node|kiosk\.app|x11|openbox|touchscreen|codex|startx|tauri|nvidia|nvlink))(?=[[:space:]"`|)}]|$)'
+if rg -n -P "${legacy_pages_entry_url_regex}" "${ROOT}/setup" -g '*.sh'; then
+  echo "[validate.runtime][error] published setup entrypoints must use their canonical .sh URL"
+  rc=1
+fi
+
 echo "[validate.runtime] checking NVIDIA runtime dependency contract..."
 if ! bash -n "${ROOT}/setup/cli/nvidia.sh"; then
   echo "[validate.runtime][error] setup/cli/nvidia.sh must pass bash -n"

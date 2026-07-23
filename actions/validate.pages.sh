@@ -174,7 +174,7 @@ check_setup_feature_refs "setup/hardware.sh"
 check_setup_feature_refs "setup/autologin.sh"
 
 check_nvidia_runner_runtime_support() {
-  local remote_runner="${TMPDIR}/setup/cli/nvidia"
+  local remote_runner="${TMPDIR}/setup/cli/nvidia.sh"
 
   if [[ ! -s "${remote_runner}" ]]; then
     echo "[validate.pages][error] published NVIDIA runner was not fetched: ${remote_runner}"
@@ -190,7 +190,7 @@ check_nvidia_runner_runtime_support() {
 check_nvidia_runner_runtime_support
 
 check_nvlink_runner_runtime_support() {
-  local remote_runner="${TMPDIR}/setup/cli/nvlink"
+  local remote_runner="${TMPDIR}/setup/cli/nvlink.sh"
 
   if [[ ! -s "${remote_runner}" ]]; then
     echo "[validate.pages][error] published NVLink runner was not fetched: ${remote_runner}"

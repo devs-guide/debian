@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Published path: https://devs-guide.github.io/debian/setup/cli/openbox
+# Published path: https://devs-guide.github.io/debian/setup/cli/openbox.sh
 ## Minimal Debian Openbox setup runner.
 ## Local usage:
 ##   ./setup/cli/openbox.sh [preflight|apply|disable]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/openbox | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/openbox.sh | bash
 
 set -euo pipefail
 
@@ -218,7 +218,7 @@ ensure.root.or.sudo.reexec() {
   fi
 
   if command -v wget >/dev/null 2>&1; then
-    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${PAGES_BASE_URL}/setup/cli/openbox" "$@"
+    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${PAGES_BASE_URL}/setup/cli/openbox.sh" "$@"
   fi
 
   log.error "Cannot re-enter with sudo from stdin because wget is unavailable."
@@ -338,7 +338,7 @@ run.preflight() {
   log "Hook dir: ${OPENBOX_XSESSION_HOOK_DIR}"
   log "Fullscreen: ${OPENBOX_FULLSCREEN}"
   log "Apply command:"
-  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/openbox | bash"
+  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/openbox.sh | bash"
 }
 
 run.openbox.feature() {

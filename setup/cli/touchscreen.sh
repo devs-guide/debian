@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Published path: https://devs-guide.github.io/debian/setup/cli/touchscreen
+# Published path: https://devs-guide.github.io/debian/setup/cli/touchscreen.sh
 ## Minimal Debian touchscreen setup runner.
 ## Local usage:
 ##   ./setup/cli/touchscreen.sh [preflight|apply|disable]
 ## Published usage:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/touchscreen | bash
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/touchscreen.sh | bash
 
 set -euo pipefail
 
@@ -222,7 +222,7 @@ ensure.root.or.sudo.reexec() {
   fi
 
   if command -v wget >/dev/null 2>&1; then
-    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${PAGES_BASE_URL}/setup/cli/touchscreen" "$@"
+    exec sudo -E env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${PAGES_BASE_URL}/setup/cli/touchscreen.sh" "$@"
   fi
 
   log.error "Cannot re-enter with sudo from stdin because wget is unavailable."
@@ -343,7 +343,7 @@ run.preflight() {
   log "Install packages: ${TOUCHSCREEN_INSTALL_PACKAGES}"
   log "Packages: ${TOUCHSCREEN_PACKAGES}"
   log "Apply command:"
-  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/touchscreen | bash"
+  log "  wget -qO- ${PAGES_BASE_URL}/setup/cli/touchscreen.sh | bash"
 }
 
 run.touchscreen.feature() {

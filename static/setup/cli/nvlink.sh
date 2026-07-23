@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Published path: https://devs-guide.github.io/debian/setup/cli/nvlink
+# Published path: https://devs-guide.github.io/debian/setup/cli/nvlink.sh
 ## Standalone CUDA, NVLink, and P2P validation runner.
 ## It validates an existing NVIDIA/CUDA installation; it never installs drivers,
 ## CUDA toolkits, repositories, kernel modules, or boot configuration.
