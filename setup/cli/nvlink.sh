@@ -238,6 +238,7 @@ current.script.path() { local source_path="${BASH_SOURCE[0]:-}"; case "${source_
 collect.sudo.env.args() {
   local -n output="$1"
   local name=""
+  output=()
   while IFS= read -r name; do
     case "${name}" in DEBIAN_NVLINK_*|PAGES_BASE_URL|TMP_ROOT_DIR|TMP_DIR|REFRESH) output+=("${name}=${!name}") ;; esac
   done < <(compgen -e)
