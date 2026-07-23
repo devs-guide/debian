@@ -77,8 +77,8 @@ is_publishable_markdown() {
 
   case "${relative}" in
     readme.md|\
-    cli/*/readme.md|\
-    setup/*/readme.md|\
+    cli/readme.md|cli/*/readme.md|\
+    setup/readme.md|setup/*/readme.md|\
     ansible/readme.md|ansible/*/readme.md|\
     actions/readme.md|actions/*/readme.md|actions/*/*/readme.md|\
     kiosk/readme.md|kiosk/*/readme.md|kiosk/*/*/readme.md|\
@@ -129,6 +129,98 @@ destination_for() {
   printf '%s/%s/index.html\n' "${OUTPUT_DIR}" "${dirname}"
 }
 
+breadcrumb_label() {
+  local component="$1"
+
+  case "${component}" in
+    cli) printf 'CLI' ;;
+    setup) printf 'Setup' ;;
+    ansible) printf 'Ansible' ;;
+    actions) printf 'Actions' ;;
+    kiosk) printf 'Kiosk' ;;
+    history) printf 'History' ;;
+    nvidia) printf 'NVIDIA' ;;
+    nvlink) printf 'NVLink' ;;
+    startx) printf 'STARTX' ;;
+    x11) printf 'X11' ;;
+    codex) printf 'Codex' ;;
+    node) printf 'Node' ;;
+    kiosk.app) printf 'Kiosk app' ;;
+    openbox) printf 'Openbox' ;;
+    touchscreen) printf 'Touchscreen' ;;
+    tauri) printf 'Tauri' ;;
+    bootstrap) printf 'Bootstrap' ;;
+    debian) printf 'Debian' ;;
+    metal) printf 'Metal' ;;
+    hardware) printf 'Hardware' ;;
+    autologin) printf 'Autologin' ;;
+    packages) printf 'Packages' ;;
+    users) printf 'Users' ;;
+    build-docs) printf 'Build documentation' ;;
+    publish) printf 'Publish' ;;
+    validate) printf 'Validate' ;;
+    runtime) printf 'Runtime' ;;
+    pages) printf 'Pages' ;;
+    test) printf 'Test' ;;
+    sudo-access) printf 'Sudo access' ;;
+    release-common) printf 'Release helper' ;;
+    essential-packages) printf 'Essential packages' ;;
+    prerequisites) printf 'Prerequisites' ;;
+    app-launch) printf 'Application launch' ;;
+    autologin-orchestration) printf 'Autologin orchestration' ;;
+    remote-debug) printf 'Remote debug' ;;
+    reference) printf 'Reference' ;;
+    kiosk-auto-app-rename) printf 'Kiosk auto-app rename' ;;
+    *) printf '%s' "${component}" ;;
+  esac
+}
+
+breadcrumb_url() {
+  local route="$1"
+
+  if [[ "${SITE_ROOT}" == "/" ]]; then
+    printf '/%s/\n' "${route}"
+  else
+    printf '%s/%s/\n' "${SITE_ROOT%/}" "${route}"
+  fi
+}
+
+breadcrumb_metadata() {
+  local relative="$1"
+  local route="${relative%/readme.md}"
+  local component=""
+  local assembled=""
+  local index=0
+  local -a components=()
+
+  BREADCRUMB_METADATA=()
+  if [[ "${relative}" == "readme.md" ]]; then
+    return
+  fi
+
+  IFS='/' read -r -a components <<< "${route}"
+  for component in "${components[@]}"; do
+    [[ -n "${component}" ]] || continue
+    if [[ -n "${assembled}" ]]; then
+      assembled+="/"
+    fi
+    assembled+="${component}"
+    index=$((index + 1))
+
+    if (( index == ${#components[@]} )); then
+      BREADCRUMB_METADATA+=(
+        --metadata "breadcrumb_current_label=$(breadcrumb_label "${component}")"
+        --metadata "breadcrumb_current_url=$(breadcrumb_url "${assembled}")"
+      )
+    else
+      BREADCRUMB_METADATA+=(
+        --metadata "breadcrumb_${index}_label=$(breadcrumb_label "${component}")"
+        --metadata "breadcrumb_${index}_url=$(breadcrumb_url "${assembled}")"
+      )
+    fi
+  done
+}
+
 declare -a destinations=()
 while IFS= read -r -d '' source_file; do
   relative="${source_file#"${SOURCE_DIR}"/}"
@@ -158,6 +250,7 @@ while IFS= read -r -d '' source_file; do
   destinations+=("${destination}")
 
   mkdir -p "$(dirname "${destination}")"
+  breadcrumb_metadata "${relative}"
   log "render ${relative} -> ${destination#"${OUTPUT_DIR}"/}"
   pandoc \
     --from=gfm+yaml_metadata_block \
@@ -165,6 +258,7 @@ while IFS= read -r -d '' source_file; do
     --standalone \
     --template="${TEMPLATE}" \
     --metadata "site_root=${SITE_ROOT}" \
+    "${BREADCRUMB_METADATA[@]}" \
     "${source_file}" \
     --output="${destination}"
 done < <(find "${SOURCE_DIR}" -type f -name '*.md' -print0 | sort -z)

@@ -10,6 +10,15 @@ description: Baseline and host-level Debian setup entrypoints.
 These entrypoints establish the baseline host or provide shared support to
 opt-in features. Published executable URLs always end in `.sh`.
 
+## Start with the baseline
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/bootstrap.sh | bash
+```
+
+Choose an opt-in runner below only after reviewing its full policy example;
+the baseline does not implicitly install every feature.
+
 - [Bootstrap](/debian/setup/bootstrap/) — baseline Ansible bootstrap.
 - [Debian compatibility entrypoint](/debian/setup/debian/) — compatibility
   alias for the baseline bootstrap flow.

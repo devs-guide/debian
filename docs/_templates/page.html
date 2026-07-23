@@ -22,7 +22,9 @@
     </div>
   </header>
   <main class="page-shell">
-    <p class="breadcrumb"><a href="$site_root$/">Home</a> / $section$</p>
+    <p class="breadcrumb">
+      <a href="$site_root$/">Home</a>$if(breadcrumb_1_url)$ / <a href="$breadcrumb_1_url$">$breadcrumb_1_label$</a>$endif$$if(breadcrumb_2_url)$ / <a href="$breadcrumb_2_url$">$breadcrumb_2_label$</a>$endif$$if(breadcrumb_3_url)$ / <a href="$breadcrumb_3_url$">$breadcrumb_3_label$</a>$endif$$if(breadcrumb_current_url)$ / <a href="$breadcrumb_current_url$">$breadcrumb_current_label$</a>$endif$
+    </p>
     <article>
       $body$
     </article>

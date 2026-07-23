@@ -11,4 +11,6 @@ runners. It resolves Debian release policy, controller Python capability, and
 runtime Ansible support files.
 
 It is not a standalone operator entrypoint. Use a documented bootstrap or CLI
-runner instead.
+runner instead. Its public source URL is fetched by those runners as needed;
+do not pipe this helper directly into a shell because it has no feature mode or
+operator-facing policy contract.

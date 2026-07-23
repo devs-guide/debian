@@ -14,5 +14,9 @@ bootstrap flow.
 wget -qO- https://devs-guide.github.io/debian/setup/metal.sh | bash
 ```
 
+It is a compatibility entrypoint for the baseline bootstrap behavior, not a
+hardware/GPU installer. Use the Hardware or NVIDIA documentation for those
+separate policies.
+
 For current instructions, use the [bootstrap runner](/debian/setup/bootstrap/)
 documentation.

@@ -18,5 +18,14 @@ Example package-group override:
 
 ```sh
 ansible-playbook ansible/install.packages.yml \
-  -e '{"package_group_overrides":{"desktop_rdp_optional":true}}'
+  -e '{"package_group_overrides":{"desktop_rdp_optional":true},"exclude_packages":["mailutils"]}'
 ```
+
+| Extra variable | Purpose |
+| --- | --- |
+| `package_group_overrides` | Enables or disables named groups from `ansible/packages.yml`; the example enables the optional desktop/RDP group. |
+| `exclude_packages` | Removes specifically named packages from the resolved package list; the example excludes `mailutils`. |
+
+Run this from a configured Ansible checkout with the correct inventory and
+privilege settings. The published runners carry their own runtime support and
+are safer for a new host than manually assembling a partial playbook command.

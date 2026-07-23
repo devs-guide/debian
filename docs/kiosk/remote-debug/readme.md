@@ -19,4 +19,6 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u app)
 
 This is a debugging workflow, not a mechanism for starting an X server over
 SSH. Check the target application’s display and authentication expectations
-before attaching it.
+before attaching it. The complete local-console STARTX policy belongs on the
+[STARTX runner page](/debian/cli/startx/); do not replace it with `startx` from
+an SSH session.

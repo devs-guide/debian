@@ -15,4 +15,14 @@ bash actions/validate.pages.sh
 
 The default target is `https://devs-guide.github.io/debian`. Override it with
 `BASE_URL` after a deployment to another project site. This action requires
-network access and `curl`.
+network access, `curl`, and Pandoc because it renders the canonical local
+documentation before comparing public routes.
+
+```bash
+BASE_URL=https://example.invalid/debian \
+  bash actions/validate.pages.sh
+```
+
+| Variable | Purpose |
+| --- | --- |
+| `BASE_URL` | Published project URL to fetch and compare. It must include the project path, such as `/debian`. |

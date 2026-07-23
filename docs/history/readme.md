@@ -16,4 +16,6 @@ use `.sh`.
 
 The original legacy source material remains in the repository during this
 transition. It is deliberately excluded from the canonical documentation
-renderer until each item has been reviewed and rewritten.
+renderer until each item has been reviewed and rewritten. This history section
+intentionally contains no runnable setup command; use the current Setup and
+CLI pages for reviewed copy-paste examples.

@@ -10,7 +10,7 @@ On a minimal Debian host, establish basic network access and package metadata
 before first bootstrap when necessary:
 
 ```sh
-apt update && apt install -y \
+sudo apt update && sudo apt install -y \
   sudo ca-certificates gnupg curl wget \
   net-tools iproute2 openssh-server chrony \
   ufw unattended-upgrades fail2ban auditd

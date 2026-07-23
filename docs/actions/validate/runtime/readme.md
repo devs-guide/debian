@@ -15,3 +15,6 @@ bash actions/validate.runtime.sh
 It verifies required files, shell syntax, setup URL policy, feature markers,
 and selected Ansible contracts. It also executes the mocked NVIDIA/NVLink sudo
 policy test. It does not install packages, run Ansible, or access GPU hardware.
+
+This action has no supported flags. It may use available YAML parsers to deepen
+static validation, but it is not a host-installation or GPU test command.

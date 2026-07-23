@@ -20,6 +20,12 @@ The baseline bootstrap entrypoint is:
 wget -qO- https://devs-guide.github.io/debian/setup/bootstrap.sh | bash
 ```
 
+This is the complete default baseline command: it has no required feature
+flags. On a local checkout, use `bash setup/bootstrap.sh` instead. Optional
+hardware, CLI, GPU, and kiosk configuration is deliberately separate; follow
+the linked feature page and copy its explicit policy command rather than
+assuming bootstrap installs it.
+
 The compatibility entrypoints are `/setup/debian.sh` and `/setup/metal.sh`.
 They remain source files, not documentation routes.
 

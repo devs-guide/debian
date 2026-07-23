@@ -15,3 +15,6 @@ bash actions/test.sudo-access.sh
 It verifies root, local cached-sudo, missing-TTY, and unprivileged streamed
 managed-mode cases. It does not invoke real sudo, download content, install
 software, run Ansible, or access GPU hardware.
+
+This action has no supported flags. Its purpose is runner-policy regression
+testing, not validation of sudo credentials on the current machine.

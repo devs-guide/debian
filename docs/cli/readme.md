@@ -26,3 +26,7 @@ a shell pipeline.
 
 Most runners support a local file invocation as well as the published source
 URL. Use the local form when iterating on a checkout.
+
+There is intentionally no single copy-paste command for this index: each CLI
+feature has a different mutation scope and policy. Open the selected runner
+page and use its complete example instead of running every feature by default.

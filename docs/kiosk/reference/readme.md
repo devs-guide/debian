@@ -17,4 +17,6 @@ must not be treated as a current installation procedure.
 
 Use the current [X11](/debian/cli/x11/), [STARTX](/debian/cli/startx/),
 [Openbox](/debian/cli/openbox/), and [touchscreen](/debian/cli/touchscreen/)
-pages when configuring a host.
+pages when configuring a host. There is intentionally no copy-paste install
+command on this page: the retained reference files are historical records, not
+validated feature inputs.
