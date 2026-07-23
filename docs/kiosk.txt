@@ -1,0 +1,35 @@
+# 1: X11 
+wget -qO- https://devs-guide.github.io/debian/setup/cli/x11 | env DEBIAN_X11_MODE=apply DEBIAN_X11_ENABLE=1 DEBIAN_X11_INSTALL_PACKAGES=1 bash
+
+# 2: STARTX
+wget -qO- https://devs-guide.github.io/debian/setup/cli/startx | env DEBIAN_STARTX_MODE=apply DEBIAN_STARTX_ENABLE=1 DEBIAN_STARTX_USER=app DEBIAN_STARTX_TTY=tty1 DEBIAN_STARTX_DISPLAY=:0 DEBIAN_STARTX_INSTALL_PACKAGES=0 DEBIAN_STARTX_MANAGE_XWRAPPER=1 DEBIAN_STARTX_MANAGE_XINITRC=1 DEBIAN_STARTX_MANAGE_WRAPPER=1 DEBIAN_STARTX_WRAPPER_PATH=/usr/local/bin/kiosk-startx DEBIAN_STARTX_OPENBOX_COMMAND=/usr/bin/openbox-session bash
+
+
+# 3: OPENBOX
+wget -qO- https://devs-guide.github.io/debian/setup/cli/openbox | env DEBIAN_OPENBOX_MODE=apply DEBIAN_OPENBOX_ENABLE=1 DEBIAN_OPENBOX_USER=app DEBIAN_OPENBOX_INSTALL_PACKAGES=1 DEBIAN_OPENBOX_SESSION_COMMAND=/usr/bin/openbox-session DEBIAN_OPENBOX_MANAGE_XINITRC=1 DEBIAN_OPENBOX_MANAGE_XSESSION_HOOK_DIR=1 DEBIAN_OPENBOX_FULLSCREEN=0 bash
+
+# 4: Touchscreen:
+
+wget -qO- https://devs-guide.github.io/debian/setup/cli/touchscreen | env DEBIAN_TOUCHSCREEN_MODE=apply DEBIAN_TOUCHSCREEN_ENABLE=1 DEBIAN_TOUCHSCREEN_USER=app DEBIAN_TOUCHSCREEN_INSTALL_PACKAGES=1 DEBIAN_TOUCHSCREEN_MATCH='eGalax|D-WAV|Titan6001|TouchController|Touchscreen' bash
+
+# 5: Autologin
+
+wget -qO- https://devs-guide.github.io/debian/setup/autologin | env DEBIAN_AUTOLOGIN_MODE=apply DEBIAN_AUTOLOGIN_ENABLE=1 DEBIAN_AUTOLOGIN_USER=app DEBIAN_AUTOLOGIN_TTY=tty1 DEBIAN_AUTOLOGIN_ACTION=command DEBIAN_AUTOLOGIN_COMMAND=/usr/local/bin/kiosk-startx DEBIAN_AUTOLOGIN_VALIDATION_BANNER=0 bash
+
+# 6: Tauri
+
+wget -qO- https://devs-guide.github.io/debian/setup/cli/tauri | env DEBIAN_CLI_TAURI_PROFILE=build DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 DEBIAN_CLI_TAURI_INSTALL_NODE=1 DEBIAN_CLI_TAURI_INSTALL_RUST=1 DEBIAN_CLI_TAURI_INSTALL_CLI=1 DEBIAN_CLI_TAURI_CLI_METHOD=npm bash
+
+
+# 7: Reboot
+
+#Then after boot/login on tty1, SSH in and attach to the running X session:
+
+export DISPLAY=:0
+export XAUTHORITY=/home/app/.Xauthority
+export XDG_RUNTIME_DIR=/run/user/$(id -u app)
+
+# 8: Start App
+
+cd /opt/my-tauri-app
+npm run tauri dev

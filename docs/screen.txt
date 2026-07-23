@@ -1,0 +1,26 @@
+export DISPLAY=:0 && export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+
+
+startx -- :0
+
+
+xrandr --output eDP-1 --rotate normal
+
+
+
+xsetroot -solid thistle
+
+
+
+pkill -u app -x xclock 2>/dev/null || true
+
+
+
+WID="$(wmctrl -l | awk '/xclock/{print $1; exit}')"
+
+
+if [ -n "$WID" ]; then   wmctrl -i -r "$WID" -b add,fullscreen; else   echo "No xclock window found"; fi
+
+
+  xclock   -digital   -strftime '%I:%M:%S %p'   -update 1   -face 'Monospace:size=180'   -padding 0   -bg yellow   -fg black   -geometry 1024x768+0+0 &
+

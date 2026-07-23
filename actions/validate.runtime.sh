@@ -250,9 +250,27 @@ files=(
   "setup/cli/tauri.sh"
   "setup/cli/nvidia.sh"
   "setup/cli/nvlink.sh"
+  "actions/build.docs.sh"
   "actions/www.pages.sh"
+  "actions/test.sudo-access.sh"
   "actions/validate.runtime.sh"
   "actions/validate.pages.sh"
+  "docs/readme.md"
+  "docs/_templates/page.html"
+  "docs/_assets/site.css"
+  "docs/cli/readme.md"
+  "docs/cli/nvidia/readme.md"
+  "docs/cli/nvlink/readme.md"
+  "docs/setup/readme.md"
+  "docs/ansible/readme.md"
+  "docs/actions/readme.md"
+  "docs/actions/build-docs/readme.md"
+  "docs/actions/publish/readme.md"
+  "docs/actions/validate/runtime/readme.md"
+  "docs/actions/validate/pages/readme.md"
+  "docs/actions/test/sudo-access/readme.md"
+  "docs/kiosk/readme.md"
+  "docs/history/readme.md"
   "ansible/install.playbooks.txt"
   "ansible/bootstrap.yml"
   "ansible/install.packages.yml"
@@ -298,6 +316,47 @@ if rg -n -P "${legacy_pages_entry_url_regex}" "${ROOT}/setup" -g '*.sh'; then
   echo "[validate.runtime][error] published setup entrypoints must use their canonical .sh URL"
   rc=1
 fi
+
+echo "[validate.runtime] checking documentation publication contract..."
+if ! bash -n "${ROOT}/actions/build.docs.sh"; then
+  echo "[validate.runtime][error] actions/build.docs.sh must pass bash -n"
+  rc=1
+fi
+for marker in 'command -v pandoc' 'is_publishable_markdown' 'canonical document requires title and section front matter' '_templates/page.html'; do
+  if ! grep -Fq "${marker}" "${ROOT}/actions/build.docs.sh"; then
+    echo "[validate.runtime][error] actions/build.docs.sh missing documentation build marker: ${marker}"
+    rc=1
+  fi
+done
+if ! grep -Fq 'actions/build.docs.sh' "${ROOT}/actions/www.pages.sh"; then
+  echo "[validate.runtime][error] actions/www.pages.sh must render canonical documentation"
+  rc=1
+fi
+if grep -Fq 'www/index.html:index.html' "${ROOT}/actions/www.pages.sh"; then
+  echo "[validate.runtime][error] actions/www.pages.sh must not publish the legacy www/index.html as the root page"
+  rc=1
+fi
+if grep -Fq 'cp -R "${ROOT}/docs"' "${ROOT}/actions/www.pages.sh"; then
+  echo "[validate.runtime][error] actions/www.pages.sh must render docs rather than copy raw documentation"
+  rc=1
+fi
+for document in \
+  docs/readme.md \
+  docs/cli/readme.md \
+  docs/cli/nvidia/readme.md \
+  docs/cli/nvlink/readme.md \
+  docs/setup/readme.md \
+  docs/ansible/readme.md \
+  docs/actions/readme.md \
+  docs/kiosk/readme.md \
+  docs/history/readme.md; do
+  if [[ "$(sed -n '1p' "${ROOT}/${document}")" != '---' ]] || \
+    ! grep -Eq '^title:[[:space:]]+.+$' "${ROOT}/${document}" || \
+    ! grep -Eq '^section:[[:space:]]+.+$' "${ROOT}/${document}"; then
+    echo "[validate.runtime][error] canonical documentation is missing required front matter: ${document}"
+    rc=1
+  fi
+done
 
 echo "[validate.runtime] checking NVIDIA runtime dependency contract..."
 if ! bash -n "${ROOT}/setup/cli/nvidia.sh"; then
@@ -345,6 +404,25 @@ if ! grep -Fq 'export CUDA_HOME=' "${ROOT}/ansible/cli/nvidia.yml"; then
 fi
 if grep -Fq 'LD_LIBRARY_PATH' "${ROOT}/ansible/cli/nvidia.yml"; then
   echo "[validate.runtime][error] ansible/cli/nvidia.yml must not introduce global LD_LIBRARY_PATH"
+  rc=1
+fi
+
+echo "[validate.runtime] checking Phase 1 strict sudo runner contract..."
+for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+  runner_path="${ROOT}/${runner}"
+  for required_marker in 'runner.euid' 'current.script.path' 'sudo -n true' '/dev/tty' 'fail.streamed.managed.mode' 'runner was executed from stdin'; do
+    if ! grep -Fq "${required_marker}" "${runner_path}"; then
+      echo "[validate.runtime][error] ${runner} must implement ${required_marker}"
+      rc=1
+    fi
+  done
+  if grep -Eq 'exec sudo .*bash -c|wget -qO- "\$1" \| bash -s --|curl -fsSL "\$1" \| bash -s --' "${runner_path}"; then
+    echo "[validate.runtime][error] ${runner} must not re-download itself inside sudo"
+    rc=1
+  fi
+done
+if ! bash "${ROOT}/actions/test.sudo-access.sh"; then
+  echo "[validate.runtime][error] Phase 1 sudo access contract tests failed"
   rc=1
 fi
 

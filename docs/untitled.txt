@@ -1,0 +1,148 @@
+export DISPLAY=:0 && export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+
+sudo bash -lc 'startx -- :0 -nolisten tcp &'
+sudo xsetroot -solid thistle
+
+
+## INVERT SCREEN ROTATION
+sudo xrandr --output eDP-1 --rotate inverted
+sudo xrandr --output eDP-1 --rotate normal
+
+
+## NORMALIZE MOUSE MOVEMENT:
+sudo xinput set-prop "eGalaxTouch Virtual Device for Single" \
+"Coordinate Transformation Matrix" \
+1 0 0 0 1 0 0 0 1
+
+
+## IF Needed.... (not always needed)
+## INVERT MOUSE DIRECTION
+sudo xinput set-prop "eGalax Inc. USB TouchController" "Coordinate Transformation Matrix" -1 0 1 0 -1 1 0 0 1
+
+sudo xinput set-prop "eGalaxTouch Virtual Device for Single" "Coordinate Transformation Matrix" -1 0 1 0 -1 1 0 0 1
+
+
+
+## SCREEN DIMENTIONS
+xrandr | grep '*' | awk '{print $1}'
+
+## CALIBRATE TOUCH (NO DRIVER, DEFAULT)
+sudo xinput_calibrator --device 12 --geometry 1024x768 --no-timeout --output-type xinput
+
+sudo xinput enable 11
+app@touch:~$ xinput map-to-output 11 eDP-1
+
+## CALIBRATE TOUCH (DRIVER, INSTALLED)
+sudo xinput_calibrator --device 17 --geometry 1024x768 --no-timeout --output-type xinput
+
+
+
+
+## SET RESOLUTION GEOMETRY
+# show valid options
+sudo xrandr
+
+#example:
+sudo xrandr --output eDP-1 --mode 1024x768
+
+sudo xrandr --output eDP-1 --mode 512x384
+
+
+## LOG TOUCH (requires evtest)
+
+grep -i "eGalax" /proc/bus/input/devices
+
+
+----
+app@touch:~$ sudo xinput_calibrator --device 12 --geometry 1024x768 --no-timeout
+Calibrating standard Xorg driver "eGalax Inc. USB TouchController UNKNOWN"
+	current calibration values: min_x=0, max_x=65535 and min_y=0, max_y=65535
+	If these values are estimated wrong, either supply it manually with the --precalib option, or run the 'get_precalib.sh' script to automatically get it (through HAL).
+INFO: width=1024, height=768
+	--> Making the calibration permanent <--
+  copy the snippet below into '/etc/X11/xorg.conf.d/99-calibration.conf' (/usr/share/X11/xorg.conf.d/ in some distro's)
+Section "InputClass"
+	Identifier	"calibration"
+	MatchDriver	"evdev"
+	Option	"MinX"	"36922"
+	Option	"MaxX"	"37989"
+	Option	"MinY"	"29603"
+	Option	"MaxY"	"31367"
+	Option	"SwapXY"	"0" # unless it was already set to 1
+	Option	"InvertX"	"0"  # unless it was already set
+	Option	"InvertY"	"0"  # unless it was already set
+EndSection
+
+'
+
+-----
+
+
+
+
+
+
+xclock -digital   -strftime '%I:%M:%S %p'   -update 1   -face 'Monospace:size=180'   -padding 0   -bg yellow   -fg black   -geometry 1024x768+0+0 &
+
+
+
+
+
+
+
+
+
+
+-------
+
+sudo pkill -u app -x xclock 2>/dev/null || true
+pkill -u app -x xclock 2>/dev/null || true
+
+xinput enable 11
+xinput disable 12
+xinput map-to-output 11 eDP-1
+
+
+
+
+
+
+xinput_calibrator --device 11   --geometry 1024x768   --no-timeout   --output-type xinput
+xinput --list
+
+
+
+export DISPLAY=:0
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export GDK_BACKEND=x11
+xinput enable 11
+xinput disable 12
+xinput map-to-output 11 eDP-1
+xinput test-xi2 11
+
+
+sudo apt install -y xinput
+xinput list
+xinput_calibrator
+sudo apt install -y xinput-calibrator
+xinput_calibrator
+xrandr --output eDP-1 --rotate normal
+xinput_calibrator
+xrandr --output eDP-1 --rotate normal
+TOUCH_ID="$(xinput list | awk ''"
+  /D-WAV|Titan6001|eGalax|0eef/ {
+      exit
+
+
+
+      sudo apt install -y --no-install-recommends   xserver-xorg   xinit   openbox   x11-apps   x11-xserver-utils   xauth   dbus-x11
+
+
+      app@touch:~$ startx -- :0 &
+      [1] 90973
+      app@touch:~$ 
+      /usr/lib/xorg/Xorg.wrap: Only console users are allowed to run the X server
+      xinit: giving up
+      xinit: unable to connect to X server: Connection refused
+      xinit: server error
+      Couldn't get a file descriptor referring to the console.

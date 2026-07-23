@@ -5,10 +5,38 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-https://devs-guide.github.io/debian}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMPDIR="$(mktemp -d)"
+DOCS_RENDER_DIR="${TMPDIR}/rendered-docs"
 rc=0
 
+base_without_scheme="${BASE_URL#*://}"
+if [[ "${base_without_scheme}" == */* ]]; then
+  DOCS_SITE_ROOT="/${base_without_scheme#*/}"
+else
+  DOCS_SITE_ROOT="/"
+fi
+DOCS_SITE_ROOT="/${DOCS_SITE_ROOT#/}"
+DOCS_SITE_ROOT="${DOCS_SITE_ROOT%/}"
+[[ -n "${DOCS_SITE_ROOT}" ]] || DOCS_SITE_ROOT="/"
+
 FILES=(
-  "index.html:www/index.html"
+  "index.html:${DOCS_RENDER_DIR}/index.html"
+  "assets/docs/site.css:${DOCS_RENDER_DIR}/assets/docs/site.css"
+  "cli/index.html:${DOCS_RENDER_DIR}/cli/index.html"
+  "cli/nvidia/index.html:${DOCS_RENDER_DIR}/cli/nvidia/index.html"
+  "cli/nvlink/index.html:${DOCS_RENDER_DIR}/cli/nvlink/index.html"
+  "setup/index.html:${DOCS_RENDER_DIR}/setup/index.html"
+  "setup/bootstrap/index.html:${DOCS_RENDER_DIR}/setup/bootstrap/index.html"
+  "ansible/index.html:${DOCS_RENDER_DIR}/ansible/index.html"
+  "actions/index.html:${DOCS_RENDER_DIR}/actions/index.html"
+  "actions/build-docs/index.html:${DOCS_RENDER_DIR}/actions/build-docs/index.html"
+  "actions/publish/index.html:${DOCS_RENDER_DIR}/actions/publish/index.html"
+  "actions/validate/runtime/index.html:${DOCS_RENDER_DIR}/actions/validate/runtime/index.html"
+  "actions/validate/pages/index.html:${DOCS_RENDER_DIR}/actions/validate/pages/index.html"
+  "actions/test/sudo-access/index.html:${DOCS_RENDER_DIR}/actions/test/sudo-access/index.html"
+  "kiosk/index.html:${DOCS_RENDER_DIR}/kiosk/index.html"
+  "kiosk/reference/index.html:${DOCS_RENDER_DIR}/kiosk/reference/index.html"
+  "history/index.html:${DOCS_RENDER_DIR}/history/index.html"
+  "history/www.index.legacy.html:${DOCS_RENDER_DIR}/history/www.index.legacy.html"
   "setup/bootstrap.sh:setup/bootstrap.sh"
   "setup/debian.sh:setup/debian.sh"
   "setup/metal.sh:setup/metal.sh"
@@ -54,11 +82,20 @@ FILES=(
 
 echo "[validate.pages] using BASE_URL=${BASE_URL}"
 echo "[validate.pages] temp dir: ${TMPDIR}"
+echo "[validate.pages] render canonical docs with site root: ${DOCS_SITE_ROOT}"
+
+if ! DOCS_SITE_ROOT="${DOCS_SITE_ROOT}" bash "${ROOT}/actions/build.docs.sh" \
+  --source "${ROOT}/docs" \
+  --output "${DOCS_RENDER_DIR}" \
+  --site-root "${DOCS_SITE_ROOT}"; then
+  echo "[validate.pages][error] could not render canonical documentation for comparison"
+  exit 1
+fi
 
 for entry in "${FILES[@]}"; do
   remote_path="${entry%%:*}"
   local_path="${entry#*:}"
-  dest="${TMPDIR}/${remote_path}"
+  dest="${TMPDIR}/published/${remote_path}"
   mkdir -p "$(dirname "${dest}")"
 
   url="${BASE_URL}/${remote_path}"
@@ -69,9 +106,15 @@ for entry in "${FILES[@]}"; do
     continue
   fi
 
-  if ! diff -u "${ROOT}/${local_path}" "${dest}" >/dev/null; then
+  if [[ "${local_path}" = /* ]]; then
+    local_file="${local_path}"
+  else
+    local_file="${ROOT}/${local_path}"
+  fi
+
+  if ! diff -u "${local_file}" "${dest}" >/dev/null; then
     echo "[validate.pages][diff] ${local_path} differs from published ${url}"
-    diff -u "${ROOT}/${local_path}" "${dest}" || true
+    diff -u "${local_file}" "${dest}" || true
     rc=1
   else
     echo "[validate.pages][ok] ${local_path} matches published ${url}"
@@ -174,7 +217,7 @@ check_setup_feature_refs "setup/hardware.sh"
 check_setup_feature_refs "setup/autologin.sh"
 
 check_nvidia_runner_runtime_support() {
-  local remote_runner="${TMPDIR}/setup/cli/nvidia.sh"
+  local remote_runner="${TMPDIR}/published/setup/cli/nvidia.sh"
 
   if [[ ! -s "${remote_runner}" ]]; then
     echo "[validate.pages][error] published NVIDIA runner was not fetched: ${remote_runner}"
@@ -190,7 +233,7 @@ check_nvidia_runner_runtime_support() {
 check_nvidia_runner_runtime_support
 
 check_nvlink_runner_runtime_support() {
-  local remote_runner="${TMPDIR}/setup/cli/nvlink.sh"
+  local remote_runner="${TMPDIR}/published/setup/cli/nvlink.sh"
 
   if [[ ! -s "${remote_runner}" ]]; then
     echo "[validate.pages][error] published NVLink runner was not fetched: ${remote_runner}"

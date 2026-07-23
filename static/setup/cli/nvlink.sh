@@ -5,9 +5,11 @@
 ## CUDA toolkits, repositories, kernel modules, or boot configuration.
 ## EXAMPLE:
 
-# Validate dual RTX 3090 (SM 8.6) NVLink NV4, run strict P2P diagnostics,
-# fetch CUDA 13.1 samples, and install required build tools.
-# wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | bash -s -- apply --gpu=all --require-exact-gpu-count=2 --require-compute-capability=8.6 --require-nvlink --expect-topology=NV4 --run-p2p-test --strict-p2p --p2p-buffer-mib=256 --p2p-iterations=20 --official-samples=fetch --cuda-samples-tag=v13.1 --install-build-tools
+# Read-only inventory:
+# wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | bash -s -- preflight
+#
+# Managed validation for dual RTX 3090 (SM 8.6), NVLink NV4, and strict P2P:
+# wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | sudo bash -s -- apply --gpu=all --require-exact-gpu-count=2 --require-compute-capability=8.6 --require-nvlink --expect-topology=NV4 --run-p2p-test --strict-p2p --p2p-buffer-mib=256 --p2p-iterations=20 --official-samples=fetch --cuda-samples-tag=v13.1 --install-build-tools
 
 
 set -euo pipefail
@@ -32,7 +34,6 @@ PREFLIGHT_REPORT_PATH="${TMP_DIR}/preflight.txt"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-NVLINK_SELF_URL="${DEBIAN_NVLINK_SELF_URL:-${PAGES_BASE_URL}/setup/cli/nvlink.sh}"
 NVLINK_SUDO_REEXEC="${DEBIAN_NVLINK_SUDO_REEXEC:-0}"
 REFRESH="${REFRESH:-0}"
 
@@ -233,29 +234,48 @@ interactive.gpu.selection() {
   NVLINK_GPU_SELECTION_SOURCE="interactive"
 }
 
+runner.euid() { printf '%s\n' "${EUID}"; }
+
 current.script.path() { local source_path="${BASH_SOURCE[0]:-}"; case "${source_path}" in ''|-|/dev/fd/*|/proc/self/fd/*) return 1 ;; esac; [[ -r "${source_path}" ]] || return 1; readlink -f "${source_path}" 2>/dev/null || printf '%s\n' "${source_path}"; }
 
+have.controlling.tty() { [[ -r /dev/tty && -w /dev/tty ]]; }
+
+authenticate.sudo() {
+  sudo -n true >/dev/null 2>&1 && return 0
+  have.controlling.tty || {
+    log.error "Root privileges are required, but sudo needs authentication and no usable /dev/tty is available."
+    log.error "Run from an interactive terminal, use ssh -t, or start this runner with sudo."
+    return 1
+  }
+  log "Root privileges required; sudo may prompt on the controlling terminal."
+  log "Password input is not echoed."
+  sudo -v </dev/tty || { log.error "sudo authentication failed or was cancelled."; return 1; }
+}
+
+fail.streamed.managed.mode() {
+  log.error "This managed mode requires root, but the runner was executed from stdin."
+  log.error "The runner will not silently download and execute a second copy as root."
+  log.error "Run: wget -qO- ${PAGES_BASE_URL}/setup/cli/nvlink.sh | sudo bash -s -- ${FEATURE_MODE} [options]"
+  exit "${EXIT_BLOCKED}"
+}
+
 collect.sudo.env.args() {
-  local -n output="$1"
   local name=""
-  output=()
+  sudo_env=()
   while IFS= read -r name; do
-    case "${name}" in DEBIAN_NVLINK_*|PAGES_BASE_URL|TMP_ROOT_DIR|TMP_DIR|REFRESH) output+=("${name}=${!name}") ;; esac
+    case "${name}" in DEBIAN_NVLINK_*|PAGES_BASE_URL|TMP_ROOT_DIR|TMP_DIR|REFRESH) sudo_env+=("${name}=${!name}") ;; esac
   done < <(compgen -e)
 }
 
 ensure.root.or.sudo.reexec() {
   local script_path=""; local -a sudo_env=()
-  [[ "${EUID:-$(id -u)}" -eq 0 ]] && return 0
+  [[ "$(runner.euid)" -eq 0 ]] && return 0
   [[ "${NVLINK_SUDO_REEXEC}" != 1 ]] || { log.error "sudo re-entry was requested but the script is still not root."; exit 1; }
+  script_path="$(current.script.path)" || fail.streamed.managed.mode
   command -v sudo >/dev/null 2>&1 || { log.error "This mode requires root privileges; install sudo or run as root."; exit 1; }
-  log "Root privileges required; requesting sudo..."
-  sudo -v || { log.error "sudo authentication failed or was cancelled."; exit 1; }
-  collect.sudo.env.args sudo_env; sudo_env+=("DEBIAN_NVLINK_SUDO_REEXEC=1")
-  if script_path="$(current.script.path)"; then exec sudo env "${sudo_env[@]}" bash "${script_path}" "$@"; fi
-  if command -v wget >/dev/null 2>&1; then exec sudo env "${sudo_env[@]}" bash -c 'wget -qO- "$1" | bash -s -- "${@:2}"' bash "${NVLINK_SELF_URL}" "$@"; fi
-  if command -v curl >/dev/null 2>&1; then exec sudo env "${sudo_env[@]}" bash -c 'curl -fsSL "$1" | bash -s -- "${@:2}"' bash "${NVLINK_SELF_URL}" "$@"; fi
-  log.error "Cannot re-enter from stdin because neither wget nor curl is available."; exit 1
+  authenticate.sudo || exit 1
+  collect.sudo.env.args; sudo_env+=("DEBIAN_NVLINK_SUDO_REEXEC=1")
+  exec sudo env "${sudo_env[@]}" bash "${script_path}" "$@"
 }
 
 source.release.common() {
@@ -376,4 +396,6 @@ main() {
   run.managed.mode "$@"
 }
 
-main "$@"
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

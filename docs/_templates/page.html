@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="$if(description)$$description$$else$Documentation for devs-guide/debian.$endif$">
+  <title>$title$ · devs-guide/debian</title>
+  <link rel="stylesheet" href="$site_root$/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="$site_root$/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="$site_root$/setup/">Setup</a>
+        <a href="$site_root$/cli/">CLI</a>
+        <a href="$site_root$/ansible/">Ansible</a>
+        <a href="$site_root$/actions/">Actions</a>
+        <a href="$site_root$/kiosk/">Kiosk</a>
+        <a href="$site_root$/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb"><a href="$site_root$/">Home</a> / $section$</p>
+    <article>
+      $body$
+    </article>
+    <footer>
+      $if(source_path)$<p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/$source_path$"><code>$source_path$</code></a></p>$endif$
+      $if(script_url)$<p>Published runner: <a href="$script_url$"><code>$script_url$</code></a></p>$endif$
+    </footer>
+  </main>
+</body>
+</html>

@@ -5,18 +5,18 @@
 ## Local usage:
 ##   ./setup/cli/nvidia.sh [preflight|apply|validate|upgrade] [options]
 ##
-## Published usage (read-only by default):
+## Published read-only usage:
 ##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash
 ##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash -s -- preflight
 ##
-## An installation is always explicit. For example:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash -s -- apply \
+## Managed installation is always explicit and starts the runner as root:
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | sudo bash -s -- apply \
 ##     --profile=llm --driver-source=nvidia --cuda-source=nvidia \
 ##     --cuda-version=<approved-exact-minor>
 ##
-## IMPORTANT: export DEBIAN_NVIDIA_* variables before a wget|bash pipeline, or
-## place them on the right side of the pipe. Assignments before wget affect wget,
-## not this script.
+## Prefer command-line options for published managed invocations. sudo normally
+## resets environment variables; pass any required DEBIAN_NVIDIA_* values with
+## an explicit sudo env allowlist.
 
 set -euo pipefail
 
@@ -37,7 +37,6 @@ LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-NVIDIA_SELF_URL="${DEBIAN_NVIDIA_SELF_URL:-${PAGES_BASE_URL}/setup/cli/nvidia.sh}"
 NVIDIA_SUDO_REEXEC="${DEBIAN_NVIDIA_SUDO_REEXEC:-0}"
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=("cli/nvidia.yml")
@@ -344,14 +343,43 @@ current.script.path() {
   return 1
 }
 
+runner.euid() { printf '%s\n' "${EUID}"; }
+
+have.controlling.tty() {
+  [[ -r /dev/tty && -w /dev/tty ]]
+}
+
+authenticate.sudo() {
+  if sudo -n true >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! have.controlling.tty; then
+    log.error "Root privileges are required, but sudo needs authentication and no usable /dev/tty is available."
+    log.error "Run from an interactive terminal, use ssh -t, or start this runner with sudo."
+    return 1
+  fi
+  log "Root privileges required; sudo may prompt on the controlling terminal."
+  log "Password input is not echoed."
+  if ! sudo -v </dev/tty; then
+    log.error "sudo authentication failed or was cancelled."
+    return 1
+  fi
+}
+
+fail.streamed.managed.mode() {
+  log.error "This managed mode requires root, but the runner was executed from stdin."
+  log.error "The runner will not silently download and execute a second copy as root."
+  log.error "Run: wget -qO- ${PAGES_BASE_URL}/setup/cli/nvidia.sh | sudo bash -s -- ${FEATURE_MODE} [options]"
+  exit "${EXIT_BLOCKED}"
+}
+
 collect.sudo.env.args() {
-  local -n output="$1"
   local name=""
-  output=()
+  sudo_env=()
   while IFS= read -r name; do
     case "${name}" in
       DEBIAN_NVIDIA_*|PAGES_BASE_URL|TMP_ROOT_DIR|TMP_DIR|REFRESH)
-        output+=("${name}=${!name}")
+        sudo_env+=("${name}=${!name}")
         ;;
     esac
   done < <(compgen -e)
@@ -361,38 +389,26 @@ ensure.root.or.sudo.reexec() {
   local script_path=""
   local -a sudo_env=()
 
-  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+  if [[ "$(runner.euid)" -eq 0 ]]; then
     return 0
   fi
   if [[ "${NVIDIA_SUDO_REEXEC}" == 1 ]]; then
     log.error "sudo re-entry was requested but the script is still not root."
     exit 1
   fi
+  if ! script_path="$(current.script.path)"; then
+    fail.streamed.managed.mode
+  fi
   if ! command -v sudo >/dev/null 2>&1; then
     log.error "This mode requires root privileges. Install sudo or run as root."
     exit 1
   fi
 
-  log "Root privileges required; requesting sudo..."
-  sudo -v || { log.error "sudo authentication failed or was cancelled."; exit 1; }
-  collect.sudo.env.args sudo_env
+  authenticate.sudo || exit 1
+  collect.sudo.env.args
   sudo_env+=("DEBIAN_NVIDIA_SUDO_REEXEC=1")
 
-  if script_path="$(current.script.path)"; then
-    exec sudo env "${sudo_env[@]}" bash "${script_path}" "$@"
-  fi
-  if command -v wget >/dev/null 2>&1; then
-    exec sudo env "${sudo_env[@]}" bash -c \
-      'wget -qO- "$1" | bash -s -- "${@:2}"' \
-      bash "${NVIDIA_SELF_URL}" "$@"
-  fi
-  if command -v curl >/dev/null 2>&1; then
-    exec sudo env "${sudo_env[@]}" bash -c \
-      'curl -fsSL "$1" | bash -s -- "${@:2}"' \
-      bash "${NVIDIA_SELF_URL}" "$@"
-  fi
-  log.error "Cannot re-enter from stdin because neither wget nor curl is available."
-  exit 1
+  exec sudo env "${sudo_env[@]}" bash "${script_path}" "$@"
 }
 
 source.release.common() {
@@ -674,4 +690,6 @@ main() {
   run.managed.mode "$@"
 }
 
-main "$@"
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

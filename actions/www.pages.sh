@@ -27,7 +27,6 @@ require_file() {
 main() {
   local src dest
   local -a root_files=(
-    "www/index.html:index.html"
     "setup/bootstrap.sh:setup/bootstrap.sh"
     "setup/debian.sh:setup/debian.sh"
     "setup/metal.sh:setup/metal.sh"
@@ -47,7 +46,10 @@ main() {
     "readme.md:readme.md"
   )
 
-  require_file "${ROOT}/www/index.html"
+  require_file "${ROOT}/actions/build.docs.sh"
+  require_file "${ROOT}/docs/readme.md"
+  require_file "${ROOT}/docs/_templates/page.html"
+  require_file "${ROOT}/docs/_assets/site.css"
   require_file "${ROOT}/setup/bootstrap.sh"
   require_file "${ROOT}/setup/debian.sh"
   require_file "${ROOT}/setup/metal.sh"
@@ -83,9 +85,10 @@ main() {
 
   cp -R "${ROOT}/ansible" "${PUBLISH_DIR}/"
 
-  if [[ -d "${ROOT}/docs" ]]; then
-    cp -R "${ROOT}/docs" "${PUBLISH_DIR}/"
-  fi
+  DOCS_SITE_ROOT="${DOCS_SITE_ROOT:-/debian}" \
+    bash "${ROOT}/actions/build.docs.sh" \
+      --source "${ROOT}/docs" \
+      --output "${PUBLISH_DIR}"
 
   log "published static tree at ${PUBLISH_DIR}"
 }

@@ -21,12 +21,14 @@ Icon
 # Metadata files
 .fseventsd
 
-# Project docs
-docs/
+# Local documentation experiments
 refactor.docs/
 tools/
 logs/
 log/
+
+# Legacy generated docs are replaced by the Pages build.
+/static/docs/
 
 # Local prompt notes
 prompts/
@@ -35,4 +37,3 @@ prompt/
 
 # local private prompt repo symlink
 /prompt
-

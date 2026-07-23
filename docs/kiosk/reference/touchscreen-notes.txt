@@ -1,0 +1,3 @@
+Historical reference only. The original touchscreen notes are retained in
+docs/untitled.txt in the repository. Device IDs, output names, calibration
+matrices, and Xorg drivers are host-specific and must be verified before use.
