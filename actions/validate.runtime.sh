@@ -445,22 +445,70 @@ for marker in 'nvidia_smi_rc:' 'nvcc_rc:' 'runtime_header_ready:' 'validation_po
   fi
 done
 
-echo "[validate.runtime] checking Phase 1 strict sudo runner contract..."
-for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
-  runner_path="${ROOT}/${runner}"
-  for required_marker in 'runner.euid' 'current.script.path' 'sudo -n true' '/dev/tty' 'fail.streamed.managed.mode' 'runner was executed from stdin'; do
-    if ! grep -Fq "${required_marker}" "${runner_path}"; then
-      echo "[validate.runtime][error] ${runner} must implement ${required_marker}"
-      rc=1
-    fi
-  done
-  if grep -Eq 'exec sudo .*bash -c|wget -qO- "\$1" \| bash -s --|curl -fsSL "\$1" \| bash -s --' "${runner_path}"; then
-    echo "[validate.runtime][error] ${runner} must not re-download itself inside sudo"
+echo "[validate.runtime] checking delegated-root runner contract..."
+runner_helper="${ROOT}/setup/runner.common.sh"
+if ! bash -n "${runner_helper}"; then
+  echo "[validate.runtime][error] setup/runner.common.sh must pass bash -n"
+  rc=1
+fi
+for required_marker in \
+  'runner.euid' \
+  'runner.have.controlling.tty' \
+  'runner.authenticate.sudo' \
+  'runner.ensure.privileged.session' \
+  'runner.run.as.root' \
+  'runner.cleanup.runtime' \
+  'RUNNER_TTY_PATH:=/dev/tty' \
+  'sudo -v <"${RUNNER_TTY_PATH}"' \
+  'sudo -n --' \
+  'mktemp -d'; do
+  if ! grep -Fq "${required_marker}" "${runner_helper}"; then
+    echo "[validate.runtime][error] setup/runner.common.sh must implement ${required_marker}"
     rc=1
   fi
 done
-if ! bash "${ROOT}/actions/test.sudo-access.sh"; then
-  echo "[validate.runtime][error] Phase 1 sudo access contract tests failed"
+for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+  runner_path="${ROOT}/${runner}"
+  for required_marker in \
+    'RUNNER_HELPER_URL' \
+    'source.runner.common' \
+    'runner.ensure.privileged.session' \
+    'runner.run.as.root' \
+    '/usr/bin/env -i' \
+    'ensure-local-ansible' \
+    'mktemp -d'; do
+    if ! grep -Fq "${required_marker}" "${runner_path}"; then
+      echo "[validate.runtime][error] ${runner} must implement delegated-root marker ${required_marker}"
+      rc=1
+    fi
+  done
+  for obsolete_marker in \
+    'fail.streamed.managed.mode' \
+    'runner was executed from stdin' \
+    'ensure.root.or.sudo.reexec' \
+    'current.script.path' \
+    'exec sudo'; do
+    if grep -Fq "${obsolete_marker}" "${runner_path}"; then
+      echo "[validate.runtime][error] ${runner} retains obsolete privilege marker ${obsolete_marker}"
+      rc=1
+    fi
+  done
+  if grep -Eq 'sudo[[:space:]]+-E([[:space:]]|$)|sudo[^#]*(wget|curl)' "${runner_path}"; then
+    echo "[validate.runtime][error] ${runner} must not preserve the ambient environment or fetch inside sudo"
+    rc=1
+  fi
+done
+if ! grep -Fq 'ensure-local-ansible)' "${ROOT}/setup/release.common.sh" || \
+   ! grep -Fq 'release.common.main "$@"' "${ROOT}/setup/release.common.sh" || \
+   ! grep -Fq 'if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must expose a guarded ensure-local-ansible command"
+  rc=1
+fi
+if ! bash -n "${ROOT}/actions/test.sudo-access.sh"; then
+  echo "[validate.runtime][error] actions/test.sudo-access.sh must pass bash -n"
+  rc=1
+elif ! bash "${ROOT}/actions/test.sudo-access.sh"; then
+  echo "[validate.runtime][error] delegated-root runner contract tests failed"
   rc=1
 fi
 

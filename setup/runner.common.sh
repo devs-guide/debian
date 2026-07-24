@@ -8,6 +8,7 @@ set -euo pipefail
 : "${RUNNER_RUNTIME_FEATURE:=}"
 : "${RUNNER_RUNTIME_ACTIVE:=0}"
 : "${RUNNER_SUDO_AUTHENTICATED:=0}"
+: "${RUNNER_TTY_PATH:=/dev/tty}"
 
 if ! declare -F log >/dev/null 2>&1; then
   log() { printf '[setup.runner] %s\n' "$*" >&2; }
@@ -26,7 +27,7 @@ runner.euid() {
 }
 
 runner.have.controlling.tty() {
-  [[ -r /dev/tty && -w /dev/tty ]]
+  [[ -r "${RUNNER_TTY_PATH}" && -w "${RUNNER_TTY_PATH}" ]]
 }
 
 runner.runtime.path.is.safe() {
@@ -119,7 +120,7 @@ runner.authenticate.sudo() {
 
   log "Root privileges required; requesting sudo once through /dev/tty."
   log "Password input is not echoed."
-  if ! sudo -v </dev/tty; then
+  if ! sudo -v <"${RUNNER_TTY_PATH}"; then
     log.error "sudo authentication failed or was cancelled."
     return 1
   fi
