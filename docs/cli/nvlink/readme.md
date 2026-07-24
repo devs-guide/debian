@@ -8,7 +8,10 @@ script_url: https://devs-guide.github.io/debian/setup/cli/nvlink.sh
 # NVLink validation runner
 
 Validates a previously installed NVIDIA/CUDA host; it does not install an
-NVIDIA driver or CUDA toolkit. Modes are `preflight`, `apply`, and `validate`.
+NVIDIA driver or CUDA toolkit. Every managed `apply` or `validate` run first
+uses the canonical NVIDIA validator to refresh NVIDIA-owned readiness facts
+from the current driver, compiler, and CUDA-header state. Modes are
+`preflight`, `apply`, and `validate`.
 
 ## Read-only topology check
 
@@ -28,10 +31,11 @@ side of the pipe.
 
 ## Complete dual-RTX-3090 validation
 
-Run this only after the NVIDIA runner has installed and validated the selected
-driver/CUDA policy. It compiles the managed CUDA smoke helper, tests each
-selected GPU by UUID, records NVLink topology, and runs the opt-in P2P
-diagnostic.
+Run this after the NVIDIA runner has installed the selected driver/CUDA policy.
+Before NVLink testing, the managed run automatically revalidates that policy
+and refreshes `/etc/ansible/debian/facts/nvidia.yml`; it then compiles the
+managed CUDA smoke helper, tests each selected GPU by UUID, records NVLink
+topology, and runs the opt-in P2P diagnostic.
 
 ```bash
 wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
@@ -61,7 +65,9 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
 | `--official-samples=fetch` / `--cuda-samples-tag=v13.1` | Fetches the specified CUDA sample revision for optional comparison. |
 | `--install-build-tools` | Explicitly permits installation of source-neutral compiler/build dependencies. |
 
-For a later non-mutating recheck, replace `apply` with `validate` and omit
-`--install-build-tools` and `--official-samples=fetch`. A successful result is
+For a later recheck, replace `apply` with `validate` and omit
+`--install-build-tools` and `--official-samples=fetch`. `validate` rewrites
+only NVIDIA/NVLink readiness facts and managed environment metadata; it does
+not install or upgrade NVIDIA/CUDA packages. A successful result is
 hardware/runtime validation only; it does not enable global LLM application
 P2P settings.

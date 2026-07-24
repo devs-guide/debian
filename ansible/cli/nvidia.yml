@@ -28,6 +28,7 @@
     nvidia_allow_cuda_minor_compat: false
     nvidia_allow_custom_repo: false
     nvidia_skip_live_validate: false
+    nvidia_validate_from_facts: false
     nvidia_check_upstream: false
     nvidia_latest_in_branch: false
     nvidia_repo_base_url: ""
@@ -95,18 +96,167 @@
       register: nvidia_platform
       changed_when: false
 
+    - name: Restrict persisted-policy refresh to NVIDIA validate mode
+      ansible.builtin.assert:
+        that:
+          - not (nvidia_validate_from_facts | bool) or (nvidia_mode | lower == 'validate')
+        fail_msg: >-
+          nvidia_validate_from_facts is an internal refresh path and may only
+          be used with NVIDIA validate mode. It never authorizes package,
+          repository, kernel-module, or boot-state changes.
+
+    - name: Check NVIDIA facts before persisted-policy refresh
+      ansible.builtin.stat:
+        path: "{{ nvidia_facts_path }}"
+      register: nvidia_refresh_facts_file
+      when: nvidia_validate_from_facts | bool
+
+    - name: Require NVIDIA facts before persisted-policy refresh
+      ansible.builtin.assert:
+        that:
+          - nvidia_refresh_facts_file.stat.exists
+        fail_msg: >-
+          NVIDIA facts are missing at {{ nvidia_facts_path }}. Run the NVIDIA
+          feature in apply mode before requesting NVLink validation.
+      when: nvidia_validate_from_facts | bool
+
+    - name: Load NVIDIA-owned facts for persisted-policy refresh
+      ansible.builtin.slurp:
+        src: "{{ nvidia_facts_path }}"
+      register: nvidia_refresh_facts_raw
+      when: nvidia_validate_from_facts | bool
+
+    - name: Decode NVIDIA-owned facts for persisted-policy refresh
+      ansible.builtin.set_fact:
+        nvidia_refresh_facts: >-
+          {{ nvidia_refresh_facts_raw.content | b64decode | from_yaml | default({}, true) }}
+      when: nvidia_validate_from_facts | bool
+
+    - name: Validate persisted NVIDIA fact contract for refresh
+      ansible.builtin.assert:
+        that:
+          - nvidia_refresh_facts is mapping
+          - nvidia_refresh_facts.nvidia is defined
+          - nvidia_refresh_facts.nvidia is mapping
+          - nvidia_refresh_facts.nvidia.schema_version | default(0) | int == 1
+        fail_msg: >-
+          NVIDIA facts at {{ nvidia_facts_path }} are malformed or unsupported.
+          Run the NVIDIA feature in apply mode to initialize a schema-version-1
+          fact before requesting NVLink validation.
+      when: nvidia_validate_from_facts | bool
+
+    - name: Normalize persisted NVIDIA validation policy
+      ansible.builtin.set_fact:
+        nvidia_refresh_persisted_policy: >-
+          {{ nvidia_refresh_facts.nvidia.validation_policy | default({}, true) }}
+        nvidia_refresh_source_policy: >-
+          {{ nvidia_refresh_facts.nvidia.source_policy | default({}, true) }}
+        nvidia_refresh_driver: >-
+          {{ nvidia_refresh_facts.nvidia.driver | default({}, true) }}
+        nvidia_refresh_cuda: >-
+          {{ nvidia_refresh_facts.nvidia.cuda | default({}, true) }}
+        nvidia_refresh_inventory: >-
+          {{ nvidia_refresh_facts.nvidia.inventory | default({}, true) }}
+      when: nvidia_validate_from_facts | bool
+
+    - name: Reconstruct legacy NVIDIA validation policy when necessary
+      ansible.builtin.set_fact:
+        nvidia_validation_policy:
+          profile: >-
+            {{ nvidia_refresh_persisted_policy.profile | default(nvidia_refresh_facts.nvidia.profile | default(nvidia_profile)) }}
+          driver_source: >-
+            {{ nvidia_refresh_persisted_policy.driver_source | default(nvidia_refresh_source_policy.driver_source | default(nvidia_driver_source)) }}
+          cuda_source: >-
+            {{ nvidia_refresh_persisted_policy.cuda_source | default(nvidia_refresh_source_policy.cuda_source | default(nvidia_cuda_source)) }}
+          driver_channel: >-
+            {{ nvidia_refresh_persisted_policy.driver_channel | default(nvidia_driver_channel) }}
+          driver_branch: >-
+            {{ nvidia_refresh_persisted_policy.driver_branch | default(nvidia_refresh_source_policy.driver_branch | default(nvidia_driver_branch)) }}
+          driver_version: >-
+            {{ nvidia_refresh_persisted_policy.driver_version | default(nvidia_refresh_driver.requested_version | default(nvidia_driver_version)) }}
+          cuda_version: >-
+            {{ nvidia_refresh_persisted_policy.cuda_version | default(nvidia_refresh_cuda.requested_minor | default(nvidia_cuda_version)) }}
+          kernel_module_flavor: >-
+            {{ nvidia_refresh_persisted_policy.kernel_module_flavor | default(nvidia_refresh_driver.kernel_module_flavor | default(nvidia_kernel_module_flavor)) }}
+          gpu_select: >-
+            {{ nvidia_refresh_persisted_policy.gpu_select | default(nvidia_refresh_inventory.requested_gpu_select | default(nvidia_gpu_select)) }}
+          gpu_selection_source: >-
+            {{ nvidia_refresh_persisted_policy.gpu_selection_source | default(nvidia_refresh_inventory.selected_by | default(nvidia_gpu_selection_source)) }}
+          require_gpu_count: >-
+            {{ nvidia_refresh_persisted_policy.require_gpu_count | default(nvidia_require_gpu_count) }}
+          require_compute_capabilities: >-
+            {{ nvidia_refresh_persisted_policy.require_compute_capabilities | default(nvidia_require_compute_capabilities) }}
+          persistence: >-
+            {{ nvidia_refresh_persisted_policy.persistence | default(nvidia_persistence) }}
+          nccl: >-
+            {{ nvidia_refresh_persisted_policy.nccl | default(nvidia_nccl) }}
+          allow_source_migration: >-
+            {{ nvidia_refresh_persisted_policy.allow_source_migration | default(nvidia_refresh_source_policy.source_migration_allowed | default(nvidia_allow_source_migration)) }}
+          allow_cuda_minor_compat: >-
+            {{ nvidia_refresh_persisted_policy.allow_cuda_minor_compat | default(nvidia_allow_cuda_minor_compat) }}
+          allow_no_gpu: >-
+            {{ nvidia_refresh_persisted_policy.allow_no_gpu | default(nvidia_allow_no_gpu) }}
+        nvidia_validation_policy_origin: >-
+          {{ 'persisted' if (nvidia_refresh_persisted_policy | length > 0) else 'legacy-reconstructed' }}
+      when: nvidia_validate_from_facts | bool
+
+    - name: State legacy NVIDIA policy reconstruction
+      ansible.builtin.debug:
+        msg: >-
+          NVIDIA facts predate validation_policy. Validation is using the
+          legacy recorded profile/source/driver/CUDA fields and will persist a
+          complete validation_policy on success.
+      when:
+        - nvidia_validate_from_facts | bool
+        - nvidia_validation_policy_origin == 'legacy-reconstructed'
+
     - name: Normalize NVIDIA feature inputs
       ansible.builtin.set_fact:
         nvidia_mode_effective: "{{ nvidia_mode | lower }}"
-        nvidia_profile_effective: "{{ nvidia_profile | lower }}"
-        nvidia_driver_source_effective: "{{ nvidia_driver_source | lower }}"
-        nvidia_cuda_source_effective: "{{ nvidia_cuda_source | lower }}"
-        nvidia_module_flavor_effective: "{{ nvidia_kernel_module_flavor | lower }}"
-        nvidia_cuda_matrix_entry: "{{ nvidia_cuda_driver_matrix.get(nvidia_cuda_version, {}) }}"
+        nvidia_profile_effective: >-
+          {{ (nvidia_validation_policy.profile if nvidia_validate_from_facts | bool else nvidia_profile) | lower }}
+        nvidia_driver_source_effective: >-
+          {{ (nvidia_validation_policy.driver_source if nvidia_validate_from_facts | bool else nvidia_driver_source) | lower }}
+        nvidia_cuda_source_effective: >-
+          {{ (nvidia_validation_policy.cuda_source if nvidia_validate_from_facts | bool else nvidia_cuda_source) | lower }}
+        nvidia_driver_channel_effective: >-
+          {{ (nvidia_validation_policy.driver_channel if nvidia_validate_from_facts | bool else nvidia_driver_channel) | lower }}
+        nvidia_driver_branch_effective: >-
+          {{ nvidia_validation_policy.driver_branch if nvidia_validate_from_facts | bool else nvidia_driver_branch }}
+        nvidia_driver_version_effective: >-
+          {{ nvidia_validation_policy.driver_version if nvidia_validate_from_facts | bool else nvidia_driver_version }}
+        nvidia_cuda_version_effective: >-
+          {{ nvidia_validation_policy.cuda_version if nvidia_validate_from_facts | bool else nvidia_cuda_version }}
+        nvidia_module_flavor_effective: >-
+          {{ (nvidia_validation_policy.kernel_module_flavor if nvidia_validate_from_facts | bool else nvidia_kernel_module_flavor) | lower }}
+        nvidia_gpu_select_effective: >-
+          {{ nvidia_validation_policy.gpu_select if nvidia_validate_from_facts | bool else nvidia_gpu_select }}
+        nvidia_gpu_selection_source_effective: >-
+          {{ nvidia_validation_policy.gpu_selection_source if nvidia_validate_from_facts | bool else nvidia_gpu_selection_source }}
+        nvidia_require_gpu_count_effective: >-
+          {{ nvidia_validation_policy.require_gpu_count if nvidia_validate_from_facts | bool else nvidia_require_gpu_count }}
+        nvidia_require_compute_capabilities_effective: >-
+          {{ nvidia_validation_policy.require_compute_capabilities if nvidia_validate_from_facts | bool else nvidia_require_compute_capabilities }}
+        nvidia_persistence_effective: >-
+          {{ nvidia_validation_policy.persistence if nvidia_validate_from_facts | bool else nvidia_persistence }}
+        nvidia_nccl_effective: >-
+          {{ nvidia_validation_policy.nccl if nvidia_validate_from_facts | bool else nvidia_nccl }}
+        nvidia_allow_source_migration_effective: >-
+          {{ nvidia_validation_policy.allow_source_migration if nvidia_validate_from_facts | bool else nvidia_allow_source_migration }}
+        nvidia_allow_cuda_minor_compat_effective: >-
+          {{ nvidia_validation_policy.allow_cuda_minor_compat if nvidia_validate_from_facts | bool else nvidia_allow_cuda_minor_compat }}
+        nvidia_allow_no_gpu_effective: >-
+          {{ nvidia_validation_policy.allow_no_gpu if nvidia_validate_from_facts | bool else nvidia_allow_no_gpu }}
+        nvidia_validation_policy_origin_effective: >-
+          {{ nvidia_validation_policy_origin | default('requested') }}
+
+    - name: Resolve NVIDIA compatibility policy
+      ansible.builtin.set_fact:
+        nvidia_cuda_matrix_entry: "{{ nvidia_cuda_driver_matrix.get(nvidia_cuda_version_effective, {}) }}"
         nvidia_llm_matrix_entry: >-
           {{
             (nvidia_llm_cuda_matrix
-              | selectattr('cuda_minor', 'equalto', nvidia_cuda_version)
+              | selectattr('cuda_minor', 'equalto', nvidia_cuda_version_effective)
               | list | first | default({}))
           }}
         nvidia_running_kernel_headers_package: >-
@@ -134,18 +284,18 @@
           - nvidia_driver_source_effective in ['auto', 'debian', 'nvidia']
           - nvidia_cuda_source_effective in ['none', 'auto', 'debian', 'nvidia']
           - nvidia_module_flavor_effective in ['auto', 'open', 'proprietary']
-          - nvidia_driver_channel in ['production', 'new-feature']
-          - nvidia_driver_channel != 'new-feature' or nvidia_driver_branch | length > 0
-          - nvidia_profile_effective == 'driver' or nvidia_cuda_version | length > 0
+          - nvidia_driver_channel_effective in ['production', 'new-feature']
+          - nvidia_driver_channel_effective != 'new-feature' or nvidia_driver_branch_effective | length > 0
+          - nvidia_profile_effective == 'driver' or nvidia_cuda_version_effective | length > 0
           - nvidia_profile_effective == 'driver' or nvidia_cuda_source_effective != 'none'
         fail_msg: "Invalid NVIDIA profile, source, CUDA version, or module-flavor policy."
 
     - name: Fail closed for unavailable CUDA compatibility entries
       ansible.builtin.assert:
         that:
-          - nvidia_profile_effective == 'driver' or nvidia_cuda_version | length == 0 or nvidia_cuda_matrix_entry | length > 0
-          - nvidia_profile_effective != 'llm' or nvidia_cuda_version | length == 0 or nvidia_llm_matrix_entry | length > 0
-          - nvidia_profile_effective != 'llm' or nvidia_cuda_version | length == 0 or nvidia_llm_matrix_entry.get('status', '') == 'tested'
+          - nvidia_profile_effective == 'driver' or nvidia_cuda_version_effective | length == 0 or nvidia_cuda_matrix_entry | length > 0
+          - nvidia_profile_effective != 'llm' or nvidia_cuda_version_effective | length == 0 or nvidia_llm_matrix_entry | length > 0
+          - nvidia_profile_effective != 'llm' or nvidia_cuda_version_effective | length == 0 or nvidia_llm_matrix_entry.get('status', '') == 'tested'
         fail_msg: >-
           The requested CUDA minor is not approved for the selected profile.
           This feature never substitutes another CUDA minor.
@@ -156,10 +306,10 @@
           {{
             nvidia_module_flavor_effective
             if nvidia_module_flavor_effective != 'auto'
-            else ('open' if (nvidia_driver_branch | int) >= 560 else 'proprietary')
+            else ('open' if (nvidia_driver_branch_effective | int) >= 560 else 'proprietary')
           }}
         nvidia_driver_pin_name: >-
-          nvidia-driver-pinning-{{ nvidia_driver_version if nvidia_driver_version | length > 0 else nvidia_driver_branch }}
+          nvidia-driver-pinning-{{ nvidia_driver_version_effective if nvidia_driver_version_effective | length > 0 else nvidia_driver_branch_effective }}
 
     - name: Reject unimplemented custom repository overrides
       ansible.builtin.assert:
@@ -247,7 +397,7 @@
     - name: Resolve the driver package candidate inside the requested family
       ansible.builtin.shell: |
         set -euo pipefail
-        requested='{{ nvidia_driver_version if nvidia_driver_version | length > 0 else nvidia_driver_branch }}'
+        requested='{{ nvidia_driver_version_effective if nvidia_driver_version_effective | length > 0 else nvidia_driver_branch_effective }}'
         candidate=''
         while IFS= read -r version; do
           case "${version}" in
@@ -295,7 +445,7 @@
       ansible.builtin.shell: |
         set -euo pipefail
         simulation_args=(--no-install-recommends)
-        if ! {{ nvidia_allow_source_migration | bool | ternary('true', 'false') }}; then
+        if ! {{ nvidia_allow_source_migration_effective | bool | ternary('true', 'false') }}; then
           simulation_args+=(--no-remove)
         fi
         packages=(
@@ -406,16 +556,36 @@
             source_policy:
               driver_source: {{ nvidia_driver_source_effective | to_json }}
               cuda_source: {{ nvidia_cuda_source_effective | to_json }}
-              driver_branch: {{ nvidia_driver_branch | to_json }}
-              source_migration_allowed: {{ nvidia_allow_source_migration | bool | to_json }}
+              driver_channel: {{ nvidia_driver_channel_effective | to_json }}
+              driver_branch: {{ nvidia_driver_branch_effective | to_json }}
+              source_migration_allowed: {{ nvidia_allow_source_migration_effective | bool | to_json }}
+            validation_policy:
+              origin: {{ nvidia_validation_policy_origin_effective | to_json }}
+              profile: {{ nvidia_profile_effective | to_json }}
+              driver_source: {{ nvidia_driver_source_effective | to_json }}
+              cuda_source: {{ nvidia_cuda_source_effective | to_json }}
+              driver_channel: {{ nvidia_driver_channel_effective | to_json }}
+              driver_branch: {{ nvidia_driver_branch_effective | to_json }}
+              driver_version: {{ nvidia_driver_version_effective | to_json }}
+              cuda_version: {{ nvidia_cuda_version_effective | to_json }}
+              kernel_module_flavor: {{ nvidia_module_flavor_resolved | to_json }}
+              gpu_select: {{ nvidia_gpu_select_effective | to_json }}
+              gpu_selection_source: {{ nvidia_gpu_selection_source_effective | to_json }}
+              require_gpu_count: {{ nvidia_require_gpu_count_effective | to_json }}
+              require_compute_capabilities: {{ nvidia_require_compute_capabilities_effective | to_json }}
+              persistence: {{ nvidia_persistence_effective | to_json }}
+              nccl: {{ nvidia_nccl_effective | to_json }}
+              allow_source_migration: {{ nvidia_allow_source_migration_effective | bool | to_json }}
+              allow_cuda_minor_compat: {{ nvidia_allow_cuda_minor_compat_effective | bool | to_json }}
+              allow_no_gpu: {{ nvidia_allow_no_gpu_effective | bool | to_json }}
             driver:
-              requested_version: {{ nvidia_driver_version | to_json }}
+              requested_version: {{ nvidia_driver_version_effective | to_json }}
               candidate_package_version: {{ (nvidia_driver_candidate | default({'stdout': ''})).stdout | trim | to_json }}
               kernel_module_flavor: {{ nvidia_module_flavor_resolved | to_json }}
               nvidia_smi_ready: {{ (nvidia_smi_inventory.rc == 0) | to_json }}
               nvidia_smi_rc: {{ nvidia_smi_inventory.rc | to_json }}
             cuda:
-              requested_minor: {{ nvidia_cuda_version | to_json }}
+              requested_minor: {{ nvidia_cuda_version_effective | to_json }}
               package_name: {{ nvidia_cuda_package_resolved | default('') | to_json }}
               cuda_home: {{ (nvidia_cuda_home if nvidia_nvcc_version.rc == 0 else '') | to_json }}
               nvcc_ready: {{ (nvidia_nvcc_version.rc == 0) | to_json }}
@@ -424,8 +594,8 @@
               runtime_header_ready: {{ (nvidia_cuda_runtime_header_ready | default(false) | bool) | to_json }}
               compile_test_ready: false
             inventory:
-              selected_by: {{ nvidia_gpu_selection_source | to_json }}
-              requested_gpu_select: {{ nvidia_gpu_select | to_json }}
+              selected_by: {{ nvidia_gpu_selection_source_effective | to_json }}
+              requested_gpu_select: {{ nvidia_gpu_select_effective | to_json }}
               raw_nvidia_smi: {{ nvidia_smi_inventory.stdout | default('') | trim | to_json }}
             readiness:
               driver_ready: {{ (nvidia_smi_inventory.rc == 0) | to_json }}
@@ -477,9 +647,9 @@
         group: root
         mode: '0644'
         content: |
-          NVIDIA_DRIVER_BRANCH={{ nvidia_driver_branch }}
+          NVIDIA_DRIVER_BRANCH={{ nvidia_driver_branch_effective }}
           NVIDIA_KERNEL_MODULE_FLAVOR={{ nvidia_module_flavor_resolved }}
-          NVIDIA_CUDA_TOOLKIT_REQUESTED={{ nvidia_cuda_version }}
+          NVIDIA_CUDA_TOOLKIT_REQUESTED={{ nvidia_cuda_version_effective }}
           NVIDIA_CUDA_HOME={{ nvidia_cuda_home if nvidia_nvcc_version.rc == 0 else '' }}
           NVIDIA_LLM_PREREQUISITE_READY=0
       when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']

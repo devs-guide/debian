@@ -1,4 +1,9 @@
 ---
+- import_playbook: nvidia.yml
+  vars:
+    nvidia_mode: validate
+    nvidia_validate_from_facts: true
+
 - name: Debian standalone CUDA, NVLink, and P2P validation
   hosts: localhost
   gather_facts: false
@@ -142,10 +147,11 @@
           nvcc_rc={{ nvlink_fact_nvcc_rc }},
           runtime_header_ready={{ nvlink_fact_runtime_header_ready }},
           facts_cuda_home={{ nvlink_fact_cuda_home | to_json }},
-          expected_cuda_home={{ nvlink_cuda_home | to_json }}. Run
-          setup/cli/nvidia.sh in validate mode with the installed driver/CUDA
-          policy before rerunning NVLink. NVLink will not rewrite NVIDIA-owned
-          facts.
+          expected_cuda_home={{ nvlink_cuda_home | to_json }}. The automatic
+          NVIDIA validate-from-facts pass completed but did not produce a
+          matching prerequisite contract. Resolve the reported NVIDIA
+          validation failure and rerun NVLink. NVLink will not rewrite
+          NVIDIA-owned facts.
 
     - name: Collect live physical GPU inventory and resolve UUID/PCI selection
       ansible.builtin.shell: |

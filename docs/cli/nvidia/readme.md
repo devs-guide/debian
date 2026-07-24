@@ -118,5 +118,7 @@ compiler validate. It intentionally does not add a global `LD_LIBRARY_PATH`.
 
 NVIDIA installation alone does not prove CUDA compile/run readiness on every
 physical GPU or validate the NVLink topology. For the selected RTX 3090 pair,
-continue with the opt-in [NVLink validation runner](/debian/cli/nvlink/) after
-the NVIDIA `validate` command succeeds.
+continue with the opt-in [NVLink validation runner](/debian/cli/nvlink/).
+Managed NVLink runs automatically invoke NVIDIA validate mode from the
+NVIDIA-owned fact policy before CUDA/NVLink testing; running NVIDIA `validate`
+directly remains useful for inspecting driver/CUDA readiness by itself.

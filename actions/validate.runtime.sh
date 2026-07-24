@@ -437,7 +437,7 @@ if ! awk '
   echo "[validate.runtime][error] NVIDIA must check the CUDA runtime header before persisting facts"
   rc=1
 fi
-for marker in 'nvidia_smi_rc:' 'nvcc_rc:' 'runtime_header_ready:' 'Fail NVIDIA validation when requested live prerequisites are unavailable'; do
+for marker in 'nvidia_smi_rc:' 'nvcc_rc:' 'runtime_header_ready:' 'validation_policy:' 'nvidia_validate_from_facts:' 'Restrict persisted-policy refresh to NVIDIA validate mode' 'Fail NVIDIA validation when requested live prerequisites are unavailable'; do
   if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvidia.yml"; then
     echo "[validate.runtime][error] NVIDIA fact refresh contract is missing: ${marker}"
     rc=1
@@ -469,6 +469,7 @@ if ! bash -n "${ROOT}/setup/cli/nvlink.sh"; then
   rc=1
 fi
 for required_ref in \
+  '"cli/nvidia.yml"' \
   '"packages.yml"' \
   '"files/nvlink/nvidia-cuda-smoke.cu"' \
   '"files/nvlink/nvidia-p2p-verify.cu"' \
@@ -478,6 +479,21 @@ for required_ref in \
     rc=1
   fi
 done
+for marker in 'for file in "${FEATURE_PLAYBOOKS[@]}"' 'nvidia.yml' 'nvidia_validate_from_facts: true'; do
+  if ! grep -Fq "${marker}" "${ROOT}/setup/cli/nvlink.sh" && ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
+    echo "[validate.runtime][error] NVLink automatic NVIDIA fact refresh is missing: ${marker}"
+    rc=1
+  fi
+done
+if ! awk '
+  /import_playbook: nvidia\.yml/ { imported = 1 }
+  /nvidia_mode: validate/ { validate = 1 }
+  /nvidia_validate_from_facts: true/ { refresh = 1 }
+  END { exit !(imported && validate && refresh) }
+' "${ROOT}/ansible/cli/nvlink.yml"; then
+  echo "[validate.runtime][error] NVLink must import NVIDIA validate-from-facts before NVLink validation"
+  rc=1
+fi
 for marker in nvlink.yml llm-nvidia-validated.sh nvidia-cuda-smoke nvidia-p2p-verify nvidia-topology-parser.py NV4 CUDA_VISIBLE_DEVICES; do
   if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
     echo "[validate.runtime][error] ansible/cli/nvlink.yml missing required marker: ${marker}"

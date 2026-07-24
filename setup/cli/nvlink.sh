@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Published path: https://devs-guide.github.io/debian/setup/cli/nvlink.sh
 ## Standalone CUDA, NVLink, and P2P validation runner.
-## It validates an existing NVIDIA/CUDA installation; it never installs drivers,
+## It refreshes NVIDIA-owned readiness facts through NVIDIA validate mode, then
+## validates an existing NVIDIA/CUDA installation. It never installs drivers,
 ## CUDA toolkits, repositories, kernel modules, or boot configuration.
 ## EXAMPLE:
 
@@ -38,7 +39,7 @@ NVLINK_SUDO_REEXEC="${DEBIAN_NVLINK_SUDO_REEXEC:-0}"
 REFRESH="${REFRESH:-0}"
 
 GROUP_VARS_FILES=("all.yml" "debian.yml")
-FEATURE_PLAYBOOKS=("cli/nvlink.yml")
+FEATURE_PLAYBOOKS=("cli/nvidia.yml" "cli/nvlink.yml")
 RUNTIME_SUPPORT_REFS=(
   "packages.yml"
   "files/nvlink/nvidia-cuda-smoke.cu"
@@ -77,8 +78,8 @@ Usage: nvlink.sh [preflight|apply|validate] [options]
 
 Modes:
   preflight                 Read-only inventory and topology report (default).
-  apply                     Install source-neutral build tools when requested, build, and validate.
-  validate                  Re-run existing audited helpers; never install packages or fetch sources.
+  apply                     Refresh NVIDIA facts, optionally install source-neutral build tools, build, and validate.
+  validate                  Refresh NVIDIA facts and re-run existing audited helpers; never install NVIDIA/CUDA packages.
 
 Options:
   --gpu=all|<uuid-or-pci-list>
@@ -102,8 +103,10 @@ Options:
   --install-build-tools|--no-install-build-tools
   --help
 
-`--require-nvlink` makes a PCIe-only or inactive NVLink result fatal. P2P
-diagnostics are opt-in; `--strict-p2p` makes a requested P2P failure fatal.
+`--require-nvlink` makes a PCIe-only or inactive NVLink result fatal. Managed
+runs first execute NVIDIA validate mode from NVIDIA-owned facts; this refresh
+does not install or upgrade NVIDIA/CUDA packages. P2P diagnostics are opt-in;
+`--strict-p2p` makes a requested P2P failure fatal.
 EOF_USAGE
 }
 
@@ -298,7 +301,7 @@ use.local.feature.files() {
   script_dir="$(cd "$(dirname "${source_path}")" && pwd)"; repo_root="$(cd "${script_dir}/../.." && pwd)"
   for file in "${GROUP_VARS_FILES[@]}"; do [[ -r "${repo_root}/ansible/group_vars/${file}" ]] || return 1; done
   for file in "${RUNTIME_SUPPORT_REFS[@]}"; do [[ -s "${repo_root}/ansible/${file}" ]] || return 1; done
-  [[ -r "${repo_root}/ansible/${NVLINK_PLAYBOOK_REL}" ]] || return 1
+  for file in "${FEATURE_PLAYBOOKS[@]}"; do [[ -r "${repo_root}/ansible/${file}" ]] || return 1; done
   PLAYBOOK_ROOT="${repo_root}/ansible"; PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"; NVLINK_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NVLINK_PLAYBOOK_REL}"
   reset.feature.extra.vars.args; log "Using local feature files from ${repo_root}"
 }
@@ -315,7 +318,7 @@ prepare.feature.files() {
   mkdir -p "${PLAYBOOK_GROUP_VARS_DIR}"
   for file in "${GROUP_VARS_FILES[@]}"; do fetch.file "${PAGES_BASE_URL}/ansible/group_vars/${file}" "${PLAYBOOK_GROUP_VARS_DIR}/${file}"; done
   for file in "${RUNTIME_SUPPORT_REFS[@]}"; do fetch.file "${PAGES_BASE_URL}/ansible/${file}" "${PLAYBOOK_ROOT}/${file}"; done
-  fetch.file "${PAGES_BASE_URL}/ansible/${NVLINK_PLAYBOOK_REL}" "${NVLINK_PLAYBOOK_PATH}"
+  for file in "${FEATURE_PLAYBOOKS[@]}"; do fetch.file "${PAGES_BASE_URL}/ansible/${file}" "${PLAYBOOK_ROOT}/${file}"; done
   reset.feature.extra.vars.args
 }
 
