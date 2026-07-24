@@ -431,7 +431,7 @@ if ! grep -Fq 'Check the package-managed CUDA runtime header' "${ROOT}/ansible/c
 fi
 if ! awk '
   /Check the package-managed CUDA runtime header/ { header = NR }
-  /Persist the initial NVIDIA readiness facts/ { facts = NR }
+  /Persist NVIDIA readiness facts/ { facts = NR }
   END { exit !(header > 0 && facts > header) }
 ' "${ROOT}/ansible/cli/nvidia.yml"; then
   echo "[validate.runtime][error] NVIDIA must check the CUDA runtime header before persisting facts"

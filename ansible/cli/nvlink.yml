@@ -395,6 +395,25 @@
         - nvlink_mode_effective == 'apply'
         - nvlink_audited_sources.changed or not (nvlink_existing_helpers.results | map(attribute='stat.exists') | min)
 
+    - name: Normalize optional CUDA helper compilation result
+      ansible.builtin.set_fact:
+        nvlink_compile_stdout: >-
+          {{
+            (nvlink_compile_helpers | default({})).get(
+              'stdout',
+              'existing helpers reused'
+            )
+            | string
+            | trim
+          }}
+        nvlink_compile_stderr: >-
+          {{
+            (nvlink_compile_helpers | default({})).get('stderr', '')
+            | string
+            | trim
+          }}
+      when: nvlink_mode_effective in ['apply', 'validate']
+
     - name: Record CUDA helper compilation output
       ansible.builtin.copy:
         dest: "{{ nvlink_log_dir }}/compile-helpers.txt"
@@ -402,8 +421,8 @@
         group: root
         mode: '0644'
         content: |
-          {{ nvlink_compile_helpers.stdout | default('existing helpers reused') }}
-          {{ nvlink_compile_helpers.stderr | default('') }}
+          {{ nvlink_compile_stdout }}
+          {{ nvlink_compile_stderr }}
       when: nvlink_mode_effective in ['apply', 'validate']
 
     - name: Require installed audited CUDA helpers for validation
@@ -474,10 +493,22 @@
         - nvlink_mode_effective in ['apply', 'validate']
         - nvlink_selection.selected | length >= 2
 
+    - name: Normalize selected pair topology result
+      ansible.builtin.set_fact:
+        nvlink_topology_parse_stdout: >-
+          {{
+            (nvlink_topology_parse | default({})).get('stdout', '')
+            | string
+            | trim
+          }}
+      when:
+        - nvlink_mode_effective in ['apply', 'validate']
+        - nvlink_selection.selected | length >= 2
+
     - name: Set topology classification
       ansible.builtin.set_fact:
-        nvlink_pair_topology: "{{ nvlink_topology_parse.stdout | from_json }}"
-        nvlink_route: "{{ (nvlink_topology_parse.stdout | from_json).route }}"
+        nvlink_pair_topology: "{{ nvlink_topology_parse_stdout | from_json }}"
+        nvlink_route: "{{ (nvlink_topology_parse_stdout | from_json).route }}"
         nvlink_link_status_active: "{{ lookup('file', nvlink_log_dir ~ '/nvlink-status.txt') is search('(?mi)link\\s+[0-9]+:\\s+active') }}"
         nvlink_link_status_supported: "{{ (lookup('file', nvlink_log_dir ~ '/nvlink-status.txt.rc') | trim) == '0' }}"
       when:
@@ -518,10 +549,21 @@
         - nvlink_mode_effective in ['apply', 'validate']
         - nvlink_run_p2p_test | bool
 
+    - name: Normalize optional P2P result
+      ansible.builtin.set_fact:
+        nvlink_p2p_run_rc: >-
+          {{ (nvlink_p2p_run | default({})).get('rc', 1) | int }}
+        nvlink_p2p_run_stdout_lines: >-
+          {{
+            (nvlink_p2p_run | default({})).get('stdout_lines', [])
+            | list
+          }}
+      when: nvlink_mode_effective in ['apply', 'validate']
+
     - name: Record opt-in P2P result
       ansible.builtin.set_fact:
-        nvlink_p2p_results: "{{ nvlink_p2p_run.stdout_lines | map('from_json') | list }}"
-        nvlink_p2p_passed: "{{ nvlink_p2p_run.rc == 0 }}"
+        nvlink_p2p_results: "{{ nvlink_p2p_run_stdout_lines | map('from_json') | list }}"
+        nvlink_p2p_passed: "{{ nvlink_p2p_run_rc == 0 }}"
       when:
         - nvlink_mode_effective in ['apply', 'validate']
         - nvlink_run_p2p_test | bool
@@ -590,6 +632,24 @@
         - nvlink_mode_effective in ['apply', 'validate']
         - nvlink_official_samples in ['existing', 'fetch']
 
+    - name: Normalize optional CUDA Samples result
+      ansible.builtin.set_fact:
+        nvlink_official_samples_rc: >-
+          {{ (nvlink_official_samples_run | default({})).get('rc', 1) | int }}
+        nvlink_official_samples_stdout: >-
+          {{
+            (nvlink_official_samples_run | default({})).get('stdout', '')
+            | string
+            | trim
+          }}
+        nvlink_official_samples_stderr: >-
+          {{
+            (nvlink_official_samples_run | default({})).get('stderr', '')
+            | string
+            | trim
+          }}
+      when: nvlink_mode_effective in ['apply', 'validate']
+
     - name: Record optional CUDA Samples result
       ansible.builtin.copy:
         dest: "{{ nvlink_log_dir }}/official-samples.txt"
@@ -597,16 +657,16 @@
         group: root
         mode: '0644'
         content: |
-          status: {{ 'passed' if (nvlink_official_samples_run.rc | default(1)) == 0 else ('not_requested' if nvlink_official_samples == 'off' else 'failed') }}
+          status: {{ 'passed' if nvlink_official_samples_rc == 0 else ('not_requested' if nvlink_official_samples == 'off' else 'failed') }}
           tag: {{ nvlink_cuda_samples_tag }}
-          stdout: {{ nvlink_official_samples_run.stdout | default('') | to_json }}
-          stderr: {{ nvlink_official_samples_run.stderr | default('') | to_json }}
+          stdout: {{ nvlink_official_samples_stdout | to_json }}
+          stderr: {{ nvlink_official_samples_stderr | to_json }}
       when: nvlink_mode_effective in ['apply', 'validate']
 
     - name: Enforce strict optional CUDA Samples request
       ansible.builtin.assert:
         that:
-          - nvlink_official_samples_run.rc | default(1) == 0
+          - nvlink_official_samples_rc == 0
         fail_msg: "Strict CUDA Samples validation failed."
       when:
         - nvlink_mode_effective in ['apply', 'validate']
@@ -715,7 +775,7 @@
                     else ('nvlink_inactive' if (nvlink_topology_active | bool) else 'pcie_only')
                   ) | to_json
                 }}
-              bonded_nvlink_count: {{ (nvlink_pair_topology | default({})).bonded_nvlink_count | default(0) | to_json }}
+              bonded_nvlink_count: {{ (nvlink_pair_topology | default({})).get('bonded_nvlink_count', 0) | int | to_json }}
               link_status_active: {{ nvlink_link_status_active | default(false) | to_json }}
             p2p:
               requested: {{ nvlink_run_p2p_test | to_json }}
@@ -726,7 +786,7 @@
             official_samples:
               requested: {{ (nvlink_official_samples != 'off') | to_json }}
               tag: {{ nvlink_cuda_samples_tag | to_json }}
-              status: {{ ('passed' if (nvlink_official_samples_run.rc | default(1)) == 0 else ('not_requested' if nvlink_official_samples == 'off' else 'failed')) | to_json }}
+              status: {{ ('passed' if nvlink_official_samples_rc == 0 else ('not_requested' if nvlink_official_samples == 'off' else 'failed')) | to_json }}
             readiness:
               cuda_smoke_ready: {{ nvlink_smoke_all_passed | to_json }}
               topology_ready: {{ ((nvlink_topology_active | bool) and (not (nvlink_link_status_supported | default(false) | bool) or (nvlink_link_status_active | default(false) | bool))) | to_json }}

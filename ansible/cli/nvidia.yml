@@ -499,6 +499,16 @@
       changed_when: false
       failed_when: false
 
+    - name: Inspect the loaded NVIDIA driver version
+      ansible.builtin.command:
+        argv:
+          - nvidia-smi
+          - --query-gpu=driver_version
+          - --format=csv,noheader,nounits
+      register: nvidia_installed_driver_version
+      changed_when: false
+      failed_when: false
+
     - name: Inspect the package-managed CUDA compiler without conflating it with nvidia-smi
       ansible.builtin.command:
         argv: ["{{ nvidia_cuda_home }}/bin/nvcc", --version]
@@ -523,6 +533,85 @@
           }}
       when: nvidia_profile_effective in ['cuda', 'llm']
 
+    - name: Normalize NVIDIA observations before fact persistence
+      ansible.builtin.set_fact:
+        nvidia_fact_driver_candidate_package_version: >-
+          {{
+            (nvidia_driver_candidate | default({})).get(
+              'stdout',
+              (nvidia_refresh_driver | default({})).get(
+                'candidate_package_version',
+                ''
+              )
+            )
+            | string
+            | trim
+          }}
+        nvidia_fact_driver_candidate_package_version_origin: >-
+          {{
+            'resolved-this-run'
+            if (
+              (nvidia_driver_candidate | default({})).get('stdout', '')
+              | string
+              | trim
+              | length
+            ) > 0
+            else (
+              'persisted'
+              if (
+                (nvidia_refresh_driver | default({})).get(
+                  'candidate_package_version',
+                  ''
+                )
+                | string
+                | trim
+                | length
+              ) > 0
+              else 'unavailable'
+            )
+          }}
+        nvidia_fact_installed_driver_version: >-
+          {{
+            (
+              (nvidia_installed_driver_version | default({})).get(
+                'stdout_lines',
+                []
+              )
+              | first
+              | default('')
+            )
+            | string
+            | trim
+          }}
+        nvidia_fact_cuda_package_name: >-
+          {{
+            nvidia_cuda_package_resolved
+            | default(
+                (nvidia_refresh_cuda | default({})).get('package_name', ''),
+                true
+              )
+            | string
+          }}
+        nvidia_fact_smi_rc: >-
+          {{ (nvidia_smi_inventory | default({})).get('rc', 1) | int }}
+        nvidia_fact_smi_stdout: >-
+          {{
+            (nvidia_smi_inventory | default({})).get('stdout', '')
+            | string
+            | trim
+          }}
+        nvidia_fact_nvcc_rc: >-
+          {{ (nvidia_nvcc_version | default({})).get('rc', 1) | int }}
+        nvidia_fact_nvcc_stdout: >-
+          {{
+            (nvidia_nvcc_version | default({})).get('stdout', '')
+            | string
+            | trim
+          }}
+        nvidia_fact_runtime_header_ready: >-
+          {{ nvidia_cuda_runtime_header_ready | default(false) | bool }}
+      when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+
     - name: Create managed NVIDIA fact and transaction directories
       ansible.builtin.file:
         path: "{{ item }}"
@@ -536,7 +625,7 @@
         - "{{ nvidia_transaction_dir }}"
       when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
 
-    - name: Persist the initial NVIDIA readiness facts
+    - name: Persist NVIDIA readiness facts
       ansible.builtin.copy:
         dest: "{{ nvidia_facts_path }}"
         owner: root
@@ -580,37 +669,39 @@
               allow_no_gpu: {{ nvidia_allow_no_gpu_effective | bool | to_json }}
             driver:
               requested_version: {{ nvidia_driver_version_effective | to_json }}
-              candidate_package_version: {{ (nvidia_driver_candidate | default({'stdout': ''})).stdout | trim | to_json }}
+              candidate_package_version: {{ nvidia_fact_driver_candidate_package_version | to_json }}
+              candidate_package_version_origin: {{ nvidia_fact_driver_candidate_package_version_origin | to_json }}
+              installed_driver_version: {{ nvidia_fact_installed_driver_version | to_json }}
               kernel_module_flavor: {{ nvidia_module_flavor_resolved | to_json }}
-              nvidia_smi_ready: {{ (nvidia_smi_inventory.rc == 0) | to_json }}
-              nvidia_smi_rc: {{ nvidia_smi_inventory.rc | to_json }}
+              nvidia_smi_ready: {{ (nvidia_fact_smi_rc == 0) | to_json }}
+              nvidia_smi_rc: {{ nvidia_fact_smi_rc | to_json }}
             cuda:
               requested_minor: {{ nvidia_cuda_version_effective | to_json }}
-              package_name: {{ nvidia_cuda_package_resolved | default('') | to_json }}
-              cuda_home: {{ (nvidia_cuda_home if nvidia_nvcc_version.rc == 0 else '') | to_json }}
-              nvcc_ready: {{ (nvidia_nvcc_version.rc == 0) | to_json }}
-              nvcc_rc: {{ nvidia_nvcc_version.rc | to_json }}
-              nvcc_version: {{ nvidia_nvcc_version.stdout | default('') | trim | to_json }}
-              runtime_header_ready: {{ (nvidia_cuda_runtime_header_ready | default(false) | bool) | to_json }}
+              package_name: {{ nvidia_fact_cuda_package_name | to_json }}
+              cuda_home: {{ (nvidia_cuda_home if nvidia_fact_nvcc_rc == 0 else '') | to_json }}
+              nvcc_ready: {{ (nvidia_fact_nvcc_rc == 0) | to_json }}
+              nvcc_rc: {{ nvidia_fact_nvcc_rc | to_json }}
+              nvcc_version: {{ nvidia_fact_nvcc_stdout | to_json }}
+              runtime_header_ready: {{ nvidia_fact_runtime_header_ready | to_json }}
               compile_test_ready: false
             inventory:
               selected_by: {{ nvidia_gpu_selection_source_effective | to_json }}
               requested_gpu_select: {{ nvidia_gpu_select_effective | to_json }}
-              raw_nvidia_smi: {{ nvidia_smi_inventory.stdout | default('') | trim | to_json }}
+              raw_nvidia_smi: {{ nvidia_fact_smi_stdout | to_json }}
             readiness:
-              driver_ready: {{ (nvidia_smi_inventory.rc == 0) | to_json }}
+              driver_ready: {{ (nvidia_fact_smi_rc == 0) | to_json }}
               cuda_runtime_ready: false
               cuda_build_ready: false
               llm_prerequisite_ready: false
               llm_runtime_validated: false
               reasons:
-                {% if nvidia_smi_inventory.rc != 0 %}
-                - "nvidia-smi returned rc={{ nvidia_smi_inventory.rc }}; reboot or module activation may be required."
+                {% if nvidia_fact_smi_rc != 0 %}
+                - "nvidia-smi returned rc={{ nvidia_fact_smi_rc }}; reboot or module activation may be required."
                 {% endif %}
-                {% if nvidia_profile_effective in ['cuda', 'llm'] and nvidia_nvcc_version.rc != 0 %}
-                - "{{ nvidia_cuda_home }}/bin/nvcc returned rc={{ nvidia_nvcc_version.rc }}."
+                {% if nvidia_profile_effective in ['cuda', 'llm'] and nvidia_fact_nvcc_rc != 0 %}
+                - "{{ nvidia_cuda_home }}/bin/nvcc returned rc={{ nvidia_fact_nvcc_rc }}."
                 {% endif %}
-                {% if nvidia_profile_effective in ['cuda', 'llm'] and not (nvidia_cuda_runtime_header_ready | default(false) | bool) %}
+                {% if nvidia_profile_effective in ['cuda', 'llm'] and not (nvidia_fact_runtime_header_ready | bool) %}
                 - "CUDA runtime header is unavailable at {{ nvidia_cuda_home }}/include/cuda_runtime.h."
                 {% endif %}
                 - "CUDA compile-and-run smoke validation is not implemented in this initial playbook phase."
@@ -629,10 +720,10 @@
     - name: Fail NVIDIA validation when requested live prerequisites are unavailable
       ansible.builtin.assert:
         that:
-          - nvidia_smi_inventory.rc == 0
-          - nvidia_profile_effective == 'driver' or (nvidia_nvcc_version.rc == 0)
+          - nvidia_fact_smi_rc == 0
+          - nvidia_profile_effective == 'driver' or (nvidia_fact_nvcc_rc == 0)
           - nvidia_profile_effective == 'driver' or (nvidia_cuda_home | length > 0)
-          - nvidia_profile_effective == 'driver' or (nvidia_cuda_runtime_header_ready | default(false) | bool)
+          - nvidia_profile_effective == 'driver' or (nvidia_fact_runtime_header_ready | bool)
         fail_msg: >-
           NVIDIA live validation failed. Facts were updated to reflect the
           failure. Driver profiles require nvidia-smi; CUDA and LLM profiles
@@ -650,7 +741,7 @@
           NVIDIA_DRIVER_BRANCH={{ nvidia_driver_branch_effective }}
           NVIDIA_KERNEL_MODULE_FLAVOR={{ nvidia_module_flavor_resolved }}
           NVIDIA_CUDA_TOOLKIT_REQUESTED={{ nvidia_cuda_version_effective }}
-          NVIDIA_CUDA_HOME={{ nvidia_cuda_home if nvidia_nvcc_version.rc == 0 else '' }}
+          NVIDIA_CUDA_HOME={{ nvidia_cuda_home if nvidia_fact_nvcc_rc == 0 else '' }}
           NVIDIA_LLM_PREREQUISITE_READY=0
       when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
 
@@ -669,8 +760,8 @@
           unset GGML_CUDA_PEER_MAX_BATCH_SIZE
       when:
         - nvidia_mode_effective in ['apply', 'validate', 'upgrade']
-        - nvidia_smi_inventory.rc == 0
-        - nvidia_nvcc_version.rc == 0
+        - nvidia_fact_smi_rc == 0
+        - nvidia_fact_nvcc_rc == 0
 
     - name: Remove stale CUDA shell environment when validation is incomplete
       ansible.builtin.file:
@@ -678,7 +769,7 @@
         state: absent
       when:
         - nvidia_mode_effective in ['apply', 'validate', 'upgrade']
-        - nvidia_smi_inventory.rc != 0 or nvidia_nvcc_version.rc != 0
+        - nvidia_fact_smi_rc != 0 or nvidia_fact_nvcc_rc != 0
 
     - name: State remaining NVIDIA validation requirement
       ansible.builtin.debug:
