@@ -486,14 +486,37 @@ for marker in 'for file in "${FEATURE_PLAYBOOKS[@]}"' 'nvidia.yml' 'nvidia_valid
   fi
 done
 if ! awk '
-  /import_playbook: nvidia\.yml/ { imported = 1 }
-  /nvidia_mode: validate/ { validate = 1 }
-  /nvidia_validate_from_facts: true/ { refresh = 1 }
-  END { exit !(imported && validate && refresh) }
+  /import_playbook: nvidia\.yml/ { imported = NR }
+  /nvidia_mode: validate/ { validate = NR }
+  /nvidia_validate_from_facts: true/ { refresh = NR }
+  /name: Debian standalone CUDA, NVLink, and P2P validation/ { nvlink_play = NR }
+  /Reread refreshed NVIDIA installation facts without taking ownership/ { reread = NR }
+  /Check live NVIDIA and CUDA prerequisite executables/ { live = NR }
+  /Verify NVIDIA facts agree with live prerequisite state/ { contract = NR }
+  END {
+    exit !(
+      imported > 0
+      && validate > imported
+      && refresh > imported
+      && nvlink_play > refresh
+      && reread > nvlink_play
+      && live > reread
+      && contract > live
+    )
+  }
 ' "${ROOT}/ansible/cli/nvlink.yml"; then
-  echo "[validate.runtime][error] NVLink must import NVIDIA validate-from-facts before NVLink validation"
+  echo "[validate.runtime][error] NVLink must refresh NVIDIA-owned facts, reread them, and retain live plus persisted prerequisite checks in order"
   rc=1
 fi
+for marker in \
+  "nvlink_nvidia_facts_path == '/etc/ansible/debian/facts/nvidia.yml'" \
+  "nvlink_facts_path == '/etc/ansible/debian/facts/nvlink.yml'" \
+  'nvlink_nvidia_facts_path != nvlink_facts_path'; do
+  if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
+    echo "[validate.runtime][error] NVLink fact ownership guard is missing: ${marker}"
+    rc=1
+  fi
+done
 for marker in nvlink.yml llm-nvidia-validated.sh nvidia-cuda-smoke nvidia-p2p-verify nvidia-topology-parser.py NV4 CUDA_VISIBLE_DEVICES; do
   if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
     echo "[validate.runtime][error] ansible/cli/nvlink.yml missing required marker: ${marker}"

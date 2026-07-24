@@ -67,9 +67,14 @@
           - not nvlink_strict_official_samples | bool or nvlink_official_samples != 'off'
           - not nvlink_run_nvbandwidth | bool or nvlink_nvbandwidth_ref | length > 0
           - nvlink_mode_effective != 'validate' or nvlink_official_samples != 'fetch'
+          - nvlink_nvidia_facts_path == '/etc/ansible/debian/facts/nvidia.yml'
+          - nvlink_facts_path == '/etc/ansible/debian/facts/nvlink.yml'
+          - nvlink_nvidia_facts_path != nvlink_facts_path
         fail_msg: >-
           Invalid standalone NVLink validation request. This feature supports
-          apply and validate only and never changes NVIDIA or CUDA installation.
+          apply and validate only, never changes NVIDIA or CUDA installation,
+          and keeps NVIDIA and NVLink fact ownership on their canonical,
+          distinct paths.
 
     - name: Require NVIDIA installation facts
       ansible.builtin.stat:
@@ -84,12 +89,12 @@
           NVIDIA installation facts are missing at {{ nvlink_nvidia_facts_path }}.
           Run setup/cli/nvidia.sh successfully before NVLink validation.
 
-    - name: Load NVIDIA installation facts without taking ownership
+    - name: Reread refreshed NVIDIA installation facts without taking ownership
       ansible.builtin.slurp:
         src: "{{ nvlink_nvidia_facts_path }}"
       register: nvlink_nvidia_facts_raw
 
-    - name: Decode NVIDIA installation facts
+    - name: Decode refreshed NVIDIA installation facts
       ansible.builtin.set_fact:
         nvlink_nvidia_facts: "{{ nvlink_nvidia_facts_raw.content | b64decode | from_yaml }}"
 
