@@ -510,7 +510,7 @@ for marker in 'command -v nvidia-smi' 'nvidia_smi_path' '"${nvidia_smi_path}" >/
     rc=1
   fi
 done
-for marker in 'Normalize the NVIDIA prerequisite fact contract' 'nvlink_nvidia_schema_version' 'nvlink_fact_runtime_header_ready' 'NVLink will not rewrite NVIDIA-owned'; do
+for marker in 'Normalize the NVIDIA prerequisite fact contract' 'nvlink_nvidia_schema_version' 'nvlink_fact_runtime_header_ready' 'NVIDIA-owned facts.'; do
   if ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
     echo "[validate.runtime][error] NVLink NVIDIA fact contract is missing: ${marker}"
     rc=1
