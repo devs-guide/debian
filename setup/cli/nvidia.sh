@@ -9,14 +9,14 @@
 ##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash
 ##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash -s -- preflight
 ##
-## Managed installation is always explicit and starts the runner as root:
-##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | sudo bash -s -- apply \
+## Managed installation is always explicit. The runner authenticates once:
+##   wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | bash -s -- apply \
 ##     --profile=llm --driver-source=nvidia --cuda-source=nvidia \
 ##     --cuda-version=<approved-exact-minor>
 ##
-## Prefer command-line options for published managed invocations. sudo normally
-## resets environment variables; pass any required DEBIAN_NVIDIA_* values with
-## an explicit sudo env allowlist.
+## The compatibility form `wget ... | sudo bash -s -- apply ...` also works.
+## Downloads are staged before delegated root commands and are never repeated
+## from inside sudo.
 
 set -euo pipefail
 
@@ -28,23 +28,27 @@ log() { printf '[setup.cli.nvidia] %s\n' "$*" >&2; }
 log.error() { printf '[setup.cli.nvidia][error] %s\n' "$*" >&2; }
 log.warn() { printf '[setup.cli.nvidia][warn] %s\n' "$*" >&2; }
 
-TMP_ROOT_DIR="${TMP_ROOT_DIR:-/tmp/ansible/debian}"
-TMP_DIR="${TMP_DIR:-${TMP_ROOT_DIR}/nvidia}"
+RUNNER_TMP_PARENT="${DEBIAN_RUNNER_TMP_PARENT:-/tmp}"
+TMP_ROOT_DIR="${RUNNER_TMP_PARENT}"
+TMP_DIR=""
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
-PLAYBOOK_ROOT="${TMP_DIR}/runtime"
-PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
+PLAYBOOK_ROOT=""
+PLAYBOOK_GROUP_VARS_DIR=""
+LOCAL_RUNNER_HELPER="../runner.common.sh"
+RUNNER_HELPER_NAME="runner.common.sh"
+RUNNER_HELPER_URL="${PAGES_BASE_URL}/setup/${RUNNER_HELPER_NAME}"
+RUNNER_HELPER_PATH=""
 LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
-COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-NVIDIA_SUDO_REEXEC="${DEBIAN_NVIDIA_SUDO_REEXEC:-0}"
+COMMON_HELPER_PATH=""
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=("cli/nvidia.yml")
 RUNTIME_SUPPORT_REFS=("packages.yml")
 NVIDIA_PLAYBOOK_REL="cli/nvidia.yml"
-NVIDIA_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NVIDIA_PLAYBOOK_REL}"
-NVIDIA_EXTRA_VARS_PATH="${TMP_DIR}/cli.nvidia.extra-vars.yml"
-PREFLIGHT_REPORT_PATH="${TMP_DIR}/preflight.txt"
+NVIDIA_PLAYBOOK_PATH=""
+NVIDIA_EXTRA_VARS_PATH=""
+PREFLIGHT_REPORT_PATH=""
 REFRESH="${REFRESH:-0}"
 
 FEATURE_MODE="${DEBIAN_NVIDIA_MODE:-preflight}"
@@ -328,91 +332,67 @@ validate.configuration() {
   fi
 }
 
-reset.feature.tmp.cache() {
-  if is.true "${REFRESH}"; then
-    log "REFRESH=1; clearing feature temporary cache under ${TMP_DIR}"
-    rm -rf "${TMP_DIR}"
-  fi
+configure.runtime.paths() {
+  TMP_DIR="${RUNNER_RUNTIME_DIR}"
+  PLAYBOOK_ROOT="${TMP_DIR}/runtime"
+  PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
+  COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
+  NVIDIA_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NVIDIA_PLAYBOOK_REL}"
+  NVIDIA_EXTRA_VARS_PATH="${TMP_DIR}/cli.nvidia.extra-vars.yml"
+  PREFLIGHT_REPORT_PATH="${TMP_DIR}/preflight.txt"
 }
 
-current.script.path() {
+source.runner.common() {
   local source_path="${BASH_SOURCE[0]:-}"
+  local script_dir=""
+  local local_helper=""
+  local bootstrap_dir=""
+
   case "${source_path}" in
-    ""|-|/dev/fd/*|/proc/self/fd/*) return 1 ;;
+    ""|-|/dev/fd/*|/proc/self/fd/*) ;;
+    *)
+      script_dir="$(cd "$(dirname "${source_path}")" && pwd)"
+      local_helper="${script_dir}/${LOCAL_RUNNER_HELPER}"
+      if [[ -r "${local_helper}" ]]; then
+        RUNNER_HELPER_PATH="$(cd "$(dirname "${local_helper}")" && pwd)/$(basename "${local_helper}")"
+        # shellcheck source=setup/runner.common.sh
+        source "${RUNNER_HELPER_PATH}"
+        runner.create.runtime nvidia "${RUNNER_TMP_PARENT}"
+        configure.runtime.paths
+        return
+      fi
+      ;;
   esac
-  if [[ -r "${source_path}" ]]; then
-    readlink -f "${source_path}" 2>/dev/null || printf '%s\n' "${source_path}"
-    return 0
+
+  command -v wget >/dev/null 2>&1 || {
+    log.error "Cannot fetch the runner helper because wget is unavailable."
+    exit "${EXIT_BLOCKED}"
+  }
+  [[ "${RUNNER_TMP_PARENT}" == /* && "${RUNNER_TMP_PARENT}" != / && -d "${RUNNER_TMP_PARENT}" && -w "${RUNNER_TMP_PARENT}" ]] || {
+    log.error "Runner temporary parent must be an existing writable absolute directory other than /: ${RUNNER_TMP_PARENT}"
+    exit "${EXIT_BLOCKED}"
+  }
+
+  bootstrap_dir="$(mktemp -d "${RUNNER_TMP_PARENT%/}/devs-guide-nvidia.XXXXXX")"
+  chmod 0700 "${bootstrap_dir}"
+  RUNNER_HELPER_PATH="${bootstrap_dir}/${RUNNER_HELPER_NAME}"
+  log "Fetching shared runner helper: ${RUNNER_HELPER_URL}"
+  if ! wget -qO "${RUNNER_HELPER_PATH}" "${RUNNER_HELPER_URL}" || [[ ! -s "${RUNNER_HELPER_PATH}" ]]; then
+    log.error "Failed to fetch shared runner helper: ${RUNNER_HELPER_URL}"
+    rm -f -- "${RUNNER_HELPER_PATH}"
+    rmdir -- "${bootstrap_dir}" 2>/dev/null || true
+    exit "${EXIT_BLOCKED}"
   fi
-  return 1
-}
-
-runner.euid() { printf '%s\n' "${EUID}"; }
-
-have.controlling.tty() {
-  [[ -r /dev/tty && -w /dev/tty ]]
-}
-
-authenticate.sudo() {
-  if sudo -n true >/dev/null 2>&1; then
-    return 0
-  fi
-  if ! have.controlling.tty; then
-    log.error "Root privileges are required, but sudo needs authentication and no usable /dev/tty is available."
-    log.error "Run from an interactive terminal, use ssh -t, or start this runner with sudo."
-    return 1
-  fi
-  log "Root privileges required; sudo may prompt on the controlling terminal."
-  log "Password input is not echoed."
-  if ! sudo -v </dev/tty; then
-    log.error "sudo authentication failed or was cancelled."
-    return 1
-  fi
-}
-
-fail.streamed.managed.mode() {
-  log.error "This managed mode requires root, but the runner was executed from stdin."
-  log.error "The runner will not silently download and execute a second copy as root."
-  log.error "Run: wget -qO- ${PAGES_BASE_URL}/setup/cli/nvidia.sh | sudo bash -s -- ${FEATURE_MODE} [options]"
-  exit "${EXIT_BLOCKED}"
-}
-
-collect.sudo.env.args() {
-  local name=""
-  sudo_env=()
-  while IFS= read -r name; do
-    case "${name}" in
-      DEBIAN_NVIDIA_*|PAGES_BASE_URL|TMP_ROOT_DIR|TMP_DIR|REFRESH)
-        sudo_env+=("${name}=${!name}")
-        ;;
-    esac
-  done < <(compgen -e)
-}
-
-ensure.root.or.sudo.reexec() {
-  local script_path=""
-  local -a sudo_env=()
-
-  if [[ "$(runner.euid)" -eq 0 ]]; then
-    return 0
-  fi
-  if [[ "${NVIDIA_SUDO_REEXEC}" == 1 ]]; then
-    log.error "sudo re-entry was requested but the script is still not root."
-    exit 1
-  fi
-  if ! script_path="$(current.script.path)"; then
-    fail.streamed.managed.mode
-  fi
-  if ! command -v sudo >/dev/null 2>&1; then
-    log.error "This mode requires root privileges. Install sudo or run as root."
-    exit 1
-  fi
-
-  authenticate.sudo || exit 1
-  collect.sudo.env.args
-  sudo_env+=("DEBIAN_NVIDIA_SUDO_REEXEC=1")
-
-  exec sudo env "${sudo_env[@]}" bash "${script_path}" "$@"
+  bash -n "${RUNNER_HELPER_PATH}" || {
+    log.error "Downloaded runner helper failed shell syntax validation."
+    rm -f -- "${RUNNER_HELPER_PATH}"
+    rmdir -- "${bootstrap_dir}" 2>/dev/null || true
+    exit "${EXIT_BLOCKED}"
+  }
+  # shellcheck source=/tmp/devs-guide-nvidia.XXXXXX/runner.common.sh
+  source "${RUNNER_HELPER_PATH}"
+  runner.adopt.runtime nvidia "${bootstrap_dir}"
+  configure.runtime.paths
 }
 
 source.release.common() {
@@ -424,8 +404,9 @@ source.release.common() {
     *)
       script_dir="$(cd "$(dirname "${source_path}")" && pwd)"
       if [[ -r "${script_dir}/${LOCAL_COMMON_HELPER}" ]]; then
+        COMMON_HELPER_PATH="$(cd "$(dirname "${script_dir}/${LOCAL_COMMON_HELPER}")" && pwd)/$(basename "${LOCAL_COMMON_HELPER}")"
         # shellcheck source=setup/release.common.sh
-        source "${script_dir}/${LOCAL_COMMON_HELPER}"
+        source "${COMMON_HELPER_PATH}"
         return
       fi
       ;;
@@ -442,7 +423,7 @@ source.release.common() {
     log.error "Failed to fetch shared helper: ${COMMON_HELPER_URL}"
     exit 1
   }
-  # shellcheck source=/tmp/ansible/debian/nvidia/release.common.sh
+  # shellcheck source=/tmp/devs-guide-nvidia.XXXXXX/release.common.sh
   source "${COMMON_HELPER_PATH}"
 }
 
@@ -579,8 +560,45 @@ EOF_VARS
   log "Prepared NVIDIA extra-vars: ${NVIDIA_EXTRA_VARS_PATH}"
 }
 
+ensure.local.ansible.as.root() {
+  runner.run.as.root /usr/bin/env -i \
+    HOME=/root \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    TMPDIR=/tmp \
+    "TMP_ROOT_DIR=${TMP_ROOT_DIR}" \
+    "TMP_DIR=${TMP_DIR}" \
+    "PAGES_BASE_URL=${PAGES_BASE_URL}" \
+    "PYTHON_VERSION=${PYTHON_VERSION}" \
+    "PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}" \
+    "PYTHON_MIN_VERSION=${PYTHON_MIN_VERSION}" \
+    "PYTHON_SOURCE_PREFIX=${PYTHON_SOURCE_PREFIX}" \
+    "PYTHON_BIN=${PYTHON_BIN}" \
+    "PYTHON_SRC_DIR=${PYTHON_SRC_DIR}" \
+    "PYTHON_SRC_ARCHIVE=${PYTHON_SRC_ARCHIVE}" \
+    "PYTHON_SRC_URL=${PYTHON_SRC_URL}" \
+    "CONTROLLER_PYTHON_POLICY=${CONTROLLER_PYTHON_POLICY}" \
+    "SYSTEM_PYTHON_BIN=${SYSTEM_PYTHON_BIN}" \
+    "ANSIBLE_VENV=${ANSIBLE_VENV}" \
+    "ANSIBLE_VENV_BIN=${ANSIBLE_VENV_BIN}" \
+    "ANSIBLE_CORE_VERSION=${ANSIBLE_CORE_VERSION}" \
+    "ANSIBLE_CORE_SPEC=${ANSIBLE_CORE_SPEC}" \
+    "MANAGED_TARGET_PYTHON_HOME=${MANAGED_TARGET_PYTHON_HOME}" \
+    "MANAGED_TARGET_PYTHON_PATH=${MANAGED_TARGET_PYTHON_PATH}" \
+    "MANAGED_TARGET_HANDOFF_MARKER=${MANAGED_TARGET_HANDOFF_MARKER}" \
+    /bin/bash "${COMMON_HELPER_PATH}" ensure-local-ansible
+}
+
 run.feature.playbook() {
-  "${ANSIBLE_VENV_BIN}" -i localhost, -c local "${FEATURE_GROUP_VARS_ARGS[@]}" -e "@${NVIDIA_EXTRA_VARS_PATH}" "${NVIDIA_PLAYBOOK_PATH}"
+  runner.run.as.root /usr/bin/env -i \
+    HOME=/root \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    TMPDIR=/tmp \
+    "${ANSIBLE_VENV_BIN}" \
+      -i localhost, \
+      -c local \
+      "${FEATURE_GROUP_VARS_ARGS[@]}" \
+      -e "@${NVIDIA_EXTRA_VARS_PATH}" \
+      "${NVIDIA_PLAYBOOK_PATH}"
 }
 
 report.command() {
@@ -653,13 +671,11 @@ require.supported.platform() {
 }
 
 run.managed.mode() {
-  ensure.root.or.sudo.reexec "$@"
+  runner.ensure.privileged.session || exit "${EXIT_BLOCKED}"
   source.release.common
-  require.root
   require.apt
   require.debian
   require.supported.platform
-  reset.feature.tmp.cache
   prepare.feature.files
 
   if [[ "${FEATURE_MODE}" == validate ]]; then
@@ -668,7 +684,7 @@ run.managed.mode() {
       exit "${EXIT_BLOCKED}"
     fi
   else
-    ensure.local.ansible
+    ensure.local.ansible.as.root
   fi
 
   write.nvidia.extra.vars.file
@@ -684,9 +700,13 @@ main() {
   fi
   resolve.defaults
   validate.configuration
+  source.runner.common
+
+  if is.true "${REFRESH}"; then
+    log "REFRESH=1 requested; this invocation already uses a new empty runtime directory."
+  fi
 
   if [[ "${FEATURE_MODE}" == preflight ]]; then
-    reset.feature.tmp.cache
     prepare.feature.files
     run.read.only.preflight
     return 0

@@ -243,6 +243,7 @@ files=(
   "setup/cli/x11.sh"
   "setup/cli/openbox.sh"
   "setup/cli/touchscreen.sh"
+  "setup/runner.common.sh"
   "setup/release.common.sh"
   "setup/cli/codex.sh"
   "setup/cli/kiosk.app.sh"
@@ -2109,6 +2110,7 @@ if search_regex 'proxmox|pveversion|vmbr|pct |qm |/etc/ansible/proxmox|devs-guid
   "${ROOT}/setup/cli/x11.sh" \
   "${ROOT}/setup/cli/openbox.sh" \
   "${ROOT}/setup/cli/touchscreen.sh" \
+  "${ROOT}/setup/runner.common.sh" \
   "${ROOT}/setup/release.common.sh" \
   "${ROOT}/setup/cli/codex.sh" \
   "${ROOT}/setup/cli/startx.sh" \

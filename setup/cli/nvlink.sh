@@ -10,7 +10,7 @@
 # wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | bash -s -- preflight
 #
 # Managed validation for dual RTX 3090 (SM 8.6), NVLink NV4, and strict P2P:
-# wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | sudo bash -s -- apply --gpu=all --require-exact-gpu-count=2 --require-compute-capability=8.6 --require-nvlink --expect-topology=NV4 --run-p2p-test --strict-p2p --p2p-buffer-mib=256 --p2p-iterations=20 --official-samples=fetch --cuda-samples-tag=v13.1 --install-build-tools
+# wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | bash -s -- apply --gpu=all --require-exact-gpu-count=2 --require-compute-capability=8.6 --require-nvlink --expect-topology=NV4 --run-p2p-test --strict-p2p --p2p-buffer-mib=256 --p2p-iterations=20 --official-samples=fetch --cuda-samples-tag=v13.1 --install-build-tools
 
 
 set -euo pipefail
@@ -23,19 +23,24 @@ log() { printf '[setup.cli.nvlink] %s\n' "$*" >&2; }
 log.error() { printf '[setup.cli.nvlink][error] %s\n' "$*" >&2; }
 log.warn() { printf '[setup.cli.nvlink][warn] %s\n' "$*" >&2; }
 
-TMP_ROOT_DIR="${TMP_ROOT_DIR:-/tmp/ansible/debian}"
-TMP_DIR="${TMP_DIR:-${TMP_ROOT_DIR}/nvlink}"
+RUNNER_TMP_PARENT="${DEBIAN_RUNNER_TMP_PARENT:-/tmp}"
+TMP_ROOT_DIR="${RUNNER_TMP_PARENT}"
+TMP_DIR=""
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
-PLAYBOOK_ROOT="${TMP_DIR}/runtime"
-PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
+PLAYBOOK_ROOT=""
+PLAYBOOK_GROUP_VARS_DIR=""
 NVLINK_PLAYBOOK_REL="cli/nvlink.yml"
-NVLINK_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NVLINK_PLAYBOOK_REL}"
-NVLINK_EXTRA_VARS_PATH="${TMP_DIR}/cli.nvlink.extra-vars.yml"
-PREFLIGHT_REPORT_PATH="${TMP_DIR}/preflight.txt"
+NVLINK_PLAYBOOK_PATH=""
+NVLINK_EXTRA_VARS_PATH=""
+PREFLIGHT_REPORT_PATH=""
+LOCAL_RUNNER_HELPER="../runner.common.sh"
+RUNNER_HELPER_NAME="runner.common.sh"
+RUNNER_HELPER_URL="${PAGES_BASE_URL}/setup/${RUNNER_HELPER_NAME}"
+RUNNER_HELPER_PATH=""
+LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
 COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
-COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-NVLINK_SUDO_REEXEC="${DEBIAN_NVLINK_SUDO_REEXEC:-0}"
+COMMON_HELPER_PATH=""
 REFRESH="${REFRESH:-0}"
 
 GROUP_VARS_FILES=("all.yml" "debian.yml")
@@ -237,55 +242,78 @@ interactive.gpu.selection() {
   NVLINK_GPU_SELECTION_SOURCE="interactive"
 }
 
-runner.euid() { printf '%s\n' "${EUID}"; }
+configure.runtime.paths() {
+  TMP_DIR="${RUNNER_RUNTIME_DIR}"
+  PLAYBOOK_ROOT="${TMP_DIR}/runtime"
+  PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
+  NVLINK_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NVLINK_PLAYBOOK_REL}"
+  NVLINK_EXTRA_VARS_PATH="${TMP_DIR}/cli.nvlink.extra-vars.yml"
+  PREFLIGHT_REPORT_PATH="${TMP_DIR}/preflight.txt"
+  COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
+}
 
-current.script.path() { local source_path="${BASH_SOURCE[0]:-}"; case "${source_path}" in ''|-|/dev/fd/*|/proc/self/fd/*) return 1 ;; esac; [[ -r "${source_path}" ]] || return 1; readlink -f "${source_path}" 2>/dev/null || printf '%s\n' "${source_path}"; }
+source.runner.common() {
+  local source_path="${BASH_SOURCE[0]:-}"
+  local script_dir=""
+  local local_helper=""
+  local bootstrap_dir=""
 
-have.controlling.tty() { [[ -r /dev/tty && -w /dev/tty ]]; }
+  case "${source_path}" in
+    ""|-|/dev/fd/*|/proc/self/fd/*) ;;
+    *)
+      script_dir="$(cd "$(dirname "${source_path}")" && pwd)"
+      local_helper="${script_dir}/${LOCAL_RUNNER_HELPER}"
+      if [[ -r "${local_helper}" ]]; then
+        RUNNER_HELPER_PATH="$(cd "$(dirname "${local_helper}")" && pwd)/$(basename "${local_helper}")"
+        # shellcheck source=setup/runner.common.sh
+        source "${RUNNER_HELPER_PATH}"
+        runner.create.runtime nvlink "${RUNNER_TMP_PARENT}"
+        configure.runtime.paths
+        return
+      fi
+      ;;
+  esac
 
-authenticate.sudo() {
-  sudo -n true >/dev/null 2>&1 && return 0
-  have.controlling.tty || {
-    log.error "Root privileges are required, but sudo needs authentication and no usable /dev/tty is available."
-    log.error "Run from an interactive terminal, use ssh -t, or start this runner with sudo."
-    return 1
+  command -v wget >/dev/null 2>&1 || {
+    log.error "Cannot fetch the runner helper because wget is unavailable."
+    exit "${EXIT_BLOCKED}"
   }
-  log "Root privileges required; sudo may prompt on the controlling terminal."
-  log "Password input is not echoed."
-  sudo -v </dev/tty || { log.error "sudo authentication failed or was cancelled."; return 1; }
-}
+  [[ "${RUNNER_TMP_PARENT}" == /* && "${RUNNER_TMP_PARENT}" != / && -d "${RUNNER_TMP_PARENT}" && -w "${RUNNER_TMP_PARENT}" ]] || {
+    log.error "Runner temporary parent must be an existing writable absolute directory other than /: ${RUNNER_TMP_PARENT}"
+    exit "${EXIT_BLOCKED}"
+  }
 
-fail.streamed.managed.mode() {
-  log.error "This managed mode requires root, but the runner was executed from stdin."
-  log.error "The runner will not silently download and execute a second copy as root."
-  log.error "Run: wget -qO- ${PAGES_BASE_URL}/setup/cli/nvlink.sh | sudo bash -s -- ${FEATURE_MODE} [options]"
-  exit "${EXIT_BLOCKED}"
-}
-
-collect.sudo.env.args() {
-  local name=""
-  sudo_env=()
-  while IFS= read -r name; do
-    case "${name}" in DEBIAN_NVLINK_*|PAGES_BASE_URL|TMP_ROOT_DIR|TMP_DIR|REFRESH) sudo_env+=("${name}=${!name}") ;; esac
-  done < <(compgen -e)
-}
-
-ensure.root.or.sudo.reexec() {
-  local script_path=""; local -a sudo_env=()
-  [[ "$(runner.euid)" -eq 0 ]] && return 0
-  [[ "${NVLINK_SUDO_REEXEC}" != 1 ]] || { log.error "sudo re-entry was requested but the script is still not root."; exit 1; }
-  script_path="$(current.script.path)" || fail.streamed.managed.mode
-  command -v sudo >/dev/null 2>&1 || { log.error "This mode requires root privileges; install sudo or run as root."; exit 1; }
-  authenticate.sudo || exit 1
-  collect.sudo.env.args; sudo_env+=("DEBIAN_NVLINK_SUDO_REEXEC=1")
-  exec sudo env "${sudo_env[@]}" bash "${script_path}" "$@"
+  bootstrap_dir="$(mktemp -d "${RUNNER_TMP_PARENT%/}/devs-guide-nvlink.XXXXXX")"
+  chmod 0700 "${bootstrap_dir}"
+  RUNNER_HELPER_PATH="${bootstrap_dir}/${RUNNER_HELPER_NAME}"
+  log "Fetching shared runner helper: ${RUNNER_HELPER_URL}"
+  if ! wget -qO "${RUNNER_HELPER_PATH}" "${RUNNER_HELPER_URL}" || [[ ! -s "${RUNNER_HELPER_PATH}" ]]; then
+    log.error "Failed to fetch shared runner helper: ${RUNNER_HELPER_URL}"
+    rm -f -- "${RUNNER_HELPER_PATH}"
+    rmdir -- "${bootstrap_dir}" 2>/dev/null || true
+    exit "${EXIT_BLOCKED}"
+  fi
+  bash -n "${RUNNER_HELPER_PATH}" || {
+    log.error "Downloaded runner helper failed shell syntax validation."
+    rm -f -- "${RUNNER_HELPER_PATH}"
+    rmdir -- "${bootstrap_dir}" 2>/dev/null || true
+    exit "${EXIT_BLOCKED}"
+  }
+  # shellcheck source=/tmp/devs-guide-nvlink.XXXXXX/runner.common.sh
+  source "${RUNNER_HELPER_PATH}"
+  runner.adopt.runtime nvlink "${bootstrap_dir}"
+  configure.runtime.paths
 }
 
 source.release.common() {
   local script_dir="" source_path="${BASH_SOURCE[0]:-}"
   case "${source_path}" in ''|-|/dev/fd/*|/proc/self/fd/*) ;; *)
     script_dir="$(cd "$(dirname "${source_path}")" && pwd)"
-    if [[ -r "${script_dir}/../release.common.sh" ]]; then source "${script_dir}/../release.common.sh"; return; fi
+    if [[ -r "${script_dir}/${LOCAL_COMMON_HELPER}" ]]; then
+      COMMON_HELPER_PATH="$(cd "$(dirname "${script_dir}/${LOCAL_COMMON_HELPER}")" && pwd)/$(basename "${LOCAL_COMMON_HELPER}")"
+      source "${COMMON_HELPER_PATH}"
+      return
+    fi
   ;; esac
   command -v wget >/dev/null 2>&1 || { log.error "Cannot fetch the shared helper because wget is unavailable."; exit "${EXIT_BLOCKED}"; }
   mkdir -p "${TMP_DIR}"; log "Fetching shared helper: ${COMMON_HELPER_URL}"
@@ -351,6 +379,47 @@ EOF_VARS
   log "Prepared NVLink extra-vars: ${NVLINK_EXTRA_VARS_PATH}"
 }
 
+ensure.local.ansible.as.root() {
+  runner.run.as.root /usr/bin/env -i \
+    HOME=/root \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    TMPDIR=/tmp \
+    "TMP_ROOT_DIR=${TMP_ROOT_DIR}" \
+    "TMP_DIR=${TMP_DIR}" \
+    "PAGES_BASE_URL=${PAGES_BASE_URL}" \
+    "PYTHON_VERSION=${PYTHON_VERSION}" \
+    "PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}" \
+    "PYTHON_MIN_VERSION=${PYTHON_MIN_VERSION}" \
+    "PYTHON_SOURCE_PREFIX=${PYTHON_SOURCE_PREFIX}" \
+    "PYTHON_BIN=${PYTHON_BIN}" \
+    "PYTHON_SRC_DIR=${PYTHON_SRC_DIR}" \
+    "PYTHON_SRC_ARCHIVE=${PYTHON_SRC_ARCHIVE}" \
+    "PYTHON_SRC_URL=${PYTHON_SRC_URL}" \
+    "CONTROLLER_PYTHON_POLICY=${CONTROLLER_PYTHON_POLICY}" \
+    "SYSTEM_PYTHON_BIN=${SYSTEM_PYTHON_BIN}" \
+    "ANSIBLE_VENV=${ANSIBLE_VENV}" \
+    "ANSIBLE_VENV_BIN=${ANSIBLE_VENV_BIN}" \
+    "ANSIBLE_CORE_VERSION=${ANSIBLE_CORE_VERSION}" \
+    "ANSIBLE_CORE_SPEC=${ANSIBLE_CORE_SPEC}" \
+    "MANAGED_TARGET_PYTHON_HOME=${MANAGED_TARGET_PYTHON_HOME}" \
+    "MANAGED_TARGET_PYTHON_PATH=${MANAGED_TARGET_PYTHON_PATH}" \
+    "MANAGED_TARGET_HANDOFF_MARKER=${MANAGED_TARGET_HANDOFF_MARKER}" \
+    /bin/bash "${COMMON_HELPER_PATH}" ensure-local-ansible
+}
+
+run.feature.playbook() {
+  runner.run.as.root /usr/bin/env -i \
+    HOME=/root \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    TMPDIR=/tmp \
+    "${ANSIBLE_VENV_BIN}" \
+      -i localhost, \
+      -c local \
+      "${FEATURE_GROUP_VARS_ARGS[@]}" \
+      -e "@${NVLINK_EXTRA_VARS_PATH}" \
+      "${NVLINK_PLAYBOOK_PATH}"
+}
+
 report.command() { local label="$1"; shift; { printf '\n## %s\n' "${label}"; "$@" 2>&1 || true; } | tee -a "${PREFLIGHT_REPORT_PATH}"; }
 report.text() { local label="$1" path="$2"; { printf '\n## %s\n' "${label}"; [[ -r "${path}" ]] && sed -n '1,240p' "${path}" || printf 'unavailable: %s\n' "${path}"; } | tee -a "${PREFLIGHT_REPORT_PATH}"; }
 
@@ -370,9 +439,10 @@ run.read.only.preflight() {
 }
 
 run.managed.mode() {
-  ensure.root.or.sudo.reexec "$@"
-  source.release.common; require.root; require.apt; require.debian
-  if is.true "${REFRESH}"; then rm -rf "${TMP_DIR}"; fi
+  runner.ensure.privileged.session || exit "${EXIT_BLOCKED}"
+  source.release.common
+  require.apt
+  require.debian
   prepare.feature.files
   if [[ "${FEATURE_MODE}" == apply ]] && is.true "${NVLINK_INSTALL_BUILD_TOOLS}"; then
     local -a validation_packages=(build-essential cmake ninja-build git jq pciutils)
@@ -383,11 +453,11 @@ run.managed.mode() {
   if [[ "${FEATURE_MODE}" == validate ]]; then
     [[ -x "${ANSIBLE_VENV_BIN}" ]] || { log.error "validate will not bootstrap Ansible; managed Ansible is missing at ${ANSIBLE_VENV_BIN}."; exit "${EXIT_BLOCKED}"; }
   else
-    ensure.local.ansible
+    ensure.local.ansible.as.root
   fi
   write.extra.vars.file
   log "Running NVLink playbook in ${FEATURE_MODE} mode."
-  "${ANSIBLE_VENV_BIN}" -i localhost, -c local "${FEATURE_GROUP_VARS_ARGS[@]}" -e "@${NVLINK_EXTRA_VARS_PATH}" "${NVLINK_PLAYBOOK_PATH}"
+  run.feature.playbook
 }
 
 main() {
@@ -395,6 +465,10 @@ main() {
   [[ "${SHOW_HELP}" -eq 0 ]] || { usage; return 0; }
   validate.configuration
   is.true "${NVLINK_SELECT_GPUS}" && interactive.gpu.selection
+  source.runner.common
+  if is.true "${REFRESH}"; then
+    log "REFRESH=1 requested; this invocation already uses a new empty runtime directory."
+  fi
   if [[ "${FEATURE_MODE}" == preflight ]]; then run.read.only.preflight; return 0; fi
   run.managed.mode "$@"
 }

@@ -42,6 +42,7 @@ FILES=(
   "setup/metal.sh:setup/metal.sh"
   "setup/hardware.sh:setup/hardware.sh"
   "setup/autologin.sh:setup/autologin.sh"
+  "setup/runner.common.sh:setup/runner.common.sh"
   "setup/release.common.sh:setup/release.common.sh"
   "setup/cli/node.sh:setup/cli/node.sh"
   "setup/cli/kiosk.app.sh:setup/cli/kiosk.app.sh"

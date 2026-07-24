@@ -1051,3 +1051,46 @@ run.playlist() {
 
   run.playbooks "${playbook_paths[@]}"
 }
+
+release.common.usage() {
+  cat <<'EOF_USAGE'
+Usage: release.common.sh ensure-local-ansible
+
+Commands:
+  ensure-local-ansible  Prepare the pinned local Ansible controller as root.
+
+This command interface is intended for setup runners that authenticate once,
+stage source files without privilege, and delegate only controller preparation.
+Sourcing this helper defines functions and performs no command automatically.
+EOF_USAGE
+}
+
+release.common.main() {
+  local command="${1:-}"
+
+  if (($# != 1)); then
+    release.common.usage >&2
+    return 64
+  fi
+
+  case "${command}" in
+    ensure-local-ansible)
+      require.root
+      require.apt
+      require.debian
+      ensure.local.ansible
+      ;;
+    --help|-h|help)
+      release.common.usage
+      ;;
+    *)
+      log.error "Unsupported release helper command: ${command}"
+      release.common.usage >&2
+      return 64
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  release.common.main "$@"
+fi
