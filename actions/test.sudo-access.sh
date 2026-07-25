@@ -229,7 +229,7 @@ expect_status 1 "${CASE_STATUS}" "no-TTY helper"
 expect_contains 'no usable /dev/tty is available' "${CASE_OUTPUT}" "no-TTY diagnostic"
 expect_count 0 'sudo <-v>' "${CASE_TRACE}" "no-TTY prompt"
 
-for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   runner_path="${ROOT}/${runner}"
 
   # A cancelled prompt must stop at the first managed-mode operation.
@@ -276,6 +276,7 @@ for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
       [[ "${1:-}" == -n && "${2:-}" == -- && "${3:-}" == true ]]
     }
     FEATURE_MODE=apply
+    ANSIBLE_VENV_BIN=/usr/bin/true
     NVLINK_INSTALL_BUILD_TOOLS=0
     source.release.common() { :; }
     require.apt() { :; }
@@ -303,6 +304,7 @@ for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
       return 99
     }
     FEATURE_MODE=apply
+    ANSIBLE_VENV_BIN=/usr/bin/true
     NVLINK_INSTALL_BUILD_TOOLS=0
     source.release.common() { :; }
     require.apt() { :; }
@@ -336,8 +338,12 @@ for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   expect_contains 'PREFLIGHT_OK' "${CASE_OUTPUT}" "${runner} preflight"
   expect_not_contains 'unexpected sudo' "${CASE_TRACE}" "${runner} preflight"
 
-  # The feature runner must construct an isolated root environment explicitly.
-  run_case "${runner}: delegated environment allowlist" "${runner_path}" '
+  # NVIDIA and NVLink may bootstrap their managed controller through an
+  # explicitly isolated root environment. The inventory-only GPU runner never
+  # bootstraps or installs that controller.
+  if [[ "${runner}" != "setup/cli/gpu.sh" ]]; then
+    # The feature runner must construct an isolated root environment explicitly.
+    run_case "${runner}: delegated environment allowlist" "${runner_path}" '
     source "${TEST_RUNNER}"
     source "${TEST_RELEASE}"
     runner.run.as.root() {
@@ -351,12 +357,13 @@ for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
     export UNSAFE_SECRET
     ensure.local.ansible.as.root
   '
-  expect_status 0 "${CASE_STATUS}" "${runner} environment allowlist"
-  expect_contains 'ROOT </usr/bin/env> <-i>' "${CASE_OUTPUT}" "${runner} isolated root environment"
-  expect_contains '<HOME=/root>' "${CASE_OUTPUT}" "${runner} root HOME allowlist"
-  expect_contains '<PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin>' "${CASE_OUTPUT}" "${runner} root PATH allowlist"
-  expect_not_contains 'UNSAFE_SECRET' "${CASE_OUTPUT}" "${runner} environment allowlist"
-  expect_not_contains 'must-not-cross-boundary' "${CASE_OUTPUT}" "${runner} environment allowlist value"
+    expect_status 0 "${CASE_STATUS}" "${runner} environment allowlist"
+    expect_contains 'ROOT </usr/bin/env> <-i>' "${CASE_OUTPUT}" "${runner} isolated root environment"
+    expect_contains '<HOME=/root>' "${CASE_OUTPUT}" "${runner} root HOME allowlist"
+    expect_contains '<PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin>' "${CASE_OUTPUT}" "${runner} root PATH allowlist"
+    expect_not_contains 'UNSAFE_SECRET' "${CASE_OUTPUT}" "${runner} environment allowlist"
+    expect_not_contains 'must-not-cross-boundary' "${CASE_OUTPUT}" "${runner} environment allowlist value"
+  fi
 
   # `bash -s -- apply` passes "apply"; the accidental single token "--apply" is invalid.
   run_case "${runner}: apply mode token" "${runner_path}" '
@@ -379,5 +386,6 @@ expect_not_contains 'wget' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'curl' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'nvidia.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'nvlink.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
+expect_not_contains 'gpu.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 
 exit "${rc}"

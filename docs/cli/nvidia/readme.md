@@ -267,8 +267,11 @@ from the previous section to refresh NVIDIA-owned facts, then continue to
 
 The NVIDIA feature exclusively owns
 `/etc/ansible/debian/facts/nvidia.yml`. Schema version 1 records the selected
-validation policy plus observed driver, CUDA, inventory, and readiness state.
-NVLink never writes this file directly.
+validation policy plus observed driver, CUDA, inventory reference, and
+readiness state. The shared [GPU runner](/debian/cli/gpu/) exclusively owns
+`/etc/ansible/debian/facts/gpu.yml`; NVIDIA refreshes that current snapshot
+after its own live driver/CUDA observations. NVLink never writes either file
+directly.
 
 At the beginning of every managed NVLink run, NVLink imports NVIDIA in
 internal `validate-from-facts` mode. NVIDIA reads its own recorded policy,
@@ -278,6 +281,12 @@ reconstructed from their recorded profile, source, driver, CUDA, and inventory
 fields; a successful refresh persists the complete policy. Missing, malformed,
 or unsupported-schema facts fail closed. Re-run the complete NVIDIA `apply`
 command above to initialize a valid policy rather than editing the fact file.
+
+For NVIDIA records, the shared GPU snapshot keeps CUDA UUIDs for isolated
+runtime selection, canonical PCI addresses for stable physical identity, and
+the current `GPU#` label only for a matching `nvidia-smi topo -m` matrix. A
+CUDA ordinal or a selected-list position must never be reused as a topology
+matrix key.
 
 ## Next step
 

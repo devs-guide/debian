@@ -36,7 +36,7 @@ for marker in \
   require_contains "${runner_helper}" "${marker}"
 done
 
-for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   runner_path="${ROOT}/${runner}"
   direct_fetch_count="$(
     grep -Ec '^[[:space:]]*(if[[:space:]]+![[:space:]]+)?wget[[:space:]]+-qO[[:space:]]' "${runner_path}" || true
@@ -51,7 +51,6 @@ for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
     'runner.stage.ansible.feature' \
     'FEATURE_TEMPLATE_REFS=()' \
     '/usr/bin/env -i' \
-    'ensure-local-ansible' \
     'mktemp -d'; do
     require_contains "${runner}" "${marker}"
   done
@@ -75,6 +74,10 @@ for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   fi
 done
 
+for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+  require_contains "${runner}" 'ensure-local-ansible'
+done
+
 reject_regex "setup/runner.common.sh" 'NVIDIA|NVLINK|nvidia_|nvlink_'
 reject_regex "setup/release.common.sh" '^RUNTIME_SUPPORT_REFS='
 for marker in \
@@ -95,7 +98,7 @@ done < <(
     -exec grep -l 'ensure\.root\.or\.sudo\.reexec' {} + \
     | sort
 )
-for migrated_runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for migrated_runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   if sed -n '/The following legacy runners/,/They remain unchanged/p' "${legacy_runner_inventory}" \
     | grep -Fq "\`${migrated_runner}\`"; then
     contract.error "migration inventory incorrectly marks ${migrated_runner} as legacy"

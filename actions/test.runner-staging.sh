@@ -134,7 +134,7 @@ expect_contains 'Required runner manifest array is not declared: FEATURE_TEMPLAT
 expect_contains 'MISSING_ARRAY_BLOCKED' "${CASE_OUTPUT}" "missing declarative array"
 expect_not_contains 'unexpected wget' "${CASE_OUTPUT}" "missing declarative array"
 
-for feature_runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for feature_runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   run_case "${feature_runner} stages its complete local manifest" '
     source "${TEST_RUNNER}"
     source.runner.common
@@ -161,7 +161,7 @@ for feature_runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   expect_contains 'FEATURE_MANIFEST_OK' "${CASE_OUTPUT}" "${feature_runner} complete local manifest"
 done
 
-for feature_runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for feature_runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   run_case "${feature_runner} rejects an incomplete local checkout" '
     partial_root="${TEST_CASE_ROOT}/partial"
     mkdir -p "${partial_root}/setup/cli"

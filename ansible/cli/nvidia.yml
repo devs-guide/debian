@@ -37,6 +37,8 @@
     nvidia_keyring_sha256: ""
     nvidia_key_fingerprint: ""
     nvidia_facts_path: /etc/ansible/debian/facts/nvidia.yml
+    nvidia_gpu_facts_path: /etc/ansible/debian/facts/gpu.yml
+    nvidia_gpu_inventory_helper_path: "{{ playbook_dir }}/../files/gpu/gpu-inventory.py"
     nvidia_env_path: /etc/ansible/debian/env/nvidia.env
     nvidia_llm_shell_path: /etc/ansible/debian/env/llm-nvidia.sh
     nvidia_cuda_home: /usr/local/cuda
@@ -283,6 +285,9 @@
           - nvidia_platform.stdout is search('(?m)^release=13$')
           - nvidia_platform.stdout is search('(?m)^architecture=amd64$')
           - nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+          - nvidia_facts_path == '/etc/ansible/debian/facts/nvidia.yml'
+          - nvidia_gpu_facts_path == '/etc/ansible/debian/facts/gpu.yml'
+          - nvidia_facts_path != nvidia_gpu_facts_path
         fail_msg: >-
           NVIDIA managed modes currently support Debian 13 amd64 only, with
           apply, validate, or upgrade selected by the runner.
@@ -586,6 +591,20 @@
       ansible.builtin.include_tasks: ../tasks/nvidia.normalize-observations.yml
       when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
 
+    - name: Refresh the shared GPU hardware and runtime snapshot
+      ansible.builtin.include_tasks: ../tasks/gpu.inventory.yml
+      vars:
+        gpu_vendor: auto
+        gpu_facts_path: "{{ nvidia_gpu_facts_path }}"
+        gpu_inventory_helper_path: "{{ nvidia_gpu_inventory_helper_path }}"
+        gpu_write_facts: true
+      when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+
+    - name: Record shared GPU snapshot reference for NVIDIA facts
+      ansible.builtin.set_fact:
+        nvidia_gpu_snapshot_generated_at: "{{ gpu_inventory.generated_at | default('') }}"
+      when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+
     - name: Construct NVIDIA live readiness reasons
       ansible.builtin.set_fact:
         nvidia_readiness_reasons: >-
@@ -719,6 +738,8 @@
             inventory:
               selected_by: {{ nvidia_gpu_selection_source_effective | to_json }}
               requested_gpu_select: {{ nvidia_gpu_select_effective | to_json }}
+              gpu_facts_path: {{ nvidia_gpu_facts_path | to_json }}
+              gpu_snapshot_generated_at: {{ nvidia_gpu_snapshot_generated_at | default('') | to_json }}
               raw_nvidia_smi: {{ nvidia_fact_smi_stdout | to_json }}
             readiness:
               driver_ready: {{ (nvidia_fact_smi_rc == 0) | to_json }}

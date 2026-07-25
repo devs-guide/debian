@@ -31,6 +31,7 @@
     nvlink_nvbandwidth_ref: ""
     nvlink_install_build_tools: true
     nvlink_nvidia_facts_path: /etc/ansible/debian/facts/nvidia.yml
+    nvlink_gpu_facts_path: /etc/ansible/debian/facts/gpu.yml
     nvlink_facts_path: /etc/ansible/debian/facts/nvlink.yml
     nvlink_validated_env_path: /etc/ansible/debian/env/llm-nvidia-validated.sh
     nvlink_cuda_home: /usr/local/cuda
@@ -74,8 +75,11 @@
           - not nvlink_run_nvbandwidth | bool or nvlink_nvbandwidth_ref | length > 0
           - nvlink_mode_effective != 'validate' or nvlink_official_samples != 'fetch'
           - nvlink_nvidia_facts_path == '/etc/ansible/debian/facts/nvidia.yml'
+          - nvlink_gpu_facts_path == '/etc/ansible/debian/facts/gpu.yml'
           - nvlink_facts_path == '/etc/ansible/debian/facts/nvlink.yml'
           - nvlink_nvidia_facts_path != nvlink_facts_path
+          - nvlink_gpu_facts_path != nvlink_nvidia_facts_path
+          - nvlink_gpu_facts_path != nvlink_facts_path
         fail_msg: >-
           Invalid standalone NVLink validation request. This feature supports
           apply and validate only, never changes NVIDIA or CUDA installation,
@@ -164,84 +168,99 @@
           validation failure and rerun NVLink. NVLink will not rewrite
           NVIDIA-owned facts.
 
-    - name: Collect live physical GPU inventory and resolve UUID/PCI selection
-      ansible.builtin.shell: |
-        set -euo pipefail
-        python3 - <<'PY'
-        import csv
-        import io
-        import json
-        import os
-        import subprocess
-        import sys
+    - name: Require the shared GPU snapshot refreshed by NVIDIA validation
+      ansible.builtin.stat:
+        path: "{{ nvlink_gpu_facts_path }}"
+      register: nvlink_gpu_facts_file
 
-        query = [
-            "nvidia-smi",
-            "--query-gpu=index,name,uuid,pci.bus_id,memory.total,driver_version,compute_cap",
-            "--format=csv,noheader",
-        ]
-        completed = subprocess.run(query, check=True, capture_output=True, text=True)
-        inventory = []
-        for row in csv.reader(io.StringIO(completed.stdout), skipinitialspace=True):
-            if len(row) != 7:
-                raise SystemExit(f"unexpected nvidia-smi inventory row: {row!r}")
-            inventory.append({
-                "index": int(row[0]), "name": row[1], "uuid": row[2], "pci_bus_id": row[3],
-                "memory_total": row[4], "driver_version": row[5], "compute_capability": row[6],
-            })
-        if not inventory:
-            raise SystemExit("no physical NVIDIA GPUs were discovered")
-        inventory.sort(key=lambda item: item["pci_bus_id"])
-        requested = os.environ["NVLINK_GPU_SELECT"]
-        requested_capabilities = [item for item in os.environ.get("NVLINK_REQUIRED_CAPABILITIES", "").split(",") if item]
-        selected = inventory if requested == "all" else []
-        if requested != "all":
-            for token in requested.split(","):
-                matches = [item for item in inventory if token == item["uuid"] or token.lower() == item["pci_bus_id"].lower()]
-                if len(matches) != 1:
-                    raise SystemExit(f"selection {token!r} resolves to {len(matches)} physical GPUs")
-                if matches[0] in selected:
-                    raise SystemExit(f"selection {token!r} duplicates a GPU")
-                selected.append(matches[0])
-        minimum = int(os.environ.get("NVLINK_REQUIRE_GPU_COUNT") or 0)
-        exact_text = os.environ.get("NVLINK_REQUIRE_EXACT_GPU_COUNT") or ""
-        if len(selected) < minimum:
-            raise SystemExit(f"selected {len(selected)} GPUs, below required minimum {minimum}")
-        if exact_text and len(selected) != int(exact_text):
-            raise SystemExit(f"selected {len(selected)} GPUs, expected exactly {exact_text}")
-        if requested_capabilities:
-            invalid = [item for item in selected if item["compute_capability"] not in requested_capabilities]
-            if invalid:
-                raise SystemExit("selected GPUs do not meet required compute capabilities: " + ", ".join(item["uuid"] for item in invalid))
-        print(json.dumps({"inventory": inventory, "selected": selected}, sort_keys=True))
-        PY
-      args:
-        executable: /bin/bash
-      environment:
-        NVLINK_GPU_SELECT: "{{ nvlink_gpu_select }}"
-        NVLINK_REQUIRED_CAPABILITIES: "{{ nvlink_require_compute_capabilities }}"
-        NVLINK_REQUIRE_GPU_COUNT: "{{ nvlink_require_gpu_count }}"
-        NVLINK_REQUIRE_EXACT_GPU_COUNT: "{{ nvlink_require_exact_gpu_count }}"
-      register: nvlink_selection_raw
-      changed_when: false
+    - name: Fail closed when the shared GPU snapshot is unavailable
+      ansible.builtin.assert:
+        that:
+          - nvlink_gpu_facts_file.stat.exists
+        fail_msg: >-
+          Shared GPU facts are missing at {{ nvlink_gpu_facts_path }}. NVIDIA
+          validation must refresh the canonical GPU snapshot before NVLink can
+          resolve UUID, PCI, and topology-label identities.
+
+    - name: Read the refreshed shared GPU snapshot
+      ansible.builtin.slurp:
+        src: "{{ nvlink_gpu_facts_path }}"
+      register: nvlink_gpu_facts_raw
+
+    - name: Decode the refreshed shared GPU snapshot
+      ansible.builtin.set_fact:
+        nvlink_gpu_facts: "{{ nvlink_gpu_facts_raw.content | b64decode | from_yaml }}"
+
+    - name: Validate the shared GPU snapshot contract for NVLink
+      ansible.builtin.assert:
+        that:
+          - nvlink_gpu_facts.gpu is mapping
+          - nvlink_gpu_facts.gpu.schema_version | default(0) | int == 1
+          - nvlink_gpu_facts.gpu.devices is iterable
+          - nvlink_gpu_facts.gpu.topology.nvidia_smi.available | default(false) | bool
+        fail_msg: >-
+          Shared GPU facts are malformed, stale, or lack an NVIDIA topology
+          matrix. Run setup/cli/gpu.sh apply or NVIDIA validate successfully;
+          NVLink will not rediscover or rewrite another feature's GPU facts.
+
+    - name: Normalize NVIDIA devices from the shared GPU snapshot
+      ansible.builtin.set_fact:
+        nvlink_inventory: "{{ nvlink_gpu_facts.gpu.devices | selectattr('nvidia', 'defined') | list }}"
+        nvlink_selection_tokens: "{{ nvlink_gpu_select.split(',') | reject('equalto', '') | list }}"
+
+    - name: Initialize resolved NVLink GPU selection
+      ansible.builtin.set_fact:
+        nvlink_selected_devices: "{{ nvlink_inventory if nvlink_gpu_select == 'all' else [] }}"
+
+    - name: Require each explicit selector to resolve exactly one GPU
+      ansible.builtin.assert:
+        that:
+          - nvlink_selector_matches | length == 1
+        fail_msg: >-
+          GPU selector {{ item | to_json }} resolves to {{ nvlink_selector_matches | length }}
+          devices in the shared snapshot. Use a current UUID or one of the
+          recorded PCI aliases; ambiguous or stale selection is unsafe.
+      vars:
+        nvlink_selector_matches: >-
+          {{
+            (nvlink_inventory | selectattr('nvidia.uuid', 'equalto', item) | list)
+            + (nvlink_inventory | selectattr('pci_bus_aliases', 'contains', item | lower) | list)
+          }}
+      loop: "{{ nvlink_selection_tokens }}"
+      when: nvlink_gpu_select != 'all'
+
+    - name: Append each explicitly selected GPU
+      ansible.builtin.set_fact:
+        nvlink_selected_devices: "{{ nvlink_selected_devices + nvlink_selector_matches }}"
+      vars:
+        nvlink_selector_matches: >-
+          {{
+            (nvlink_inventory | selectattr('nvidia.uuid', 'equalto', item) | list)
+            + (nvlink_inventory | selectattr('pci_bus_aliases', 'contains', item | lower) | list)
+          }}
+      loop: "{{ nvlink_selection_tokens }}"
+      when: nvlink_gpu_select != 'all'
+
+    - name: Normalize selected GPU records for NVLink helper compatibility
+      ansible.builtin.set_fact:
+        nvlink_selected_records: "{{ nvlink_selected_records | default([]) + [item | combine(item.nvidia)] }}"
+      loop: "{{ nvlink_selected_devices }}"
 
     - name: Persist resolved GPU selection for this run
       ansible.builtin.set_fact:
-        nvlink_selection: "{{ nvlink_selection_raw.stdout | from_json }}"
-        nvlink_selected_uuids: "{{ (nvlink_selection_raw.stdout | from_json).selected | map(attribute='uuid') | list }}"
-        nvlink_selected_architectures: "{{ (nvlink_selection_raw.stdout | from_json).selected | map(attribute='compute_capability') | map('replace', '.', '') | unique | list }}"
+        nvlink_selection:
+          inventory: "{{ nvlink_inventory }}"
+          selected: "{{ nvlink_selected_records | default([]) }}"
+        nvlink_selected_uuids: "{{ nvlink_selected_records | default([]) | map(attribute='uuid') | list }}"
+        nvlink_selected_architectures: "{{ nvlink_selected_records | default([]) | map(attribute='compute_capability') | map('replace', '.', '') | unique | list }}"
 
-    - name: Reject MIG inventory for the first standalone implementation
-      ansible.builtin.command:
-        argv: [nvidia-smi, -L]
-      register: nvlink_gpu_list
-      changed_when: false
-
-    - name: Require physical non-MIG GPU selection
+    - name: Require physical non-MIG GPU selection from shared facts
       ansible.builtin.assert:
         that:
           - nvlink_selection.selected | length > 0
-          - nvlink_gpu_list.stdout is not search('MIG')
+          - (nvlink_selection.selected | map(attribute='pci_bus_id') | unique | list | length) == (nvlink_selection.selected | length)
+          - (nvlink_selection.selected | map(attribute='topology_label') | reject('equalto', '') | list | length) == (nvlink_selection.selected | length)
+          - (nvlink_selection.selected | map(attribute='mig_enabled') | select('equalto', true) | list | length) == 0
           - not nvlink_run_p2p_test | bool or nvlink_selection.selected | length == 2
         fail_msg: >-
           NVLink validation requires physical GPUs. The P2P helper intentionally
@@ -368,15 +387,16 @@
 
     - name: Install audited CUDA sources and topology parser
       ansible.builtin.copy:
-        src: "../files/nvlink/{{ item.source }}"
+        src: "{{ item.source }}"
         dest: "{{ nvlink_share_dir }}/{{ item.destination }}"
         owner: root
         group: root
         mode: "{{ item.mode }}"
       loop:
-        - { source: nvidia-cuda-smoke.cu, destination: nvidia-cuda-smoke.cu, mode: '0644' }
-        - { source: nvidia-p2p-verify.cu, destination: nvidia-p2p-verify.cu, mode: '0644' }
-        - { source: nvidia-topology-parser.py, destination: nvidia-topology-parser.py, mode: '0755' }
+        - { source: '../files/nvlink/nvidia-cuda-smoke.cu', destination: nvidia-cuda-smoke.cu, mode: '0644' }
+        - { source: '../files/nvlink/nvidia-p2p-verify.cu', destination: nvidia-p2p-verify.cu, mode: '0644' }
+        - { source: '../files/gpu/nvidia_topology.py', destination: nvidia_topology.py, mode: '0644' }
+        - { source: '../files/nvlink/nvidia-topology-parser.py', destination: nvidia-topology-parser.py, mode: '0755' }
       register: nvlink_audited_sources
       when: nvlink_mode_effective == 'apply'
 
@@ -386,6 +406,7 @@
       loop:
         - "{{ nvlink_smoke_binary }}"
         - "{{ nvlink_p2p_binary }}"
+        - "{{ nvlink_share_dir }}/nvidia_topology.py"
         - "{{ nvlink_topology_parser }}"
       register: nvlink_existing_helpers
 
@@ -494,10 +515,10 @@
           - "{{ nvlink_topology_parser }}"
           - --topology
           - "{{ nvlink_log_dir }}/topology.txt"
-          - --source-index
-          - "{{ nvlink_selection.selected[0].index | string }}"
-          - --destination-index
-          - "{{ nvlink_selection.selected[1].index | string }}"
+          - --source-label
+          - "{{ nvlink_selection.selected[0].topology_label }}"
+          - --destination-label
+          - "{{ nvlink_selection.selected[1].topology_label }}"
       register: nvlink_topology_parse
       changed_when: false
       when:
@@ -755,6 +776,7 @@
             mode: {{ nvlink_mode_effective | to_json }}
             nvidia_prerequisite:
               facts_path: {{ nvlink_nvidia_facts_path | to_json }}
+              gpu_facts_path: {{ nvlink_gpu_facts_path | to_json }}
               nvidia_smi_ready: true
               nvcc_ready: true
               cuda_home: {{ nvlink_cuda_home | to_json }}
@@ -764,6 +786,7 @@
               selected_uuids: {{ nvlink_selected_uuids | to_json }}
               selected_pci_bus_ids: {{ nvlink_selection.selected | map(attribute='pci_bus_id') | list | to_json }}
               current_indices: {{ nvlink_selection.selected | map(attribute='index') | list | to_json }}
+              topology_labels: {{ nvlink_selection.selected | map(attribute='topology_label') | list | to_json }}
               compute_capabilities: {{ nvlink_selection.selected | map(attribute='compute_capability') | unique | list | to_json }}
               cmake_cuda_architectures: {{ nvlink_selected_architectures | to_json }}
             compiler:

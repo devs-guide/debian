@@ -78,8 +78,9 @@ inside sudo.
 
 ## Migration status
 
-The NVIDIA and NVLink runners use the shared privilege and staging contracts:
+The GPU, NVIDIA, and NVLink runners use the shared privilege and staging contracts:
 
+- `setup/cli/gpu.sh`
 - `setup/cli/nvidia.sh`
 - `setup/cli/nvlink.sh`
 

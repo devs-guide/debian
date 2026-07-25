@@ -37,7 +37,10 @@ for reference in \
   '"cli/nvidia.yml"' \
   '"cli/nvlink.yml"' \
   '"packages.yml"' \
+  '"tasks/gpu.inventory.yml"' \
   '"tasks/nvidia.normalize-observations.yml"' \
+  '"files/gpu/gpu-inventory.py"' \
+  '"files/gpu/nvidia_topology.py"' \
   '"files/nvlink/nvidia-cuda-smoke.cu"' \
   '"files/nvlink/nvidia-p2p-verify.cu"' \
   '"files/nvlink/nvidia-topology-parser.py"'; do
@@ -54,6 +57,9 @@ for marker in \
   'Create managed NVLink directories' \
   'Record CUDA helper compilation output' \
   'Reread refreshed NVIDIA installation facts without taking ownership' \
+  'Require the shared GPU snapshot refreshed by NVIDIA validation' \
+  'Read the refreshed shared GPU snapshot' \
+  'Validate the shared GPU snapshot contract for NVLink' \
   'Check live NVIDIA and CUDA prerequisite executables' \
   'Normalize the NVIDIA prerequisite fact contract' \
   'Verify NVIDIA facts agree with live prerequisite state'; do
@@ -117,10 +123,17 @@ for marker in \
   'CUDA_VISIBLE_DEVICES' \
   'command -v nvidia-smi' \
   'nvidia_smi_path' \
-  '"${nvidia_smi_path}" >/dev/null'; do
+  '"${nvidia_smi_path}" >/dev/null' \
+  'nvlink_gpu_facts_path' \
+  'mig_enabled' \
+  '--source-label' \
+  '--destination-label'; do
   require_contains "ansible/cli/nvlink.yml" "${marker}"
 done
 reject_contains "ansible/cli/nvlink.yml" 'test -x nvidia-smi'
+reject_contains "ansible/cli/nvlink.yml" '--source-index'
+reject_contains "ansible/cli/nvlink.yml" '--destination-index'
+reject_contains "ansible/cli/nvlink.yml" 'Collect live physical GPU inventory and resolve UUID/PCI selection'
 
 if awk '
   /ansible\.builtin\.(copy|template|file|lineinfile|blockinfile|assemble):/ { writer = 1; next }
@@ -129,6 +142,14 @@ if awk '
   END { exit !bad }
 ' "${ROOT}/ansible/cli/nvlink.yml"; then
   contract.error "NVLink must not write NVIDIA-owned facts"
+fi
+if awk '
+  /ansible\.builtin\.(copy|template|file|lineinfile|blockinfile|assemble):/ { writer = 1; next }
+  /^[[:space:]]*-[[:space:]]+name:/ { writer = 0 }
+  writer && /[[:space:]](dest|path): "\{\{ nvlink_gpu_facts_path \}\}"/ { bad = 1 }
+  END { exit !bad }
+' "${ROOT}/ansible/cli/nvlink.yml"; then
+  contract.error "NVLink must not write shared GPU facts"
 fi
 reject_regex "ansible/cli/nvlink.yml" 'nvidia-driver|cuda-toolkit|cuda-keyring|grub|mokutil|update-initramfs|LD_LIBRARY_PATH'
 reject_regex "ansible/cli/nvlink.yml" 'GGML_CUDA_P2P=|GGML_CUDA_ENABLE_UNIFIED_MEMORY='

@@ -43,7 +43,10 @@ nvidia_runtime_manifest="$(
 )"
 for reference in \
   '"packages.yml"' \
-  '"tasks/nvidia.normalize-observations.yml"'; do
+  '"tasks/gpu.inventory.yml"' \
+  '"tasks/nvidia.normalize-observations.yml"' \
+  '"files/gpu/gpu-inventory.py"' \
+  '"files/gpu/nvidia_topology.py"'; do
   if [[ "${nvidia_runtime_manifest}" != *"${reference}"* ]]; then
     contract.error "NVIDIA runtime manifest is missing ${reference}"
   fi
@@ -65,9 +68,13 @@ for marker in \
   'Construct NVIDIA live readiness reasons' \
   'Determine CUDA runtime header readiness' \
   'Normalize NVIDIA observations before fact persistence' \
+  'Refresh the shared GPU hardware and runtime snapshot' \
+  'Record shared GPU snapshot reference for NVIDIA facts' \
   'Persist NVIDIA readiness facts' \
   'Fail NVIDIA validation when requested live prerequisites are unavailable' \
   'ansible.builtin.include_tasks: ../tasks/nvidia.normalize-observations.yml' \
+  'ansible.builtin.include_tasks: ../tasks/gpu.inventory.yml' \
+  'gpu_facts_path:' \
   'nvidia_smi_rc:' \
   'nvcc_rc:' \
   'runtime_header_ready:' \
@@ -79,6 +86,7 @@ for marker in \
   'nvidia_validate_from_facts:'; do
   require_contains "ansible/cli/nvidia.yml" "${marker}"
 done
+require_contains "ansible/cli/nvidia.yml" "nvidia_gpu_facts_path == '/etc/ansible/debian/facts/gpu.yml'"
 reject_contains "ansible/cli/nvidia.yml" 'LD_LIBRARY_PATH'
 
 set +e

@@ -1,0 +1,45 @@
+---
+# Shared inventory task. This task observes host devices and is the only
+# component that writes /etc/ansible/debian/facts/gpu.yml.
+- name: Collect the shared GPU hardware and runtime snapshot
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ gpu_inventory_helper_path }}"
+      - --vendor
+      - "{{ gpu_vendor }}"
+  register: gpu_inventory_raw
+  changed_when: false
+
+- name: Decode the shared GPU hardware and runtime snapshot
+  ansible.builtin.set_fact:
+    gpu_inventory: "{{ gpu_inventory_raw.stdout | from_json }}"
+
+- name: Validate the shared GPU snapshot contract
+  ansible.builtin.assert:
+    that:
+      - gpu_inventory.schema_version | default(0) | int == 1
+      - gpu_inventory.generated_at | default('') | length > 0
+      - gpu_inventory.devices is iterable
+      - gpu_inventory.topology is mapping
+    fail_msg: >-
+      The shared GPU inventory helper returned an incomplete snapshot. Refuse
+      to persist or consume device identities until the snapshot is valid.
+
+- name: Create the shared GPU fact directory
+  ansible.builtin.file:
+    path: "{{ gpu_facts_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: gpu_write_facts | bool
+
+- name: Persist the shared GPU snapshot
+  ansible.builtin.copy:
+    dest: "{{ gpu_facts_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+    content: "{{ {'gpu': gpu_inventory} | to_nice_yaml(indent=2, width=120) }}"
+  when: gpu_write_facts | bool

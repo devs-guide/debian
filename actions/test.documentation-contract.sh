@@ -62,8 +62,9 @@ require.runner.options.documented() {
 }
 require.runner.options.documented "setup/cli/nvidia.sh" "docs/cli/nvidia/readme.md"
 require.runner.options.documented "setup/cli/nvlink.sh" "docs/cli/nvlink/readme.md"
+require.runner.options.documented "setup/cli/gpu.sh" "docs/cli/gpu/readme.md"
 
-for document in docs/cli/nvidia/readme.md docs/cli/nvlink/readme.md; do
+for document in docs/cli/gpu/readme.md docs/cli/nvidia/readme.md docs/cli/nvlink/readme.md; do
   for marker in \
     'wget -qO- https://devs-guide.github.io/debian/setup/cli/' \
     '/dev/tty'; do
@@ -73,8 +74,11 @@ for document in docs/cli/nvidia/readme.md docs/cli/nvlink/readme.md; do
   require_regex "${document}" '^[[:space:]]+bash -s -- apply([[:space:]]|$)'
   require_regex "${document}" '^[[:space:]]+sudo bash -s -- (apply|validate)([[:space:]]|$)'
 done
+require_contains "docs/cli/gpu/readme.md" '/etc/ansible/debian/facts/gpu.yml'
 require_contains "docs/cli/nvidia/readme.md" '/etc/ansible/debian/facts/nvidia.yml'
+require_contains "docs/cli/nvidia/readme.md" '/etc/ansible/debian/facts/gpu.yml'
 require_contains "docs/cli/nvlink/readme.md" '/etc/ansible/debian/facts/nvidia.yml'
+require_contains "docs/cli/nvlink/readme.md" '/etc/ansible/debian/facts/gpu.yml'
 require_contains "docs/cli/nvlink/readme.md" '/etc/ansible/debian/facts/nvlink.yml'
 if grep -R -nF -- '--apply' "${ROOT}/docs"; then
   contract.error "documentation must pass apply as a positional mode: bash -s -- apply"

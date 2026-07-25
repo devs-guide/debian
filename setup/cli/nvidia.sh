@@ -45,7 +45,10 @@ GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=("cli/nvidia.yml")
 RUNTIME_SUPPORT_REFS=(
   "packages.yml"
+  "tasks/gpu.inventory.yml"
   "tasks/nvidia.normalize-observations.yml"
+  "files/gpu/gpu-inventory.py"
+  "files/gpu/nvidia_topology.py"
 )
 FEATURE_TEMPLATE_REFS=()
 NVIDIA_PLAYBOOK_REL="cli/nvidia.yml"
@@ -606,7 +609,7 @@ confirm.kernel.header.maintenance() {
 
   runner.confirm.exact \
     "Kernel-header maintenance will install Debian's linux-headers-amd64 meta-package. It does not install a new kernel image, select a boot target, or reboot this host. It does make future Debian kernel updates install matching headers and trigger NVIDIA DKMS rebuilds; a failed kernel/DKMS update can affect future driver availability." \
-    "ACCEPET THE KERNEL HEADER CHANGES?" || exit "${EXIT_OPERATOR_ACTION}"
+    "I UNDERSTAND KERNEL HEADER CHANGES" || exit "${EXIT_OPERATOR_ACTION}"
   log "Kernel-header maintenance was explicitly confirmed."
 }
 

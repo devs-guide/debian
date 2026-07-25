@@ -14,6 +14,7 @@ file|setup/cli/touchscreen.sh|setup/cli/touchscreen.sh
 file|setup/cli/codex.sh|setup/cli/codex.sh
 file|setup/cli/startx.sh|setup/cli/startx.sh
 file|setup/cli/tauri.sh|setup/cli/tauri.sh
+file|setup/cli/gpu.sh|setup/cli/gpu.sh
 file|setup/cli/nvidia.sh|setup/cli/nvidia.sh
 file|setup/cli/nvlink.sh|setup/cli/nvlink.sh
 tree|ansible|ansible

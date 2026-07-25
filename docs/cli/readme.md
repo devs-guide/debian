@@ -14,6 +14,7 @@ a shell pipeline.
 ## Feature runners
 
 - [Codex](/debian/cli/codex/) — Node and Codex CLI setup.
+- [GPU](/debian/cli/gpu/) — shared PCI/runtime inventory for GPU-aware features.
 - [Kiosk app](/debian/cli/kiosk.app/) — kiosk feature orchestration.
 - [Node](/debian/cli/node/) — Node LTS setup.
 - [NVIDIA](/debian/cli/nvidia/) — opt-in NVIDIA driver and CUDA readiness.

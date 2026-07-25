@@ -65,7 +65,8 @@ UUIDs with `--gpu=GPU-...,GPU-...`.
 
 Run this after the NVIDIA runner has installed the selected driver/CUDA policy.
 Before NVLink testing, the managed run automatically revalidates that policy
-and refreshes `/etc/ansible/debian/facts/nvidia.yml`; it then compiles the
+and refreshes `/etc/ansible/debian/facts/nvidia.yml` plus the shared GPU
+snapshot at `/etc/ansible/debian/facts/gpu.yml`; it then compiles the
 managed CUDA smoke helper, tests each selected GPU by UUID, records NVLink
 topology, and runs the opt-in P2P diagnostic.
 
@@ -90,7 +91,7 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
 
 | Flag | Behavior |
 | --- | --- |
-| `--gpu=all\|<UUID-or-PCI-list>` | Selects all GPUs or an explicit comma-separated physical-GPU list. Stable UUIDs are preferred for repeat validation. |
+| `--gpu=all\|<UUID-or-PCI-list>` | Selects all GPUs or an explicit comma-separated physical-GPU list from the shared GPU snapshot. UUIDs select CUDA visibility; canonical PCI identifiers select physical devices. |
 | `--select-gpus` | Prompts on `/dev/tty` and converts selected inventory rows to UUIDs. It cannot be combined with `--gpu`. |
 | `--require-gpu-count=<minimum>` | Requires at least this many selected GPUs. |
 | `--require-exact-gpu-count=<count>` | Requires precisely this many selected physical GPUs. |
@@ -122,12 +123,14 @@ The NVLink playbook first imports the canonical NVIDIA playbook with
 `nvidia_mode=validate` and `nvidia_validate_from_facts=true`. That pass reads
 the recorded NVIDIA policy, validates the live driver, `nvcc`, and CUDA
 runtime header, and refreshes
-`/etc/ansible/debian/facts/nvidia.yml`. NVLink then rereads that file and fails
-closed if schema version, readiness booleans, or `CUDA_HOME` disagree with the
-live host.
+`/etc/ansible/debian/facts/nvidia.yml` and the canonical shared snapshot at
+`/etc/ansible/debian/facts/gpu.yml`. NVLink then rereads both files and fails
+closed if schema version, readiness booleans, `CUDA_HOME`, or the NVIDIA
+topology-label matrix disagree with the live host.
 
-NVIDIA exclusively owns `nvidia.yml`; NVLink writes only
-`/etc/ansible/debian/facts/nvlink.yml` after mandatory GPU, compiler,
+NVIDIA exclusively owns `nvidia.yml`; the shared GPU layer exclusively owns
+`gpu.yml`; NVLink writes only `/etc/ansible/debian/facts/nvlink.yml` after
+mandatory GPU, compiler,
 per-UUID smoke, and topology gates pass. A schema-1 NVIDIA fact without the
 newer `validation_policy` is reconstructed from its legacy recorded fields and
 upgraded by the NVIDIA validation pass. Missing, malformed, or unsupported
