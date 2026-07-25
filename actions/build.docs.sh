@@ -163,8 +163,14 @@ breadcrumb_label() {
     pages) printf 'Pages' ;;
     test) printf 'Test' ;;
     sudo-access) printf 'Sudo access' ;;
+    documentation-contract) printf 'Documentation contract' ;;
+    nvidia-contract) printf 'NVIDIA contract' ;;
+    nvlink-contract) printf 'NVLink contract' ;;
+    publication-manifest) printf 'Publication manifest' ;;
+    runner-contract) printf 'Shared runner contract' ;;
     runner-staging) printf 'Runner staging' ;;
     nvidia-facts) printf 'NVIDIA facts' ;;
+    library) printf 'Library' ;;
     release-common) printf 'Release helper' ;;
     runner-common) printf 'Shared runner' ;;
     essential-packages) printf 'Essential packages' ;;

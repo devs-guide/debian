@@ -12,9 +12,10 @@ Checks repository-local runtime contracts before publication.
 bash actions/validate.runtime.sh
 ```
 
-It verifies required files, shell syntax, setup URL policy, feature markers,
-and selected Ansible contracts. It also executes the mocked NVIDIA/NVLink sudo
-policy test. It does not install packages, run Ansible, or access GPU hardware.
+It remains the public orchestrator for focused documentation, publication,
+shared-runner, NVIDIA, and NVLink contract actions, followed by the legacy
+runtime checks that have not yet been extracted.
 
-This action has no supported flags. It may use available YAML parsers to deepen
-static validation, but it is not a host-installation or GPU test command.
+This action has no supported flags. CI provides pinned Ansible and PyYAML
+dependencies for the NVIDIA fact fixture. It does not install packages,
+execute host playbooks, compile CUDA code, or access GPU hardware.

@@ -9,6 +9,10 @@ source_path: actions/validate.pages.sh
 Fetches the published Pages artifacts and compares them with the local source
 or locally rendered output.
 
+Source paths come from `actions/publication.manifest`. Documentation routes
+are discovered from the complete local render, so adding a canonical
+`docs/**/readme.md` page does not require another hard-coded validation list.
+
 ```bash
 bash actions/validate.pages.sh
 ```

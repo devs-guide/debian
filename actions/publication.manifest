@@ -1,0 +1,20 @@
+# type|repository source|published destination
+file|setup/bootstrap.sh|setup/bootstrap.sh
+file|setup/debian.sh|setup/debian.sh
+file|setup/metal.sh|setup/metal.sh
+file|setup/hardware.sh|setup/hardware.sh
+file|setup/autologin.sh|setup/autologin.sh
+file|setup/runner.common.sh|setup/runner.common.sh
+file|setup/release.common.sh|setup/release.common.sh
+file|setup/cli/node.sh|setup/cli/node.sh
+file|setup/cli/kiosk.app.sh|setup/cli/kiosk.app.sh
+file|setup/cli/x11.sh|setup/cli/x11.sh
+file|setup/cli/openbox.sh|setup/cli/openbox.sh
+file|setup/cli/touchscreen.sh|setup/cli/touchscreen.sh
+file|setup/cli/codex.sh|setup/cli/codex.sh
+file|setup/cli/startx.sh|setup/cli/startx.sh
+file|setup/cli/tauri.sh|setup/cli/tauri.sh
+file|setup/cli/nvidia.sh|setup/cli/nvidia.sh
+file|setup/cli/nvlink.sh|setup/cli/nvlink.sh
+tree|ansible|ansible
+file|readme.md|readme.md
