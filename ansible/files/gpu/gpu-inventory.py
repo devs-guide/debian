@@ -86,6 +86,38 @@ def parse_lspci(text: str) -> list[dict[str, Any]]:
     return [device for device in devices if device["class_code"].startswith(("03", "12"))]
 
 
+def map_topology_labels(rows: list[dict[str, Any]], topology: dict[str, Any]) -> dict[str, Any]:
+    """Attach current matrix labels to NVIDIA rows from the same invocation.
+
+    ``nvidia-smi topo -m`` identifies its columns as ``GPU<index>``.  Those
+    labels are local to this snapshot and are used only to address the captured
+    route matrix; UUID and PCI identities remain the persistent selectors.
+    """
+
+    labels = {str(label) for label in topology.get("labels", [])}
+    expected_labels: list[str] = []
+    resolved_labels: list[str] = []
+    missing_labels: list[str] = []
+
+    for row in rows:
+        expected_label = f"GPU{row['index']}"
+        expected_labels.append(expected_label)
+        if expected_label in labels:
+            row["topology_label"] = expected_label
+            resolved_labels.append(expected_label)
+        else:
+            row["topology_label"] = ""
+            missing_labels.append(expected_label)
+
+    return {
+        "method": "nvidia-smi-index-to-topology-label",
+        "expected_labels": expected_labels,
+        "resolved_labels": resolved_labels,
+        "missing_labels": missing_labels,
+        "complete": not missing_labels,
+    }
+
+
 def nvidia_runtime() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if not shutil.which("nvidia-smi"):
         return [], {"available": False, "reason": "nvidia-smi is not available"}
@@ -126,10 +158,7 @@ def nvidia_runtime() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if topology_rc == 0:
         try:
             topology = {"available": True, "raw": topology_stdout, **parse_topology(topology_stdout)}
-            labels = set(topology["labels"])
-            for row in rows:
-                expected_label = f"GPU{row['index']}"
-                row["topology_label"] = expected_label if expected_label in labels else ""
+            topology["label_mapping"] = map_topology_labels(rows, topology)
         except TopologyParseError as error:
             topology = {"available": False, "raw": topology_stdout, "reason": str(error)}
     else:

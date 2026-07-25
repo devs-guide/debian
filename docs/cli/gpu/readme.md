@@ -79,5 +79,12 @@ passes the selected records' current topology labels to its parser. This avoids
 the former error of treating a selected-list position or CUDA index as a
 topology-table identity.
 
+The snapshot records a `label_mapping` result beside the raw topology matrix.
+NVLink proceeds only when every NVIDIA runtime row maps to a current `GPU#`
+header label from that same capture. If the mapping is incomplete, rerun the
+GPU or NVIDIA validation runner and inspect the recorded `nvidia-smi topo -m`
+output; do not substitute UUIDs, PCI addresses, or selected-list positions for
+topology labels.
+
 AMD and Intel support in v1 is PCI discovery only. This runner does not claim
 vendor runtime readiness, topology capability, or compute validation for them.

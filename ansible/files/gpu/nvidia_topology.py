@@ -34,8 +34,18 @@ def parse_topology(text: str) -> dict[str, Any]:
             continue
 
         if labels is None:
-            candidate_labels = [token for token in tokens if GPU_LABEL.fullmatch(token)]
-            if len(candidate_labels) >= 1:
+            # ``nvidia-smi topo -m`` emits its header as an indented row.  GPU
+            # route rows are not indented, so accepting any line containing a
+            # GPU label can accidentally treat a data row as the header.
+            if not raw_line[:1].isspace():
+                continue
+            candidate_labels: list[str] = []
+            for token in tokens:
+                if GPU_LABEL.fullmatch(token):
+                    candidate_labels.append(token)
+                elif candidate_labels:
+                    break
+            if candidate_labels:
                 labels = candidate_labels
             continue
 
@@ -54,6 +64,12 @@ def parse_topology(text: str) -> dict[str, Any]:
         raise TopologyParseError("no GPU header labels were found in topology output")
     if not matrix:
         raise TopologyParseError("no GPU route rows were found in topology output")
+    missing_rows = [label for label in labels if label not in matrix]
+    if missing_rows:
+        raise TopologyParseError(
+            "topology output is missing route rows for "
+            f"{missing_rows!r}; discovered_labels={labels!r}"
+        )
 
     return {"labels": labels, "matrix": matrix}
 
@@ -90,4 +106,3 @@ def pair_result(text: str, source_label: str, destination_label: str) -> dict[st
 
 def emit_error(error: Exception) -> None:
     print(json.dumps({"passed": False, "error": str(error)}, sort_keys=True))
-

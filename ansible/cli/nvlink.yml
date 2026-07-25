@@ -198,10 +198,14 @@
           - nvlink_gpu_facts.gpu.schema_version | default(0) | int == 1
           - nvlink_gpu_facts.gpu.devices is iterable
           - nvlink_gpu_facts.gpu.topology.nvidia_smi.available | default(false) | bool
+          - nvlink_gpu_facts.gpu.topology.nvidia_smi.label_mapping.complete | default(false) | bool
         fail_msg: >-
           Shared GPU facts are malformed, stale, or lack an NVIDIA topology
-          matrix. Run setup/cli/gpu.sh apply or NVIDIA validate successfully;
-          NVLink will not rediscover or rewrite another feature's GPU facts.
+          matrix with a complete current GPU-label mapping. Run setup/cli/gpu.sh
+          apply or NVIDIA validate successfully; NVLink will not rediscover or
+          rewrite another feature's GPU facts. mapping={{
+          nvlink_gpu_facts.gpu.topology.nvidia_smi.label_mapping | default({}) |
+          to_json }}
 
     - name: Normalize NVIDIA devices from the shared GPU snapshot
       ansible.builtin.set_fact:

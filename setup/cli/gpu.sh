@@ -7,9 +7,7 @@
 # PCI identity for detected NVIDIA, AMD, and Intel devices; NVIDIA devices also
 # record UUID, compute capability, and topology labels from nvidia-smi topo -m.
 #
-# wget -qO- https://devs-guide.github.io/debian/setup/cli/gpu.sh | \
-#   bash -s -- apply \
-#     --vendor=auto
+# wget -qO- https://devs-guide.github.io/debian/setup/cli/gpu.sh | bash -s -- apply --vendor=auto
 
 set -euo pipefail
 

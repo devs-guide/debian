@@ -50,6 +50,9 @@ done
 
 for marker in \
   'canonical_pci' \
+  'map_topology_labels' \
+  'label_mapping' \
+  'missing_labels' \
   'topology_label' \
   'pci_bus_aliases' \
   'requested_vendor' \
@@ -60,6 +63,7 @@ done
 for marker in \
   'def parse_topology' \
   'def pair_result' \
+  'topology output is missing route rows' \
   'discovered_labels'; do
   require_contains "ansible/files/gpu/nvidia_topology.py" "${marker}"
 done
@@ -95,6 +99,26 @@ if [[ "${SHELL_ONLY}" -eq 0 ]]; then
     reordered_result=""
   }
   [[ "${reordered_result}" == *'"route": "NV4"'* ]] || contract.error "GPU0 -> GPU1 must resolve from a reordered topology header"
+  mapping_result="$(PYTHONPATH="${ROOT}/ansible/files/gpu" python3 - "${fixture}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from gpu_inventory import map_topology_labels
+from nvidia_topology import parse_topology
+
+topology = parse_topology(Path(sys.argv[1]).read_text())
+rows = [{"index": 0, "topology_label": ""}, {"index": 1, "topology_label": ""}]
+mapping = map_topology_labels(rows, topology)
+print(json.dumps({"mapping": mapping, "rows": rows}, sort_keys=True))
+PY
+)" || {
+    contract.error "shared GPU topology labels must map from the same topology fixture"
+    mapping_result=""
+  }
+  [[ "${mapping_result}" == *'"complete": true'* ]] || contract.error "GPU0/GPU1 topology label mapping must be complete"
+  [[ "${mapping_result}" == *'"topology_label": "GPU0"'* ]] || contract.error "GPU index 0 must map to topology label GPU0"
+  [[ "${mapping_result}" == *'"topology_label": "GPU1"'* ]] || contract.error "GPU index 1 must map to topology label GPU1"
   if PYTHONPATH="${ROOT}/ansible/files/gpu" python3 "${ROOT}/ansible/files/nvlink/nvidia-topology-parser.py" \
     --topology "${fixture}" --source-label GPU0 --destination-label GPU9 >/dev/null 2>&1; then
     contract.error "unknown topology labels must fail closed"
