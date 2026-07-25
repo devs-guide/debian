@@ -14,6 +14,7 @@ bash actions/test.documentation-contract.sh
 ```
 
 It checks shell syntax, canonical `.sh` setup URLs, required documentation
-front matter, and the relationship between the documentation builder,
-publication manifest, publisher, and Pages validator. It does not render
-documentation, access the network, or modify `static/`.
+front matter, NVIDIA/NVLink runner-option coverage, positional mode examples,
+canonical action-route placement, and the relationship between the
+documentation builder, publication manifest, publisher, and Pages validator.
+It does not render documentation, access the network, or modify `static/`.

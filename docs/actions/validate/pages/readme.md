@@ -30,3 +30,6 @@ BASE_URL=https://example.invalid/debian \
 | Variable | Purpose |
 | --- | --- |
 | `BASE_URL` | Published project URL to fetch and compare. It must include the project path, such as `/debian`. |
+
+Downloads and the local documentation render are kept in an isolated
+per-invocation temporary directory and removed by the action’s exit trap.

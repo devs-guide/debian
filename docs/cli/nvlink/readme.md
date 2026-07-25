@@ -13,21 +13,53 @@ uses the canonical NVIDIA validator to refresh NVIDIA-owned readiness facts
 from the current driver, compiler, and CUDA-header state. Modes are
 `preflight`, `apply`, and `validate`.
 
-## Read-only topology check
+## Modes
+
+| Mode | Behavior |
+| --- | --- |
+| `preflight` | Default read-only inventory, compiler, topology, and link report. It does not request sudo or enforce the managed CUDA/P2P gates. |
+| `apply` | Refreshes NVIDIA facts, optionally installs source-neutral build tools, builds managed helpers, and executes the requested validation gates. |
+| `validate` | Refreshes NVIDIA facts and reruns existing managed helpers without installing build tools, fetching official samples, or changing NVIDIA/CUDA packages. |
+
+## Privilege and download model
+
+Use the primary `wget | bash` form. The read-only preflight does not need root:
 
 ```bash
 wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
-  sudo bash -s -- preflight --gpu=all --require-exact-gpu-count=2 \
-    --require-compute-capability=8.6 --require-nvlink --expect-topology=NV4
+  bash -s -- preflight --gpu=all
 ```
 
-`apply` may install source-neutral build tools only when explicitly requested;
-it then builds the managed smoke-test helper. P2P testing is opt-in. A passing
-P2P result records hardware/runtime capability only; it does not globally
-enable application P2P, unified memory, or LLM readiness.
+For `apply` and `validate`, the runner requests sudo once through `/dev/tty`
+only when root is required and no cached/passwordless credential exists.
+Password input is not echoed. Subsequent privileged commands use
+noninteractive `sudo -n`; the runner and its downloaded dependencies are not
+re-fetched or executed through sudo.
 
-Like the NVIDIA runner, streamed privileged runs require `sudo` on the right
-side of the pipe.
+`wget | sudo bash` remains a compatibility form for intentionally starting the
+whole runner as root:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
+  sudo bash -s -- apply \
+    --gpu=all \
+    --require-exact-gpu-count=2 \
+    --require-compute-capability=8.6 \
+    --require-nvlink \
+    --expect-topology=NV4 \
+    --run-p2p-test \
+    --strict-p2p \
+    --p2p-buffer-mib=256 \
+    --p2p-iterations=20 \
+    --official-samples=off \
+    --install-build-tools
+```
+
+Do not use `sudo wget ... | bash`. In a noninteractive session, provide a
+cached/passwordless sudo credential or allocate a terminal with `ssh -t`.
+Otherwise, the managed run fails before package or Ansible activity. Interactive
+`--select-gpus` also requires `/dev/tty`; automation should pass stable GPU
+UUIDs with `--gpu=GPU-...,GPU-...`.
 
 ## Complete dual-RTX-3090 validation
 
@@ -39,7 +71,7 @@ topology, and runs the opt-in P2P diagnostic.
 
 ```bash
 wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
-  sudo bash -s -- apply \
+  bash -s -- apply \
     --gpu=all \
     --require-exact-gpu-count=2 \
     --require-compute-capability=8.6 \
@@ -54,20 +86,76 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
     --install-build-tools
 ```
 
-| Flag | Purpose in this example |
-| --- | --- |
-| `--gpu=all` | Selects all NVIDIA GPUs, after which the exact-count and capability gates apply. |
-| `--require-exact-gpu-count=2` | Fails unless precisely two selected physical GPUs are present. |
-| `--require-compute-capability=8.6` | Requires the RTX 3090 SM 8.6 architecture. |
-| `--require-nvlink` / `--expect-topology=NV4` | Fails a PCIe-only or unexpected NVLink topology; `NV4` records four bonded NVLink links. |
-| `--run-p2p-test` / `--strict-p2p` | Runs the opt-in directed P2P diagnostic and makes a requested failure fatal. |
-| `--p2p-buffer-mib=256` / `--p2p-iterations=20` | Bounds diagnostic transfer memory and repeat count. |
-| `--official-samples=fetch` / `--cuda-samples-tag=v13.1` | Fetches the specified CUDA sample revision for optional comparison. |
-| `--install-build-tools` | Explicitly permits installation of source-neutral compiler/build dependencies. |
+## Flag reference
 
-For a later recheck, replace `apply` with `validate` and omit
-`--install-build-tools` and `--official-samples=fetch`. `validate` rewrites
-only NVIDIA/NVLink readiness facts and managed environment metadata; it does
-not install or upgrade NVIDIA/CUDA packages. A successful result is
-hardware/runtime validation only; it does not enable global LLM application
-P2P settings.
+| Flag | Behavior |
+| --- | --- |
+| `--gpu=all\|<UUID-or-PCI-list>` | Selects all GPUs or an explicit comma-separated physical-GPU list. Stable UUIDs are preferred for repeat validation. |
+| `--select-gpus` | Prompts on `/dev/tty` and converts selected inventory rows to UUIDs. It cannot be combined with `--gpu`. |
+| `--require-gpu-count=<minimum>` | Requires at least this many selected GPUs. |
+| `--require-exact-gpu-count=<count>` | Requires precisely this many selected physical GPUs. |
+| `--require-compute-capability=<list>` | Requires each selected GPU to match one of the comma-separated `major.minor` capabilities. |
+| `--require-nvlink` | Makes inactive or PCIe-only transport fatal and requires `--run-p2p-test` so both directed CUDA peer checks are proven. |
+| `--expect-topology=NV#` | Requires a specific topology token, such as `NV4`. `NV4` means four bonded NVLink links, not pooled VRAM. |
+| `--run-p2p-test` | Runs the bounded P2P helper for exactly two explicitly selected physical GPUs. |
+| `--strict-p2p` | Makes a requested P2P failure fatal; it requires `--run-p2p-test`. |
+| `--p2p-buffer-mib=<size>` | Sets the positive per-transfer diagnostic buffer size. The example uses 256 MiB. |
+| `--p2p-iterations=<count>` | Sets the positive bounded iteration count. The example uses 20. |
+| `--official-samples=off\|existing\|fetch` | Disables official samples, uses an existing checkout, or fetches one during `apply`. `validate` rejects `fetch`. |
+| `--cuda-samples-path=<path>` | Selects the managed/existing CUDA Samples checkout path. |
+| `--cuda-samples-tag=v13.1` | Pins the only currently accepted CUDA Samples revision for CUDA Toolkit 13.1. |
+| `--strict-official-samples` | Makes a requested official-sample failure fatal; samples cannot be `off`. |
+| `--run-nvbandwidth` | Runs the optional nvbandwidth diagnostic and requires an explicit pinned ref. |
+| `--nvbandwidth-path=<path>` | Selects the nvbandwidth source/build path. |
+| `--nvbandwidth-ref=<tag-or-commit>` | Pins the nvbandwidth revision; required with `--run-nvbandwidth`. |
+| `--install-build-tools` | Permits source-neutral build-tool installation during `apply`. This is the current default. |
+| `--no-install-build-tools` | Prohibits build-tool installation; required for a non-installing revalidation workflow. |
+| `--help` | Prints runner usage without staging or changing the host. |
+
+P2P testing is opt-in. A passing result records hardware/runtime capability
+only; it does not globally enable application P2P, unified memory, or LLM
+readiness.
+
+## Fact refresh and ownership
+
+The NVLink playbook first imports the canonical NVIDIA playbook with
+`nvidia_mode=validate` and `nvidia_validate_from_facts=true`. That pass reads
+the recorded NVIDIA policy, validates the live driver, `nvcc`, and CUDA
+runtime header, and refreshes
+`/etc/ansible/debian/facts/nvidia.yml`. NVLink then rereads that file and fails
+closed if schema version, readiness booleans, or `CUDA_HOME` disagree with the
+live host.
+
+NVIDIA exclusively owns `nvidia.yml`; NVLink writes only
+`/etc/ansible/debian/facts/nvlink.yml` after mandatory GPU, compiler,
+per-UUID smoke, and topology gates pass. A schema-1 NVIDIA fact without the
+newer `validation_policy` is reconstructed from its legacy recorded fields and
+upgraded by the NVIDIA validation pass. Missing, malformed, or unsupported
+facts require rerunning the NVIDIA `apply` workflow—do not edit either fact
+file by hand.
+
+## Revalidate without installation
+
+After a successful `apply`, rerun the existing managed helpers without package
+installation or external sample-source fetching:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
+  bash -s -- validate \
+    --gpu=all \
+    --require-exact-gpu-count=2 \
+    --require-compute-capability=8.6 \
+    --require-nvlink \
+    --expect-topology=NV4 \
+    --run-p2p-test \
+    --strict-p2p \
+    --p2p-buffer-mib=256 \
+    --p2p-iterations=20 \
+    --official-samples=off \
+    --no-install-build-tools
+```
+
+`validate` can update NVIDIA/NVLink readiness facts, validation logs, and
+managed environment metadata. It does not install or upgrade NVIDIA/CUDA
+packages. A successful result remains hardware/runtime validation only; it
+does not enable global LLM application P2P settings.

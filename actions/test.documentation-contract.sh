@@ -45,6 +45,41 @@ reject_contains "actions/www.pages.sh" 'cp -R "${ROOT}/docs"'
 reject_contains "actions/www.pages.sh" 'local -a root_files='
 reject_contains "actions/validate.pages.sh" 'FILES=('
 
+require.runner.options.documented() {
+  local runner="$1"
+  local document="$2"
+  local option=""
+
+  while IFS= read -r option; do
+    if ! grep -Fq -- "${option}" "${ROOT}/${document}"; then
+      contract.error "${document} does not document runner option ${option} from ${runner}"
+    fi
+  done < <(
+    sed -n '/^Options:/,/^$/p' "${ROOT}/${runner}" \
+      | grep -Eo -- '--[a-z0-9-]+' \
+      | sort -u
+  )
+}
+require.runner.options.documented "setup/cli/nvidia.sh" "docs/cli/nvidia/readme.md"
+require.runner.options.documented "setup/cli/nvlink.sh" "docs/cli/nvlink/readme.md"
+
+for document in docs/cli/nvidia/readme.md docs/cli/nvlink/readme.md; do
+  for marker in \
+    'wget -qO- https://devs-guide.github.io/debian/setup/cli/' \
+    '/dev/tty'; do
+    require_contains "${document}" "${marker}"
+  done
+  require_regex "${document}" '^[[:space:]]+bash -s -- preflight([[:space:]]|$)'
+  require_regex "${document}" '^[[:space:]]+bash -s -- apply([[:space:]]|$)'
+  require_regex "${document}" '^[[:space:]]+sudo bash -s -- (apply|validate)([[:space:]]|$)'
+done
+require_contains "docs/cli/nvidia/readme.md" '/etc/ansible/debian/facts/nvidia.yml'
+require_contains "docs/cli/nvlink/readme.md" '/etc/ansible/debian/facts/nvidia.yml'
+require_contains "docs/cli/nvlink/readme.md" '/etc/ansible/debian/facts/nvlink.yml'
+if grep -R -nF -- '--apply' "${ROOT}/docs"; then
+  contract.error "documentation must pass apply as a positional mode: bash -s -- apply"
+fi
+
 published_setup_url_prefix_ere='(https://devs-guide\.github\.io/debian/|\$\{PAGES_BASE_URL\}/)'
 published_setup_url_delimiter_ere='([[:space:]"`|)}]|$)'
 while IFS= read -r published_setup_source; do
@@ -71,5 +106,12 @@ while IFS= read -r document; do
     contract.error "canonical documentation is missing required front matter: ${relative}"
   fi
 done < <(find "${ROOT}/docs" -type f -name readme.md | sort)
+
+while IFS= read -r legacy_action_document; do
+  contract.error "noncanonical action document must be merged into a route readme or history: ${legacy_action_document#"${ROOT}/"}"
+done < <(
+  find "${ROOT}/docs/actions" -mindepth 1 -maxdepth 1 \
+    -type f -name '*.md' ! -name readme.md | sort
+)
 
 exit "${rc}"

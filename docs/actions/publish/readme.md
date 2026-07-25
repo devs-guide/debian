@@ -40,6 +40,7 @@ PUBLISH_DIR=/tmp/debian-pages DOCS_SITE_ROOT=/debian \
 | Variable | Purpose |
 | --- | --- |
 | `PUBLISH_DIR` | Repository-relative or absolute generated output directory under an existing parent. The action resolves it, rejects broad system/home/repository roots, then removes and recreates this exact directory. |
+| `DIR_PUBLISH` | Legacy compatibility alias for `PUBLISH_DIR`. If both are set, this legacy variable currently takes precedence; new automation should use `PUBLISH_DIR`. |
 | `DOCS_SITE_ROOT` | Project path embedded in documentation links; `/debian` is the production project-site path. |
 
 The output directory is disposable generated content. Do not hand-edit

@@ -43,6 +43,8 @@ They remain source files, not documentation routes.
 ## Safety model
 
 Read a feature page before using its runner. `preflight` or `validate` is
-preferred when a runner offers it. NVIDIA and NVLink streamed `apply` runs
-must be explicitly elevated by placing `sudo` on the right side of the pipe;
-this avoids an implicit privileged re-download.
+preferred when a runner offers it. NVIDIA and NVLink use `wget | bash` as
+their primary streamed form. Managed modes request sudo once through
+`/dev/tty` when needed, then delegate only privileged commands with the cached
+credential; they never fetch a second runner copy from inside sudo.
+`wget | sudo bash` remains a documented compatibility form.

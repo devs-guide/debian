@@ -22,6 +22,31 @@ The helper provides:
 - verification that every declared dependency is regular, readable, and
   non-empty before a privileged command consumes it.
 
+## Delegated-root flow
+
+For migrated runners, `wget | bash` is the primary streamed form:
+
+1. The unprivileged shell downloads the feature and its small shared-runner
+   bootstrap.
+2. Read-only preflight continues without sudo.
+3. A managed mode accepts an existing root, cached, or passwordless session.
+   Otherwise it runs `sudo -v` exactly once with input from `/dev/tty`.
+4. The original process stages and verifies release helpers, Ansible files,
+   and support files.
+5. Privileged package and Ansible commands run through noninteractive
+   `sudo -n` with a clean explicit environment.
+
+No runner source or managed dependency is downloaded a second time from inside
+sudo. `wget | sudo bash` remains supported when a caller deliberately starts
+the whole runner as root. `sudo wget | bash` is not equivalent because it
+leaves the shell unprivileged.
+
+Without root, cached/passwordless sudo, or a usable `/dev/tty`, managed modes
+fail before privileged activity. Noninteractive callers should allocate a TTY
+with `ssh -t`, establish a credential first, or use narrowly scoped
+passwordless sudo. Interactive feature inputs such as NVLink
+`--select-gpus` independently require `/dev/tty`.
+
 ## Feature manifest contract
 
 Migrated CLI features declare four source-neutral arrays:
