@@ -94,7 +94,10 @@ def map_topology_labels(rows: list[dict[str, Any]], topology: dict[str, Any]) ->
     route matrix; UUID and PCI identities remain the persistent selectors.
     """
 
-    labels = {str(label) for label in topology.get("labels", [])}
+    header_labels = [str(label) for label in topology.get("labels", [])]
+    row_labels = [str(label) for label in topology.get("row_labels", [])]
+    header_label_set = set(header_labels)
+    row_label_set = set(row_labels)
     expected_labels: list[str] = []
     resolved_labels: list[str] = []
     missing_labels: list[str] = []
@@ -102,19 +105,36 @@ def map_topology_labels(rows: list[dict[str, Any]], topology: dict[str, Any]) ->
     for row in rows:
         expected_label = f"GPU{row['index']}"
         expected_labels.append(expected_label)
-        if expected_label in labels:
+        if expected_label in header_label_set and expected_label in row_label_set:
             row["topology_label"] = expected_label
             resolved_labels.append(expected_label)
         else:
             row["topology_label"] = ""
             missing_labels.append(expected_label)
 
+    expected_label_set = set(expected_labels)
+    unexpected_labels = [
+        label
+        for label in dict.fromkeys(header_labels + row_labels)
+        if label not in expected_label_set
+    ]
+    complete = (
+        not missing_labels
+        and not unexpected_labels
+        and len(expected_labels) == len(expected_label_set)
+        and expected_label_set == header_label_set
+        and expected_label_set == row_label_set
+    )
+
     return {
         "method": "nvidia-smi-index-to-topology-label",
         "expected_labels": expected_labels,
         "resolved_labels": resolved_labels,
         "missing_labels": missing_labels,
-        "complete": not missing_labels,
+        "unexpected_labels": unexpected_labels,
+        "header_labels": header_labels,
+        "row_labels": row_labels,
+        "complete": complete,
     }
 
 

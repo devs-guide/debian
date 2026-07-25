@@ -81,10 +81,21 @@ topology-table identity.
 
 The snapshot records a `label_mapping` result beside the raw topology matrix.
 NVLink proceeds only when every NVIDIA runtime row maps to a current `GPU#`
-header label from that same capture. If the mapping is incomplete, rerun the
-GPU or NVIDIA validation runner and inspect the recorded `nvidia-smi topo -m`
-output; do not substitute UUIDs, PCI addresses, or selected-list positions for
-topology labels.
+header and route-row label from that same capture. When a working NVIDIA
+runtime produces an incomplete mapping, the GPU runner fails before replacing
+an existing `/etc/ansible/debian/facts/gpu.yml`. Repeating the same command
+cannot repair deterministic malformed input or parser behavior.
+
+Inspect the raw topology without losing invisible characters:
+
+```bash
+nvidia-smi topo -m | sed -n 'l'
+nvidia-smi topo -m | od -An -tx1c
+sudo sed -n '/nvidia_smi:/,/runtime:/p' /etc/ansible/debian/facts/gpu.yml
+```
+
+Do not substitute UUIDs, PCI addresses, CUDA indices, or selected-list
+positions for topology labels.
 
 AMD and Intel support in v1 is PCI discovery only. This runner does not claim
 vendor runtime readiness, topology capability, or compute validation for them.

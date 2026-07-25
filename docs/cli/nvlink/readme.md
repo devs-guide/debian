@@ -137,6 +137,11 @@ upgraded by the NVIDIA validation pass. Missing, malformed, or unsupported
 facts require rerunning the NVIDIA `apply` workflow—do not edit either fact
 file by hand.
 
+If the live NVIDIA topology header and route rows do not expose the same
+normalized `GPU#` labels, the shared GPU producer fails before replacing
+`gpu.yml`. NVLink keeps its complete-mapping assertion as a second ownership
+boundary and will not rediscover or repair another feature's snapshot.
+
 ## Revalidate without installation
 
 After a successful `apply`, rerun the existing managed helpers without package

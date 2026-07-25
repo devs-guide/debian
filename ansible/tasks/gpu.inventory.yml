@@ -22,9 +22,53 @@
       - gpu_inventory.generated_at | default('') | length > 0
       - gpu_inventory.devices is iterable
       - gpu_inventory.topology is mapping
+      - gpu_inventory.runtime is mapping
     fail_msg: >-
       The shared GPU inventory helper returned an incomplete snapshot. Refuse
       to persist or consume device identities until the snapshot is valid.
+
+- name: Identify live NVIDIA records in the shared GPU snapshot
+  ansible.builtin.set_fact:
+    gpu_inventory_nvidia_devices: "{{ gpu_inventory.devices | selectattr('nvidia', 'defined') | list }}"
+    gpu_inventory_nvidia_runtime_available: >-
+      {{ gpu_inventory.runtime.nvidia.available | default(false) | bool }}
+
+- name: Validate live NVIDIA topology before shared fact persistence
+  ansible.builtin.assert:
+    that:
+      - gpu_inventory_nvidia_topology.available | default(false) | bool
+      - gpu_inventory_nvidia_mapping.complete | default(false) | bool
+      - gpu_inventory_nvidia_mapping.missing_labels | default([]) | length == 0
+      - gpu_inventory_nvidia_mapping.unexpected_labels | default([]) | length == 0
+      - >-
+        (gpu_inventory_nvidia_mapping.expected_labels | default([]) | sort)
+        == (gpu_inventory_nvidia_mapping.resolved_labels | default([]) | sort)
+      - >-
+        (gpu_inventory_nvidia_mapping.expected_labels | default([]) | sort)
+        == (gpu_inventory_nvidia_mapping.header_labels | default([]) | sort)
+      - >-
+        (gpu_inventory_nvidia_mapping.expected_labels | default([]) | sort)
+        == (gpu_inventory_nvidia_mapping.row_labels | default([]) | sort)
+    fail_msg: >-
+      The live NVIDIA runtime returned an incomplete topology-label mapping.
+      Refusing to replace {{ gpu_facts_path }}. expected={{
+      gpu_inventory_nvidia_mapping.expected_labels | default([]) | to_json }},
+      resolved={{
+      gpu_inventory_nvidia_mapping.resolved_labels | default([]) | to_json }},
+      missing={{
+      gpu_inventory_nvidia_mapping.missing_labels | default([]) | to_json }},
+      unexpected={{
+      gpu_inventory_nvidia_mapping.unexpected_labels | default([]) | to_json }},
+      header={{
+      gpu_inventory_nvidia_mapping.header_labels | default([]) | to_json }},
+      rows={{
+      gpu_inventory_nvidia_mapping.row_labels | default([]) | to_json }}
+  vars:
+    gpu_inventory_nvidia_topology: "{{ gpu_inventory.topology.nvidia_smi | default({}) }}"
+    gpu_inventory_nvidia_mapping: "{{ gpu_inventory_nvidia_topology.label_mapping | default({}) }}"
+  when:
+    - gpu_inventory_nvidia_runtime_available | bool
+    - gpu_inventory_nvidia_devices | length > 0
 
 - name: Create the shared GPU fact directory
   ansible.builtin.file:
