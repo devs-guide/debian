@@ -99,17 +99,25 @@ if [[ "${SHELL_ONLY}" -eq 0 ]]; then
     reordered_result=""
   }
   [[ "${reordered_result}" == *'"route": "NV4"'* ]] || contract.error "GPU0 -> GPU1 must resolve from a reordered topology header"
-  mapping_result="$(PYTHONPATH="${ROOT}/ansible/files/gpu" python3 - "${fixture}" <<'PY'
+  mapping_result="$(PYTHONPATH="${ROOT}/ansible/files/gpu" python3 - "${fixture}" "${ROOT}/ansible/files/gpu/gpu-inventory.py" <<'PY'
 import json
+import importlib.util
 import sys
 from pathlib import Path
 
-from gpu_inventory import map_topology_labels
 from nvidia_topology import parse_topology
+
+module_path = Path(sys.argv[2]).resolve()
+spec = importlib.util.spec_from_file_location("gpu_inventory", module_path)
+if spec is None or spec.loader is None:
+    raise RuntimeError(f"cannot load GPU inventory helper: {module_path}")
+gpu_inventory = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = gpu_inventory
+spec.loader.exec_module(gpu_inventory)
 
 topology = parse_topology(Path(sys.argv[1]).read_text())
 rows = [{"index": 0, "topology_label": ""}, {"index": 1, "topology_label": ""}]
-mapping = map_topology_labels(rows, topology)
+mapping = gpu_inventory.map_topology_labels(rows, topology)
 print(json.dumps({"mapping": mapping, "rows": rows}, sort_keys=True))
 PY
 )" || {
