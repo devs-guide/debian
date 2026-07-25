@@ -68,6 +68,7 @@ main() {
   require_file "${ROOT}/setup/cli/tauri.sh"
   require_file "${ROOT}/setup/cli/nvidia.sh"
   require_file "${ROOT}/ansible/cli/nvidia.yml"
+  require_file "${ROOT}/ansible/tasks/nvidia.normalize-observations.yml"
   require_file "${ROOT}/setup/cli/nvlink.sh"
   require_file "${ROOT}/ansible/cli/nvlink.yml"
   require_file "${ROOT}/ansible/files/nvlink/nvidia-cuda-smoke.cu"

@@ -47,6 +47,7 @@ GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=("cli/nvidia.yml" "cli/nvlink.yml")
 RUNTIME_SUPPORT_REFS=(
   "packages.yml"
+  "tasks/nvidia.normalize-observations.yml"
   "files/nvlink/nvidia-cuda-smoke.cu"
   "files/nvlink/nvidia-p2p-verify.cu"
   "files/nvlink/nvidia-topology-parser.py"

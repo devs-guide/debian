@@ -67,6 +67,7 @@ FILES=(
   "ansible/cli/tauri.yml:ansible/cli/tauri.yml"
   "ansible/cli/nvidia.yml:ansible/cli/nvidia.yml"
   "ansible/cli/nvlink.yml:ansible/cli/nvlink.yml"
+  "ansible/tasks/nvidia.normalize-observations.yml:ansible/tasks/nvidia.normalize-observations.yml"
   "ansible/files/nvlink/nvidia-cuda-smoke.cu:ansible/files/nvlink/nvidia-cuda-smoke.cu"
   "ansible/files/nvlink/nvidia-p2p-verify.cu:ansible/files/nvlink/nvidia-p2p-verify.cu"
   "ansible/files/nvlink/nvidia-topology-parser.py:ansible/files/nvlink/nvidia-topology-parser.py"

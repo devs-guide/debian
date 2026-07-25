@@ -44,7 +44,10 @@ COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH=""
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=("cli/nvidia.yml")
-RUNTIME_SUPPORT_REFS=("packages.yml")
+RUNTIME_SUPPORT_REFS=(
+  "packages.yml"
+  "tasks/nvidia.normalize-observations.yml"
+)
 NVIDIA_PLAYBOOK_REL="cli/nvidia.yml"
 NVIDIA_PLAYBOOK_PATH=""
 NVIDIA_EXTRA_VARS_PATH=""

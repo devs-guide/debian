@@ -1,0 +1,138 @@
+---
+- name: Regress skipped NVIDIA registered-result normalization
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    nvidia_driver_candidate:
+      changed: false
+      skipped: true
+      skip_reason: Conditional result was False
+    nvidia_installed_driver_version:
+      changed: false
+      skipped: true
+      skip_reason: Conditional result was False
+    nvidia_smi_inventory:
+      changed: false
+      skipped: true
+      skip_reason: Conditional result was False
+    nvidia_nvcc_version:
+      changed: false
+      skipped: true
+      skip_reason: Conditional result was False
+    nvidia_refresh_cuda:
+      package_name: cuda-toolkit-13-1
+    nvidia_cuda_package_resolved: ""
+    nvidia_cuda_runtime_header_ready: false
+
+  tasks:
+    - name: Normalize a skipped candidate with a persisted fallback
+      ansible.builtin.include_tasks: ../../ansible/tasks/nvidia.normalize-observations.yml
+      vars:
+        nvidia_refresh_driver:
+          candidate_package_version: 595.71.05-1
+
+    - name: Retain normalized values for schema rendering
+      ansible.builtin.set_fact:
+        nvidia_regression_candidate_version: "{{ nvidia_fact_driver_candidate_package_version }}"
+        nvidia_regression_candidate_origin: "{{ nvidia_fact_driver_candidate_package_version_origin }}"
+        nvidia_regression_smi_rc: "{{ nvidia_fact_smi_rc }}"
+        nvidia_regression_nvcc_rc: "{{ nvidia_fact_nvcc_rc }}"
+        nvidia_regression_runtime_header_ready: "{{ nvidia_fact_runtime_header_ready }}"
+
+    - name: Verify skipped results preserve prior values and integer fallbacks
+      ansible.builtin.assert:
+        that:
+          - nvidia_regression_candidate_version == '595.71.05-1'
+          - nvidia_regression_candidate_origin == 'persisted'
+          - nvidia_regression_smi_rc | type_debug == 'int'
+          - nvidia_regression_smi_rc == 1
+          - nvidia_regression_nvcc_rc | type_debug == 'int'
+          - nvidia_regression_nvcc_rc == 1
+          - not (nvidia_regression_runtime_header_ready | bool)
+
+    - name: Build a schema-version-1 NVIDIA fact document
+      ansible.builtin.set_fact:
+        nvidia_regression_fact_document:
+          nvidia:
+            schema_version: 1
+            generated_at: "1970-01-01T00:00:00Z"
+            mode: validate
+            profile: llm
+            driver:
+              candidate_package_version: "{{ nvidia_regression_candidate_version }}"
+              candidate_package_version_origin: "{{ nvidia_regression_candidate_origin }}"
+              nvidia_smi_ready: false
+              nvidia_smi_rc: "{{ nvidia_regression_smi_rc | int }}"
+            cuda:
+              package_name: cuda-toolkit-13-1
+              nvcc_ready: false
+              nvcc_rc: "{{ nvidia_regression_nvcc_rc | int }}"
+              runtime_header_ready: "{{ nvidia_regression_runtime_header_ready | bool }}"
+            readiness:
+              driver_ready: false
+              cuda_runtime_ready: false
+              cuda_build_ready: false
+              llm_prerequisite_ready: false
+
+    - name: Exercise rendered NVIDIA fact YAML
+      block:
+        - name: Allocate an isolated rendered-fact fixture
+          ansible.builtin.tempfile:
+            state: file
+            suffix: .nvidia-facts.yml
+          register: nvidia_regression_fact_file
+
+        - name: Render schema-version-1 NVIDIA facts
+          ansible.builtin.copy:
+            dest: "{{ nvidia_regression_fact_file.path }}"
+            mode: '0600'
+            content: >-
+              {{
+                nvidia_regression_fact_document
+                | to_nice_yaml(indent=2, sort_keys=false)
+              }}
+
+        - name: Parse rendered schema-version-1 NVIDIA facts
+          ansible.builtin.include_vars:
+            file: "{{ nvidia_regression_fact_file.path }}"
+            name: nvidia_regression_rendered
+
+        - name: Verify rendered NVIDIA fact schema and scalar types
+          ansible.builtin.assert:
+            that:
+              - nvidia_regression_rendered.nvidia.schema_version | type_debug == 'int'
+              - nvidia_regression_rendered.nvidia.schema_version == 1
+              - nvidia_regression_rendered.nvidia.driver.candidate_package_version == '595.71.05-1'
+              - nvidia_regression_rendered.nvidia.driver.nvidia_smi_rc | type_debug == 'int'
+              - nvidia_regression_rendered.nvidia.cuda.nvcc_rc | type_debug == 'int'
+              - nvidia_regression_rendered.nvidia.cuda.runtime_header_ready | type_debug == 'bool'
+      always:
+        - name: Remove the isolated rendered-fact fixture
+          ansible.builtin.file:
+            path: >-
+              {{
+                (nvidia_regression_fact_file | default({})).get('path', '')
+              }}
+            state: absent
+          when: >-
+            (
+              (nvidia_regression_fact_file | default({})).get('path', '')
+              | length
+            ) > 0
+
+    - name: Normalize a skipped candidate without a persisted fallback
+      ansible.builtin.include_tasks: ../../ansible/tasks/nvidia.normalize-observations.yml
+      vars:
+        nvidia_refresh_driver: {}
+
+    - name: Verify a missing candidate and fallback normalize to empty values
+      ansible.builtin.assert:
+        that:
+          - nvidia_fact_driver_candidate_package_version == ''
+          - nvidia_fact_driver_candidate_package_version_origin == 'unavailable'
+          - nvidia_fact_smi_rc | type_debug == 'int'
+          - nvidia_fact_nvcc_rc | type_debug == 'int'

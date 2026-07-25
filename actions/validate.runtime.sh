@@ -253,6 +253,9 @@ files=(
   "setup/cli/nvlink.sh"
   "actions/build.docs.sh"
   "actions/www.pages.sh"
+  "actions/requirements.validation.txt"
+  "actions/fixtures/nvidia.register-normalization.yml"
+  "actions/test.nvidia-facts.sh"
   "actions/test.sudo-access.sh"
   "actions/validate.runtime.sh"
   "actions/validate.pages.sh"
@@ -289,6 +292,7 @@ files=(
   "ansible/cli/tauri.yml"
   "ansible/cli/nvidia.yml"
   "ansible/cli/nvlink.yml"
+  "ansible/tasks/nvidia.normalize-observations.yml"
   "ansible/files/nvlink/nvidia-cuda-smoke.cu"
   "ansible/files/nvlink/nvidia-p2p-verify.cu"
   "ansible/files/nvlink/nvidia-topology-parser.py"
@@ -374,6 +378,19 @@ if ! bash -n "${ROOT}/setup/cli/nvidia.sh"; then
   echo "[validate.runtime][error] setup/cli/nvidia.sh must pass bash -n"
   rc=1
 fi
+if ! grep -Fxq 'ansible-core==2.20.5' "${ROOT}/actions/requirements.validation.txt" || \
+   ! grep -Fxq 'PyYAML==6.0.2' "${ROOT}/actions/requirements.validation.txt"; then
+  echo "[validate.runtime][error] CI validation dependencies must pin Ansible Core and PyYAML"
+  rc=1
+fi
+if ! awk '
+  /name: Install pinned runtime validation dependencies/ { dependencies = NR }
+  /name: Validate runtime contract/ { validation = NR }
+  END { exit !(dependencies > 0 && validation > dependencies) }
+' "${ROOT}/.github/workflows/www.pages.yml"; then
+  echo "[validate.runtime][error] pinned validation dependencies must be installed before runtime validation"
+  rc=1
+fi
 if ! awk '
   /^RUNTIME_SUPPORT_REFS=\(/ {
     print
@@ -387,6 +404,21 @@ if ! awk '
   }
 ' "${ROOT}/setup/cli/nvidia.sh" | grep -Fq '"packages.yml"'; then
   echo "[validate.runtime][error] setup/cli/nvidia.sh must declare packages.yml as a runtime support dependency"
+  rc=1
+fi
+if ! awk '
+  /^RUNTIME_SUPPORT_REFS=\(/ {
+    print
+    if ($0 ~ /\)[[:space:]]*$/) { exit }
+    in_refs=1
+    next
+  }
+  in_refs {
+    print
+    if (/^\)[[:space:]]*$/) { exit }
+  }
+' "${ROOT}/setup/cli/nvidia.sh" | grep -Fq '"tasks/nvidia.normalize-observations.yml"'; then
+  echo "[validate.runtime][error] setup/cli/nvidia.sh must stage shared NVIDIA observation normalization"
   rc=1
 fi
 if ! grep -Fq 'destination="${PLAYBOOK_ROOT}/${reference}"' "${ROOT}/setup/cli/nvidia.sh"; then
@@ -444,6 +476,41 @@ for marker in 'nvidia_smi_rc:' 'nvcc_rc:' 'runtime_header_ready:' 'validation_po
     rc=1
   fi
 done
+if ! grep -Fq 'ansible.builtin.include_tasks: ../tasks/nvidia.normalize-observations.yml' "${ROOT}/ansible/cli/nvidia.yml"; then
+  echo "[validate.runtime][error] NVIDIA fact persistence must use the shared observation-normalization task"
+  rc=1
+fi
+for marker in \
+  'nvidia_driver_candidate:' \
+  'skipped: true' \
+  'skip_reason: Conditional result was False' \
+  'candidate_package_version: 595.71.05-1' \
+  "nvidia_fact_driver_candidate_package_version == ''" \
+  "nvidia_regression_smi_rc | type_debug == 'int'" \
+  "nvidia_regression_nvcc_rc | type_debug == 'int'" \
+  "schema_version: 1"; do
+  if ! grep -Fq "${marker}" "${ROOT}/actions/fixtures/nvidia.register-normalization.yml"; then
+    echo "[validate.runtime][error] NVIDIA skipped-register regression is missing: ${marker}"
+    rc=1
+  fi
+done
+if grep -RFq -- "(nvidia_driver_candidate | default({'stdout': ''})).stdout" "${ROOT}/ansible"; then
+  echo "[validate.runtime][error] unsafe NVIDIA candidate stdout dereference has returned"
+  rc=1
+fi
+if ! validate_yaml_file "${ROOT}/ansible/tasks/nvidia.normalize-observations.yml"; then
+  rc=1
+fi
+if ! validate_yaml_file "${ROOT}/actions/fixtures/nvidia.register-normalization.yml"; then
+  rc=1
+fi
+if ! bash -n "${ROOT}/actions/test.nvidia-facts.sh"; then
+  echo "[validate.runtime][error] actions/test.nvidia-facts.sh must pass bash -n"
+  rc=1
+elif ! bash "${ROOT}/actions/test.nvidia-facts.sh"; then
+  echo "[validate.runtime][error] NVIDIA skipped-register normalization regression failed"
+  rc=1
+fi
 
 echo "[validate.runtime] checking delegated-root runner contract..."
 runner_helper="${ROOT}/setup/runner.common.sh"
@@ -520,6 +587,7 @@ fi
 for required_ref in \
   '"cli/nvidia.yml"' \
   '"packages.yml"' \
+  '"tasks/nvidia.normalize-observations.yml"' \
   '"files/nvlink/nvidia-cuda-smoke.cu"' \
   '"files/nvlink/nvidia-p2p-verify.cu"' \
   '"files/nvlink/nvidia-topology-parser.py"'; do

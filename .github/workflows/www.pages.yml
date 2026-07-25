@@ -32,6 +32,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure validation Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: actions/requirements.validation.txt
+
+      - name: Install pinned runtime validation dependencies
+        run: python -m pip install --disable-pip-version-check --requirement actions/requirements.validation.txt
+
       - name: Validate runtime contract
         run: bash ./actions/validate.runtime.sh
 
