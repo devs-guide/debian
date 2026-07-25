@@ -73,6 +73,7 @@ NVIDIA_ALLOW_NO_GPU="${DEBIAN_NVIDIA_ALLOW_NO_GPU:-0}"
 NVIDIA_ALLOW_SOURCE_MIGRATION="${DEBIAN_NVIDIA_ALLOW_SOURCE_MIGRATION:-0}"
 NVIDIA_ALLOW_CUDA_MINOR_COMPAT="${DEBIAN_NVIDIA_ALLOW_CUDA_MINOR_COMPAT:-0}"
 NVIDIA_ALLOW_CUSTOM_REPO="${DEBIAN_NVIDIA_ALLOW_CUSTOM_REPO:-0}"
+NVIDIA_MAINTAIN_KERNEL_HEADERS="${DEBIAN_NVIDIA_MAINTAIN_KERNEL_HEADERS:-0}"
 NVIDIA_SKIP_LIVE_VALIDATE="${DEBIAN_NVIDIA_SKIP_LIVE_VALIDATE:-0}"
 NVIDIA_CHECK_UPSTREAM="${DEBIAN_NVIDIA_CHECK_UPSTREAM:-0}"
 NVIDIA_LATEST_IN_BRANCH="${DEBIAN_NVIDIA_LATEST_IN_BRANCH:-0}"
@@ -114,6 +115,7 @@ Options:
   --allow-source-migration
   --allow-no-gpu
   --allow-cuda-minor-compat
+  --maintain-kernel-headers     Install Debian's header meta-package after exact operator confirmation.
   --skip-live-validate            Apply/upgrade only; cannot be combined with validate.
   --check-upstream
   --latest-in-branch
@@ -214,6 +216,7 @@ parse.arguments() {
       --allow-source-migration) set.cli.flag NVIDIA_ALLOW_SOURCE_MIGRATION DEBIAN_NVIDIA_ALLOW_SOURCE_MIGRATION ;;
       --allow-no-gpu) set.cli.flag NVIDIA_ALLOW_NO_GPU DEBIAN_NVIDIA_ALLOW_NO_GPU ;;
       --allow-cuda-minor-compat) set.cli.flag NVIDIA_ALLOW_CUDA_MINOR_COMPAT DEBIAN_NVIDIA_ALLOW_CUDA_MINOR_COMPAT ;;
+      --maintain-kernel-headers) set.cli.flag NVIDIA_MAINTAIN_KERNEL_HEADERS DEBIAN_NVIDIA_MAINTAIN_KERNEL_HEADERS ;;
       --skip-live-validate) set.cli.flag NVIDIA_SKIP_LIVE_VALIDATE DEBIAN_NVIDIA_SKIP_LIVE_VALIDATE ;;
       --check-upstream) set.cli.flag NVIDIA_CHECK_UPSTREAM DEBIAN_NVIDIA_CHECK_UPSTREAM ;;
       --latest-in-branch) set.cli.flag NVIDIA_LATEST_IN_BRANCH DEBIAN_NVIDIA_LATEST_IN_BRANCH ;;
@@ -272,12 +275,16 @@ validate.configuration() {
   validate.boolean DEBIAN_NVIDIA_ALLOW_SOURCE_MIGRATION "${NVIDIA_ALLOW_SOURCE_MIGRATION}"
   validate.boolean DEBIAN_NVIDIA_ALLOW_CUDA_MINOR_COMPAT "${NVIDIA_ALLOW_CUDA_MINOR_COMPAT}"
   validate.boolean DEBIAN_NVIDIA_ALLOW_CUSTOM_REPO "${NVIDIA_ALLOW_CUSTOM_REPO}"
+  validate.boolean DEBIAN_NVIDIA_MAINTAIN_KERNEL_HEADERS "${NVIDIA_MAINTAIN_KERNEL_HEADERS}"
   validate.boolean DEBIAN_NVIDIA_SKIP_LIVE_VALIDATE "${NVIDIA_SKIP_LIVE_VALIDATE}"
   validate.boolean DEBIAN_NVIDIA_CHECK_UPSTREAM "${NVIDIA_CHECK_UPSTREAM}"
   validate.boolean DEBIAN_NVIDIA_LATEST_IN_BRANCH "${NVIDIA_LATEST_IN_BRANCH}"
 
   if [[ "${FEATURE_MODE}" == validate ]] && is.true "${NVIDIA_SKIP_LIVE_VALIDATE}"; then
     invalid "--skip-live-validate cannot be combined with validate mode."
+  fi
+  if is.true "${NVIDIA_MAINTAIN_KERNEL_HEADERS}" && [[ "${FEATURE_MODE}" != apply && "${FEATURE_MODE}" != upgrade ]]; then
+    invalid "--maintain-kernel-headers can be used only with apply or upgrade."
   fi
 
   if [[ -n "${NVIDIA_DRIVER_BRANCH}" && ! "${NVIDIA_DRIVER_BRANCH}" =~ ^[0-9]+$ ]]; then
@@ -477,6 +484,7 @@ nvidia_allow_no_gpu: $(bool.yaml "${NVIDIA_ALLOW_NO_GPU}")
 nvidia_allow_source_migration: $(bool.yaml "${NVIDIA_ALLOW_SOURCE_MIGRATION}")
 nvidia_allow_cuda_minor_compat: $(bool.yaml "${NVIDIA_ALLOW_CUDA_MINOR_COMPAT}")
 nvidia_allow_custom_repo: $(bool.yaml "${NVIDIA_ALLOW_CUSTOM_REPO}")
+nvidia_maintain_kernel_headers: $(bool.yaml "${NVIDIA_MAINTAIN_KERNEL_HEADERS}")
 nvidia_skip_live_validate: $(bool.yaml "${NVIDIA_SKIP_LIVE_VALIDATE}")
 nvidia_check_upstream: $(bool.yaml "${NVIDIA_CHECK_UPSTREAM}")
 nvidia_latest_in_branch: $(bool.yaml "${NVIDIA_LATEST_IN_BRANCH}")
@@ -566,13 +574,15 @@ run.read.only.preflight() {
   report.command "kernel and architecture" uname -a
   report.command "dpkg architecture" dpkg --print-architecture
   report.command "running-kernel header candidate (${running_headers})" apt-cache policy "${running_headers}"
+  report.command "Debian generic-kernel header meta-package" apt-cache policy linux-headers-amd64
+  report.command "running-kernel header build link" ls -ld "/lib/modules/$(uname -r)" "/lib/modules/$(uname -r)/build"
   report.command "NVIDIA PCI inventory" lspci -Dnnk
   report.command "loaded NVIDIA/nouveau modules" sh -c 'lsmod | grep -E "^(nvidia|nouveau)" || true'
   report.command "installed NVIDIA and CUDA packages" sh -c "dpkg-query -W -f='\${binary:Package} \${Version}\\n' '*nvidia*' '*cuda*' 2>/dev/null || true"
   report.command "held APT packages" sh -c 'apt-mark showhold || true'
   report.command "Secure Boot state" mokutil --sb-state
   report.command "DKMS status" dkms status
-  report.command "NVIDIA module metadata" modinfo nvidia
+  report.command "NVIDIA module metadata for the running kernel" /usr/sbin/modinfo -k "$(uname -r)" nvidia
   report.command "NVIDIA live inventory" nvidia-smi
   report.command "NVIDIA GPU list" nvidia-smi -L
   report.command "NVIDIA GPU query" nvidia-smi --query-gpu=index,name,uuid,pci.bus_id,memory.total,driver_version,compute_cap --format=csv,noheader
@@ -589,6 +599,17 @@ run.read.only.preflight() {
   fi
 }
 
+confirm.kernel.header.maintenance() {
+  if ! is.true "${NVIDIA_MAINTAIN_KERNEL_HEADERS}"; then
+    return 0
+  fi
+
+  runner.confirm.exact \
+    "Kernel-header maintenance will install Debian's linux-headers-amd64 meta-package. It does not install a new kernel image, select a boot target, or reboot this host. It does make future Debian kernel updates install matching headers and trigger NVIDIA DKMS rebuilds; a failed kernel/DKMS update can affect future driver availability." \
+    "ACCEPET THE KERNEL HEADER CHANGES?" || exit "${EXIT_OPERATOR_ACTION}"
+  log "Kernel-header maintenance was explicitly confirmed."
+}
+
 require.supported.platform() {
   local architecture=""
   architecture="$(dpkg --print-architecture)"
@@ -599,6 +620,7 @@ require.supported.platform() {
 }
 
 run.managed.mode() {
+  confirm.kernel.header.maintenance
   runner.ensure.privileged.session || exit "${EXIT_BLOCKED}"
   source.release.common
   require.apt

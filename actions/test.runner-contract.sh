@@ -16,6 +16,7 @@ require_shell_syntax "${runner_helper}"
 for marker in \
   'runner.euid' \
   'runner.have.controlling.tty' \
+  'runner.confirm.exact' \
   'runner.authenticate.sudo' \
   'runner.ensure.privileged.session' \
   'runner.run.as.root' \

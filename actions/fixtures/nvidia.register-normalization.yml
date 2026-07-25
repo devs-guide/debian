@@ -27,6 +27,15 @@
       package_name: cuda-toolkit-13-1
     nvidia_cuda_package_resolved: ""
     nvidia_cuda_runtime_header_ready: false
+    nvidia_running_kernel: 6.12.96+deb13-amd64
+    nvidia_running_kernel_build:
+      stat:
+        exists: true
+    nvidia_kernel_module_metadata:
+      rc: 0
+    nvidia_dkms_status:
+      rc: 0
+      stdout: "nvidia/595.71.05, 6.12.96+deb13-amd64, x86_64: installed"
 
   tasks:
     - name: Normalize a skipped candidate with a persisted fallback
@@ -42,6 +51,9 @@
         nvidia_regression_smi_rc: "{{ nvidia_fact_smi_rc }}"
         nvidia_regression_nvcc_rc: "{{ nvidia_fact_nvcc_rc }}"
         nvidia_regression_runtime_header_ready: "{{ nvidia_fact_runtime_header_ready }}"
+        nvidia_regression_kernel_headers_ready: "{{ nvidia_fact_kernel_headers_ready }}"
+        nvidia_regression_kernel_module_ready: "{{ nvidia_fact_kernel_module_ready }}"
+        nvidia_regression_kernel_module_rc: "{{ nvidia_fact_kernel_module_rc }}"
 
     - name: Verify skipped results preserve prior values and integer fallbacks
       ansible.builtin.assert:
@@ -53,6 +65,12 @@
           - nvidia_regression_nvcc_rc | type_debug == 'int'
           - nvidia_regression_nvcc_rc == 1
           - not (nvidia_regression_runtime_header_ready | bool)
+          - nvidia_regression_kernel_headers_ready | type_debug == 'bool'
+          - nvidia_regression_kernel_headers_ready | bool
+          - nvidia_regression_kernel_module_ready | type_debug == 'bool'
+          - nvidia_regression_kernel_module_ready | bool
+          - nvidia_regression_kernel_module_rc | type_debug == 'int'
+          - nvidia_regression_kernel_module_rc == 0
 
     - name: Build a schema-version-1 NVIDIA fact document
       ansible.builtin.set_fact:
@@ -62,11 +80,16 @@
             generated_at: "1970-01-01T00:00:00Z"
             mode: validate
             profile: llm
+            platform:
+              kernel: 6.12.96+deb13-amd64
+              kernel_headers_ready: "{{ nvidia_regression_kernel_headers_ready | bool }}"
             driver:
               candidate_package_version: "{{ nvidia_regression_candidate_version }}"
               candidate_package_version_origin: "{{ nvidia_regression_candidate_origin }}"
               nvidia_smi_ready: false
               nvidia_smi_rc: "{{ nvidia_regression_smi_rc | int }}"
+              kernel_module_ready: "{{ nvidia_regression_kernel_module_ready | bool }}"
+              kernel_module_rc: "{{ nvidia_regression_kernel_module_rc | int }}"
             cuda:
               package_name: cuda-toolkit-13-1
               nvcc_ready: false
@@ -108,8 +131,11 @@
               - nvidia_regression_rendered.nvidia.schema_version == 1
               - nvidia_regression_rendered.nvidia.driver.candidate_package_version == '595.71.05-1'
               - nvidia_regression_rendered.nvidia.driver.nvidia_smi_rc | type_debug == 'int'
+              - nvidia_regression_rendered.nvidia.driver.kernel_module_ready | type_debug == 'bool'
+              - nvidia_regression_rendered.nvidia.driver.kernel_module_rc | type_debug == 'int'
               - nvidia_regression_rendered.nvidia.cuda.nvcc_rc | type_debug == 'int'
               - nvidia_regression_rendered.nvidia.cuda.runtime_header_ready | type_debug == 'bool'
+              - nvidia_regression_rendered.nvidia.platform.kernel_headers_ready | type_debug == 'bool'
       always:
         - name: Remove the isolated rendered-fact fixture
           ansible.builtin.file:

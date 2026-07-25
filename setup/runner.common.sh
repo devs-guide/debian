@@ -32,6 +32,29 @@ runner.have.controlling.tty() {
   [[ -r "${RUNNER_TTY_PATH}" && -w "${RUNNER_TTY_PATH}" ]]
 }
 
+runner.confirm.exact() {
+  local summary="$1"
+  local confirmation="$2"
+  local response=""
+
+  if ! runner.have.controlling.tty; then
+    log.error "Explicit operator confirmation requires a usable /dev/tty."
+    log.error "Run from an interactive terminal or allocate one with ssh -t."
+    return 1
+  fi
+
+  printf '\n%s\n' "${summary}" >"${RUNNER_TTY_PATH}"
+  printf 'Type exactly: %s\n> ' "${confirmation}" >"${RUNNER_TTY_PATH}"
+  if ! IFS= read -r response <"${RUNNER_TTY_PATH}"; then
+    log.error "Operator confirmation was not received."
+    return 1
+  fi
+  if [[ "${response}" != "${confirmation}" ]]; then
+    log.error "Operator confirmation did not match; no changes were made."
+    return 1
+  fi
+}
+
 runner.runtime.path.is.safe() {
   local feature="$1"
   local path="$2"

@@ -116,6 +116,7 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | \
 | `--allow-source-migration` | Explicitly permits replacement of an existing Debian/NVIDIA package-source policy. |
 | `--allow-no-gpu` | Records a no-GPU policy input; it does not make CUDA/LLM live validation pass without required hardware. |
 | `--allow-cuda-minor-compat` | Records minor-compatibility policy while retaining the repository’s tested matrix and driver-floor gates. |
+| `--maintain-kernel-headers` | Opts into Debian generic-kernel header maintenance. In `apply` or `upgrade` only, it installs `linux-headers-amd64` in addition to the exact running-kernel headers and requires an exact interactive confirmation. It does not install a kernel image or reboot the host. |
 | `--skip-live-validate` | Apply/upgrade-only escape hatch. It cannot be used with `validate` and cannot produce a fresh live-ready validation result. |
 | `--check-upstream` | Parsed as a reserved upstream-check policy input. The current playbook still resolves only configured APT metadata and does not authorize an unpinned transaction. |
 | `--latest-in-branch` | Selects the highest APT candidate inside the resolved pinned branch; it cannot be combined with an exact driver version. |
@@ -170,6 +171,97 @@ nvcc --version
 The managed environment fragment exports `CUDA_HOME=/usr/local/cuda` and adds
 `${CUDA_HOME}/bin` to `PATH` only when both the driver and package-managed
 compiler validate. It intentionally does not add a global `LD_LIBRARY_PATH`.
+
+## Edge case: a kernel update leaves NVIDIA DKMS without matching headers
+
+The NVIDIA kernel-module packages use DKMS. A running-kernel update without
+its matching `linux-headers` package leaves no `nvidia` module in that
+kernel's module tree. CUDA's compiler and headers can still work, but
+`nvidia-smi` cannot communicate with a driver and every NVIDIA or NVLink live
+validation correctly fails closed.
+
+The NVIDIA runner always installs headers matching the kernel that is running
+at `apply` or `upgrade` time. To also follow subsequent Debian generic-kernel
+updates, explicitly add `--maintain-kernel-headers` to that command. Before
+any package action, the runner opens `/dev/tty`, explains the future DKMS
+effect, and requires this exact response:
+
+```text
+I UNDERSTAND KERNEL HEADER CHANGES
+```
+
+This opt-in installs `linux-headers-amd64`; it does **not** install a new
+kernel image, select a boot target, or reboot the machine. A noninteractive
+caller cannot bypass the confirmation and fails before privilege escalation or
+package activity.
+
+Typical evidence is:
+
+```text
+nvidia-smi: couldn't communicate with the NVIDIA driver
+modprobe: FATAL: Module nvidia not found in directory /lib/modules/<running-kernel>
+dkms status: nvidia/<version> built only for an older kernel
+ls: /lib/modules/<running-kernel>/build: No such file or directory
+```
+
+First identify the exact running-kernel/header/DKMS relationship. These
+commands are read-only:
+
+```bash
+kernel="$(uname -r)"
+
+uname -r
+apt-cache policy "linux-headers-${kernel}" linux-headers-amd64 linux-image-amd64
+sudo dkms status
+ls -ld "/lib/modules/${kernel}" "/lib/modules/${kernel}/build"
+nvidia-smi
+```
+
+If APT offers `linux-headers-${kernel}`, install the exact headers and the
+Debian AMD64 headers meta-package. The meta-package follows future kernel
+image updates and prevents the same header gap from recurring.
+
+```bash
+kernel="$(uname -r)"
+
+sudo apt install \
+  "linux-headers-${kernel}" \
+  linux-headers-amd64
+
+# Header installation normally triggers this automatically; these commands
+# are safe, idempotent confirmation for the running kernel.
+sudo dkms autoinstall -k "${kernel}"
+sudo depmod -a "${kernel}"
+sudo modprobe nvidia
+
+sudo dkms status
+lsmod | grep '^nvidia'
+nvidia-smi
+```
+
+Do not reinstall CUDA or change the selected driver policy merely because
+`nvcc --version` succeeds: those are userspace toolkit checks and do not prove
+that a matching kernel module exists. Similarly, a routine `apt full-upgrade`
+does not repair the gap when `linux-headers-amd64` is absent; it must actually
+select the matching headers.
+
+If `linux-headers-${kernel}` has no APT candidate, do not copy modules between
+kernels or force-load a module. Boot a locally installed kernel that has its
+matching headers, or first make a reviewed repository policy provide a
+matching kernel image and headers. If modules exist but cannot load, inspect
+the current boot's kernel log for Secure Boot, lockdown, Nouveau, or module
+verification messages before changing NVIDIA packages:
+
+```bash
+sudo journalctl -k -b --no-pager | \
+  grep -Ei 'nvidia|nouveau|secure boot|lockdown|module verification' || true
+sudo /usr/sbin/modinfo -k "$(uname -r)" nvidia
+```
+
+After `nvidia-smi` succeeds, rerun the complete `nvidia.sh validate` command
+from the previous section to refresh NVIDIA-owned facts, then continue to
+[NVLink validation](/debian/cli/nvlink/). Do not edit
+`/etc/ansible/debian/facts/nvidia.yml` manually.
 
 ## Fact ownership and migration
 

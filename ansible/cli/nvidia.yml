@@ -27,6 +27,7 @@
     nvidia_allow_source_migration: false
     nvidia_allow_cuda_minor_compat: false
     nvidia_allow_custom_repo: false
+    nvidia_maintain_kernel_headers: false
     nvidia_skip_live_validate: false
     nvidia_validate_from_facts: false
     nvidia_check_upstream: false
@@ -194,6 +195,8 @@
             {{ nvidia_refresh_persisted_policy.allow_source_migration | default(nvidia_refresh_source_policy.source_migration_allowed | default(nvidia_allow_source_migration)) }}
           allow_cuda_minor_compat: >-
             {{ nvidia_refresh_persisted_policy.allow_cuda_minor_compat | default(nvidia_allow_cuda_minor_compat) }}
+          maintain_kernel_headers: >-
+            {{ nvidia_refresh_persisted_policy.maintain_kernel_headers | default(nvidia_maintain_kernel_headers) }}
           allow_no_gpu: >-
             {{ nvidia_refresh_persisted_policy.allow_no_gpu | default(nvidia_allow_no_gpu) }}
         nvidia_validation_policy_origin: >-
@@ -245,6 +248,8 @@
           {{ nvidia_validation_policy.allow_source_migration if nvidia_validate_from_facts | bool else nvidia_allow_source_migration }}
         nvidia_allow_cuda_minor_compat_effective: >-
           {{ nvidia_validation_policy.allow_cuda_minor_compat if nvidia_validate_from_facts | bool else nvidia_allow_cuda_minor_compat }}
+        nvidia_maintain_kernel_headers_effective: >-
+          {{ nvidia_validation_policy.maintain_kernel_headers if nvidia_validate_from_facts | bool else nvidia_maintain_kernel_headers }}
         nvidia_allow_no_gpu_effective: >-
           {{ nvidia_validation_policy.allow_no_gpu if nvidia_validate_from_facts | bool else nvidia_allow_no_gpu }}
         nvidia_validation_policy_origin_effective: >-
@@ -259,12 +264,17 @@
               | selectattr('cuda_minor', 'equalto', nvidia_cuda_version_effective)
               | list | first | default({}))
           }}
-        nvidia_running_kernel_headers_package: >-
-          linux-headers-{{
-            (nvidia_platform.stdout_lines
-              | select('match', '^kernel=') | list | first
-              | regex_replace('^kernel=', ''))
+        nvidia_running_kernel: >-
+          {{
+            nvidia_platform.stdout_lines
+            | select('match', '^kernel=') | list | first
+            | regex_replace('^kernel=', '')
           }}
+
+    - name: Resolve running-kernel header package policy
+      ansible.builtin.set_fact:
+        nvidia_running_kernel_headers_package: "linux-headers-{{ nvidia_running_kernel }}"
+        nvidia_kernel_headers_meta_package: linux-headers-amd64
 
     - name: Validate supported platform and mode
       ansible.builtin.assert:
@@ -337,6 +347,14 @@
         argv: [apt-cache, show, "{{ nvidia_running_kernel_headers_package }}"]
       changed_when: false
       when: nvidia_mode_effective in ['apply', 'upgrade']
+
+    - name: Verify generic-kernel header maintenance package is available before mutation
+      ansible.builtin.command:
+        argv: [apt-cache, show, "{{ nvidia_kernel_headers_meta_package }}"]
+      changed_when: false
+      when:
+        - nvidia_mode_effective in ['apply', 'upgrade']
+        - nvidia_maintain_kernel_headers_effective | bool
 
     - name: Collect NVIDIA PCI inventory before package changes
       ansible.builtin.command:
@@ -450,6 +468,8 @@
         fi
         packages=(
           '{{ nvidia_running_kernel_headers_package }}'
+          {% if nvidia_maintain_kernel_headers_effective | bool %}'{{ nvidia_kernel_headers_meta_package }}'
+          {% endif %}
           {% for package in nvidia_package_catalog.groups.nvidia_runtime_support.packages %}'{{ package }}'
           {% endfor %}
           '{{ nvidia_driver_pin_name }}'
@@ -467,7 +487,16 @@
 
     - name: Install source-neutral NVIDIA support packages and exact headers
       ansible.builtin.apt:
-        name: "{{ nvidia_package_catalog.groups.nvidia_runtime_support.packages + [nvidia_running_kernel_headers_package] }}"
+        name: >-
+          {{
+            nvidia_package_catalog.groups.nvidia_runtime_support.packages
+            + [nvidia_running_kernel_headers_package]
+            + (
+              [nvidia_kernel_headers_meta_package]
+              if nvidia_maintain_kernel_headers_effective | bool
+              else []
+            )
+          }}
         state: present
         install_recommends: false
       when: nvidia_mode_effective in ['apply', 'upgrade']
@@ -489,6 +518,26 @@
         - nvidia_cuda_package_resolved | length > 0
 
   post_tasks:
+    - name: Check running-kernel header linkage
+      ansible.builtin.stat:
+        path: "/lib/modules/{{ nvidia_running_kernel }}/build"
+      register: nvidia_running_kernel_build
+      changed_when: false
+
+    - name: Inspect NVIDIA module metadata for the running kernel
+      ansible.builtin.command:
+        argv: [modinfo, -k, "{{ nvidia_running_kernel }}", nvidia]
+      register: nvidia_kernel_module_metadata
+      changed_when: false
+      failed_when: false
+
+    - name: Inspect NVIDIA DKMS status without rebuilding modules
+      ansible.builtin.command:
+        argv: [dkms, status]
+      register: nvidia_dkms_status
+      changed_when: false
+      failed_when: false
+
     - name: Collect loaded driver inventory without forcing module changes
       ansible.builtin.command:
         argv:
@@ -537,6 +586,57 @@
       ansible.builtin.include_tasks: ../tasks/nvidia.normalize-observations.yml
       when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
 
+    - name: Construct NVIDIA live readiness reasons
+      ansible.builtin.set_fact:
+        nvidia_readiness_reasons: >-
+          {{
+            (
+              [
+                'Running-kernel headers are unavailable at /lib/modules/'
+                ~ nvidia_fact_running_kernel
+                ~ '/build; install '
+                ~ nvidia_running_kernel_headers_package
+                ~ ' before rebuilding NVIDIA DKMS modules.'
+              ]
+              if not (nvidia_fact_kernel_headers_ready | bool)
+              else []
+            )
+            + (
+              [
+                'NVIDIA module metadata is unavailable for running kernel '
+                ~ nvidia_fact_running_kernel
+                ~ ' (modinfo rc='
+                ~ (nvidia_fact_kernel_module_rc | string)
+                ~ '); inspect DKMS status before changing the driver policy.'
+              ]
+              if not (nvidia_fact_kernel_module_ready | bool)
+              else []
+            )
+            + (
+              [
+                'nvidia-smi returned rc='
+                ~ (nvidia_fact_smi_rc | string)
+                ~ '; reboot or module activation may be required.'
+              ]
+              if nvidia_fact_smi_rc != 0
+              else []
+            )
+            + (
+              [nvidia_cuda_home ~ '/bin/nvcc returned rc=' ~ (nvidia_fact_nvcc_rc | string) ~ '.']
+              if nvidia_profile_effective in ['cuda', 'llm']
+              and nvidia_fact_nvcc_rc != 0
+              else []
+            )
+            + (
+              ['CUDA runtime header is unavailable at ' ~ nvidia_cuda_home ~ '/include/cuda_runtime.h.']
+              if nvidia_profile_effective in ['cuda', 'llm']
+              and not (nvidia_fact_runtime_header_ready | bool)
+              else []
+            )
+            + ['CUDA compile-and-run smoke validation is not implemented in this initial playbook phase.']
+          }}
+      when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
+
     - name: Create managed NVIDIA fact and transaction directories
       ansible.builtin.file:
         path: "{{ item }}"
@@ -566,7 +666,10 @@
               distribution: Debian
               release: "13"
               architecture: amd64
-              kernel_headers_ready: true
+              kernel: {{ nvidia_fact_running_kernel | to_json }}
+              kernel_headers_package: {{ nvidia_running_kernel_headers_package | to_json }}
+              kernel_headers_ready: {{ nvidia_fact_kernel_headers_ready | to_json }}
+              kernel_headers_meta_managed: {{ nvidia_maintain_kernel_headers_effective | bool | to_json }}
             source_policy:
               driver_source: {{ nvidia_driver_source_effective | to_json }}
               cuda_source: {{ nvidia_cuda_source_effective | to_json }}
@@ -591,6 +694,7 @@
               nccl: {{ nvidia_nccl_effective | to_json }}
               allow_source_migration: {{ nvidia_allow_source_migration_effective | bool | to_json }}
               allow_cuda_minor_compat: {{ nvidia_allow_cuda_minor_compat_effective | bool | to_json }}
+              maintain_kernel_headers: {{ nvidia_maintain_kernel_headers_effective | bool | to_json }}
               allow_no_gpu: {{ nvidia_allow_no_gpu_effective | bool | to_json }}
             driver:
               requested_version: {{ nvidia_driver_version_effective | to_json }}
@@ -598,6 +702,9 @@
               candidate_package_version_origin: {{ nvidia_fact_driver_candidate_package_version_origin | to_json }}
               installed_driver_version: {{ nvidia_fact_installed_driver_version | to_json }}
               kernel_module_flavor: {{ nvidia_module_flavor_resolved | to_json }}
+              kernel_module_ready: {{ nvidia_fact_kernel_module_ready | to_json }}
+              kernel_module_rc: {{ nvidia_fact_kernel_module_rc | to_json }}
+              dkms_status: {{ nvidia_fact_dkms_status | to_json }}
               nvidia_smi_ready: {{ (nvidia_fact_smi_rc == 0) | to_json }}
               nvidia_smi_rc: {{ nvidia_fact_smi_rc | to_json }}
             cuda:
@@ -619,17 +726,7 @@
               cuda_build_ready: false
               llm_prerequisite_ready: false
               llm_runtime_validated: false
-              reasons:
-                {% if nvidia_fact_smi_rc != 0 %}
-                - "nvidia-smi returned rc={{ nvidia_fact_smi_rc }}; reboot or module activation may be required."
-                {% endif %}
-                {% if nvidia_profile_effective in ['cuda', 'llm'] and nvidia_fact_nvcc_rc != 0 %}
-                - "{{ nvidia_cuda_home }}/bin/nvcc returned rc={{ nvidia_fact_nvcc_rc }}."
-                {% endif %}
-                {% if nvidia_profile_effective in ['cuda', 'llm'] and not (nvidia_fact_runtime_header_ready | bool) %}
-                - "CUDA runtime header is unavailable at {{ nvidia_cuda_home }}/include/cuda_runtime.h."
-                {% endif %}
-                - "CUDA compile-and-run smoke validation is not implemented in this initial playbook phase."
+              reasons: {{ nvidia_readiness_reasons | to_json }}
       when: nvidia_mode_effective in ['apply', 'validate', 'upgrade']
 
     - name: Reject skipped live validation in validate mode
@@ -640,6 +737,21 @@
           NVIDIA validate mode cannot skip live prerequisite checks. Remove
           --skip-live-validate and rerun validation so NVIDIA facts reflect the
           current driver and CUDA state.
+      when: nvidia_mode_effective == 'validate'
+
+    - name: Fail NVIDIA validation when running-kernel support is unavailable
+      ansible.builtin.assert:
+        that:
+          - nvidia_fact_kernel_headers_ready | bool
+          - nvidia_fact_kernel_module_ready | bool
+        fail_msg: >-
+          NVIDIA kernel support is unavailable for running kernel
+          {{ nvidia_fact_running_kernel }}. headers_ready={{
+          nvidia_fact_kernel_headers_ready }}, module_ready={{
+          nvidia_fact_kernel_module_ready }}, module_rc={{
+          nvidia_fact_kernel_module_rc }}. Install the exact matching headers,
+          rebuild DKMS, and load the module before rerunning validation. See
+          /etc/ansible/debian/facts/nvidia.yml for the observed DKMS status.
       when: nvidia_mode_effective == 'validate'
 
     - name: Fail NVIDIA validation when requested live prerequisites are unavailable

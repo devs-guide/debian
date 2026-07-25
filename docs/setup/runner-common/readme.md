@@ -14,6 +14,8 @@ into a shell.
 The helper provides:
 
 - one-time sudo authentication through `/dev/tty`;
+- exact operator confirmations through `/dev/tty` for an explicitly selected,
+  high-impact feature action;
 - noninteractive delegated-root commands using `sudo -n`;
 - unique per-invocation runtime directories;
 - path-constrained cleanup;
@@ -31,6 +33,9 @@ For migrated runners, `wget | bash` is the primary streamed form:
 2. Read-only preflight continues without sudo.
 3. A managed mode accepts an existing root, cached, or passwordless session.
    Otherwise it runs `sudo -v` exactly once with input from `/dev/tty`.
+   A feature can also require an exact typed acknowledgement through that same
+   TTY before it permits an explicitly requested high-impact action; there is
+   no environment-variable or noninteractive bypass.
 4. The original process stages and verifies release helpers, Ansible files,
    and support files.
 5. Privileged package and Ansible commands run through noninteractive

@@ -59,6 +59,10 @@ for marker in \
   'Reject skipped live validation in validate mode' \
   'Restrict persisted-policy refresh to NVIDIA validate mode' \
   'Check the package-managed CUDA runtime header' \
+  'Check running-kernel header linkage' \
+  'Inspect NVIDIA module metadata for the running kernel' \
+  'Inspect NVIDIA DKMS status without rebuilding modules' \
+  'Construct NVIDIA live readiness reasons' \
   'Determine CUDA runtime header readiness' \
   'Normalize NVIDIA observations before fact persistence' \
   'Persist NVIDIA readiness facts' \
@@ -67,7 +71,11 @@ for marker in \
   'nvidia_smi_rc:' \
   'nvcc_rc:' \
   'runtime_header_ready:' \
+  'kernel_headers_ready:' \
+  'kernel_module_ready:' \
+  'dkms_status:' \
   'validation_policy:' \
+  'maintain_kernel_headers:' \
   'nvidia_validate_from_facts:'; do
   require_contains "ansible/cli/nvidia.yml" "${marker}"
 done
@@ -81,11 +89,20 @@ if [[ "${skip_validate_status}" -ne 64 ]]; then
   contract.error "NVIDIA validate must reject --skip-live-validate before staging or host mutation"
 fi
 
+set +e
+bash "${ROOT}/setup/cli/nvidia.sh" validate --maintain-kernel-headers >/dev/null 2>&1
+header_maintenance_validate_status=$?
+set -e
+if [[ "${header_maintenance_validate_status}" -ne 64 ]]; then
+  contract.error "NVIDIA validate must reject --maintain-kernel-headers before staging or host mutation"
+fi
+
 if ! awk '
+  /name: Check running-kernel header linkage/ { kernel = NR }
   /name: Check the package-managed CUDA runtime header/ { header = NR }
   /name: Normalize NVIDIA observations before fact persistence/ { normalize = NR }
   /name: Persist NVIDIA readiness facts/ { facts = NR }
-  END { exit !(header > 0 && normalize > header && facts > normalize) }
+  END { exit !(kernel > 0 && header > kernel && normalize > header && facts > normalize) }
 ' "${ROOT}/ansible/cli/nvidia.yml"; then
   contract.error "NVIDIA runtime-header, normalization, and fact-persistence tasks are out of order"
 fi

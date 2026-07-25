@@ -76,3 +76,24 @@
       }}
     nvidia_fact_runtime_header_ready: >-
       {{ nvidia_cuda_runtime_header_ready | default(false) | bool }}
+    nvidia_fact_running_kernel: >-
+      {{ nvidia_running_kernel | default('') | string }}
+    nvidia_fact_kernel_headers_ready: >-
+      {{
+        (nvidia_running_kernel_build | default({})).get('stat', {}).get(
+          'exists',
+          false
+        ) | bool
+      }}
+    nvidia_fact_kernel_module_ready: >-
+      {{
+        (nvidia_kernel_module_metadata | default({})).get('rc', 1) | int == 0
+      }}
+    nvidia_fact_kernel_module_rc: >-
+      {{ (nvidia_kernel_module_metadata | default({})).get('rc', 1) | int }}
+    nvidia_fact_dkms_status: >-
+      {{
+        (nvidia_dkms_status | default({})).get('stdout', '')
+        | string
+        | trim
+      }}

@@ -96,6 +96,34 @@ run_case() {
 }
 
 # Shared helper: root is a no-sudo path.
+run_case "shared helper: exact operator confirmation" "" '
+    RUNNER_TTY_PATH="${TEST_TTY}"
+    source "${TEST_HELPER}"
+    read() { response="I UNDERSTAND KERNEL HEADER CHANGES"; }
+    runner.confirm.exact "Kernel-header maintenance changes future DKMS behavior." "I UNDERSTAND KERNEL HEADER CHANGES"
+    printf "CONFIRMATION_OK\\n"
+'
+expect_status 0 "${CASE_STATUS}" "exact operator confirmation"
+expect_contains 'CONFIRMATION_OK' "${CASE_OUTPUT}" "exact operator confirmation"
+
+run_case "shared helper: rejected operator confirmation" "" '
+    RUNNER_TTY_PATH="${TEST_TTY}"
+    source "${TEST_HELPER}"
+    read() { response=no; }
+    runner.confirm.exact "Kernel-header maintenance changes future DKMS behavior." "I UNDERSTAND KERNEL HEADER CHANGES"
+'
+expect_status 1 "${CASE_STATUS}" "rejected operator confirmation"
+expect_contains 'Operator confirmation did not match' "${CASE_OUTPUT}" "rejected operator confirmation diagnostic"
+
+run_case "shared helper: no TTY for operator confirmation" "" '
+    RUNNER_TTY_PATH="${TEST_TTY}.missing"
+    source "${TEST_HELPER}"
+    runner.confirm.exact "Kernel-header maintenance changes future DKMS behavior." "I UNDERSTAND KERNEL HEADER CHANGES"
+'
+expect_status 1 "${CASE_STATUS}" "no-TTY operator confirmation"
+expect_contains 'Explicit operator confirmation requires a usable /dev/tty' "${CASE_OUTPUT}" "no-TTY operator confirmation diagnostic"
+
+# Shared helper: root is a no-sudo path.
 run_case "shared helper: already root" "" '
     source "${TEST_HELPER}"
     runner.euid() { printf 0; }
