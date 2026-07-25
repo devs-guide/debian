@@ -9,6 +9,8 @@ set -euo pipefail
 : "${RUNNER_RUNTIME_ACTIVE:=0}"
 : "${RUNNER_SUDO_AUTHENTICATED:=0}"
 : "${RUNNER_TTY_PATH:=/dev/tty}"
+: "${RUNNER_LOCAL_REPO_ROOT:=}"
+: "${RUNNER_STAGE_SOURCE:=}"
 
 if ! declare -F log >/dev/null 2>&1; then
   log() { printf '[setup.runner] %s\n' "$*" >&2; }
@@ -94,6 +96,303 @@ runner.create.runtime() {
   resolved_parent="$(cd "${parent}" && pwd -P)"
   runtime="$(mktemp -d "${resolved_parent%/}/devs-guide-${feature}.XXXXXX")"
   runner.adopt.runtime "${feature}" "${runtime}"
+}
+
+runner.relative.path.is.safe() {
+  local path="${1:-}"
+  local segment=""
+  local -a segments=()
+
+  [[ -n "${path}" && "${path}" != /* && "${path}" != */ && "${path}" != *'//'*
+    && "${path}" != *$'\n'* && "${path}" != *$'\r'* ]] || return 1
+
+  IFS='/' read -r -a segments <<< "${path}"
+  ((${#segments[@]} > 0)) || return 1
+  for segment in "${segments[@]}"; do
+    [[ "${segment}" =~ ^[A-Za-z0-9][A-Za-z0-9._+@-]*$ ]] || return 1
+    [[ "${segment}" != . && "${segment}" != .. ]] || return 1
+  done
+}
+
+runner.prepare.stage.root() {
+  local requested="${1:-}"
+  local runtime=""
+  local resolved=""
+
+  [[ -n "${RUNNER_RUNTIME_DIR:-}" && -d "${RUNNER_RUNTIME_DIR}" ]] || {
+    log.error "Runner runtime must be initialized before staging files."
+    return 1
+  }
+  runtime="$(cd "${RUNNER_RUNTIME_DIR}" && pwd -P)"
+  [[ -n "${requested}" && "${requested}" == /* ]] || {
+    log.error "Runner stage root must be an absolute path: ${requested:-unset}"
+    return 1
+  }
+  case "${requested}" in
+    "${runtime}"|"${runtime}/"*) ;;
+    *)
+      log.error "Runner stage root must remain inside ${runtime}: ${requested}"
+      return 1
+      ;;
+  esac
+  [[ "/${requested#/}/" != *"/../"* && "/${requested#/}/" != *"/./"* ]] || {
+    log.error "Runner stage root contains an unsafe path component: ${requested}"
+    return 1
+  }
+
+  mkdir -p "${requested}"
+  resolved="$(cd "${requested}" && pwd -P)"
+  case "${resolved}" in
+    "${runtime}"|"${runtime}/"*) ;;
+    *)
+      log.error "Resolved runner stage root escaped ${runtime}: ${resolved}"
+      return 1
+      ;;
+  esac
+  printf '%s\n' "${resolved}"
+}
+
+runner.destination.path.is.safe() {
+  local destination="${1:-}"
+  local runtime=""
+  local parent=""
+  local resolved_parent=""
+  local basename=""
+
+  [[ -n "${RUNNER_RUNTIME_DIR:-}" && -d "${RUNNER_RUNTIME_DIR}" ]] || return 1
+  [[ -n "${destination}" && "${destination}" == /* ]] || return 1
+  basename="${destination##*/}"
+  [[ -n "${basename}" && "${basename}" != . && "${basename}" != .. ]] || return 1
+  parent="${destination%/*}"
+  [[ -d "${parent}" ]] || return 1
+
+  runtime="$(cd "${RUNNER_RUNTIME_DIR}" && pwd -P)"
+  resolved_parent="$(cd "${parent}" && pwd -P)"
+  case "${resolved_parent}" in
+    "${runtime}"|"${runtime}/"*) ;;
+    *) return 1 ;;
+  esac
+  [[ ! -L "${destination}" ]]
+}
+
+runner.verify.staged.file() {
+  local path="${1:-}"
+  [[ -f "${path}" && -r "${path}" && -s "${path}" && ! -L "${path}" ]]
+}
+
+runner.commit.staged.file() {
+  local temporary="${1:-}"
+  local destination="${2:-}"
+
+  if ! chmod 0600 "${temporary}" || ! mv -f "${temporary}" "${destination}"; then
+    rm -f -- "${temporary}"
+    log.error "Failed to finalize staged runner file: ${destination:-unset}"
+    return 1
+  fi
+  runner.verify.staged.file "${destination}" || {
+    rm -f -- "${destination}"
+    log.error "Finalized runner file failed verification: ${destination}"
+    return 1
+  }
+}
+
+runner.fetch.file() {
+  local url="${1:-}"
+  local destination="${2:-}"
+  local temporary=""
+
+  [[ "${url}" =~ ^https?://[^[:space:]]+$ ]] || {
+    log.error "Runner fetch URL must be an absolute HTTP(S) URL: ${url:-unset}"
+    return 1
+  }
+  runner.destination.path.is.safe "${destination}" || {
+    log.error "Refusing unsafe runner fetch destination: ${destination:-unset}"
+    return 1
+  }
+  command -v wget >/dev/null 2>&1 || {
+    log.error "Cannot fetch runner files because wget is unavailable."
+    return 1
+  }
+
+  temporary="$(mktemp "${destination}.part.XXXXXX")" || {
+    log.error "Unable to allocate a temporary staged file for: ${destination}"
+    return 1
+  }
+  log "Fetching staged file: ${url}"
+  if ! wget -qO "${temporary}" "${url}" || ! runner.verify.staged.file "${temporary}"; then
+    rm -f -- "${temporary}"
+    log.error "Failed to fetch a non-empty staged file: ${url}"
+    return 1
+  fi
+  runner.commit.staged.file "${temporary}" "${destination}"
+}
+
+runner.copy.file() {
+  local source="${1:-}"
+  local destination="${2:-}"
+  local temporary=""
+
+  runner.verify.staged.file "${source}" || {
+    log.error "Local runner dependency is missing, empty, unreadable, or a symlink: ${source:-unset}"
+    return 1
+  }
+  runner.destination.path.is.safe "${destination}" || {
+    log.error "Refusing unsafe local staging destination: ${destination:-unset}"
+    return 1
+  }
+
+  temporary="$(mktemp "${destination}.part.XXXXXX")" || {
+    log.error "Unable to allocate a temporary local staging file for: ${destination}"
+    return 1
+  }
+  if ! cp "${source}" "${temporary}" || ! runner.verify.staged.file "${temporary}"; then
+    rm -f -- "${temporary}"
+    log.error "Failed to stage local runner dependency: ${source}"
+    return 1
+  fi
+  runner.commit.staged.file "${temporary}" "${destination}"
+}
+
+runner.verify.manifest() {
+  local stage_root="${1:-}"
+  local label="${2:-runner}"
+  local reference=""
+  shift 2 || true
+
+  (($# > 0)) || {
+    log.error "${label} manifest is empty."
+    return 1
+  }
+  for reference in "$@"; do
+    runner.relative.path.is.safe "${reference}" || {
+      log.error "${label} manifest contains an unsafe reference: ${reference:-unset}"
+      return 1
+    }
+    runner.verify.staged.file "${stage_root}/${reference}" || {
+      log.error "${label} dependency failed staged verification: ${stage_root}/${reference}"
+      return 1
+    }
+  done
+}
+
+runner.require.indexed.array() {
+  local variable="${1:-}"
+  local declaration=""
+
+  [[ "${variable}" =~ ^[A-Z][A-Z0-9_]*$ ]] || {
+    log.error "Runner manifest array name is invalid: ${variable:-unset}"
+    return 1
+  }
+  declaration="$(declare -p "${variable}" 2>/dev/null)" || {
+    log.error "Required runner manifest array is not declared: ${variable}"
+    return 1
+  }
+  [[ "${declaration}" =~ ^declare\ -[^[:space:]]*a[^[:space:]]*\ ${variable}= ]] || {
+    log.error "Required runner manifest value is not an indexed array: ${variable}"
+    return 1
+  }
+}
+
+runner.stage.manifest() {
+  local local_source_root="${1:-}"
+  local published_base_url="${2:-}"
+  local requested_stage_root="${3:-}"
+  local label="${4:-runner}"
+  local stage_root=""
+  local resolved_local_root=""
+  local reference=""
+  local seen="|"
+  shift 4 || true
+  local -a references=("$@")
+
+  ((${#references[@]} > 0)) || {
+    log.error "${label} manifest is empty."
+    return 1
+  }
+  stage_root="$(runner.prepare.stage.root "${requested_stage_root}")" || return 1
+
+  for reference in "${references[@]}"; do
+    runner.relative.path.is.safe "${reference}" || {
+      log.error "${label} manifest contains an unsafe reference: ${reference:-unset}"
+      return 1
+    }
+    [[ "${seen}" != *"|${reference}|"* ]] || {
+      log.error "${label} manifest contains a duplicate reference: ${reference}"
+      return 1
+    }
+    seen="${seen}${reference}|"
+  done
+
+  if [[ -n "${local_source_root}" ]]; then
+    [[ "${local_source_root}" == /* && -d "${local_source_root}" ]] || {
+      log.error "${label} local source root is unavailable: ${local_source_root}"
+      return 1
+    }
+    resolved_local_root="$(cd "${local_source_root}" && pwd -P)"
+    for reference in "${references[@]}"; do
+      runner.verify.staged.file "${resolved_local_root}/${reference}" || {
+        log.error "${label} local dependency is unavailable: ${resolved_local_root}/${reference}"
+        return 1
+      }
+    done
+    for reference in "${references[@]}"; do
+      mkdir -p "$(dirname "${stage_root}/${reference}")"
+      runner.copy.file "${resolved_local_root}/${reference}" "${stage_root}/${reference}" || return 1
+    done
+    RUNNER_STAGE_SOURCE=local
+  else
+    [[ "${published_base_url}" =~ ^https?://[^[:space:]]+$ ]] || {
+      log.error "${label} published base URL is invalid: ${published_base_url:-unset}"
+      return 1
+    }
+    for reference in "${references[@]}"; do
+      mkdir -p "$(dirname "${stage_root}/${reference}")"
+      runner.fetch.file "${published_base_url%/}/${reference}" "${stage_root}/${reference}" || return 1
+    done
+    RUNNER_STAGE_SOURCE=published
+  fi
+
+  runner.verify.manifest "${stage_root}" "${label}" "${references[@]}" || return 1
+  log "Staged ${label} from ${RUNNER_STAGE_SOURCE} source (${#references[@]} files)."
+}
+
+runner.stage.ansible.feature() {
+  local local_ansible_root="${1:-}"
+  local published_ansible_base="${2:-}"
+  local stage_root="${3:-}"
+  local manifest_array=""
+  local reference=""
+  local -a manifest=()
+
+  for manifest_array in \
+    GROUP_VARS_FILES \
+    FEATURE_PLAYBOOKS \
+    RUNTIME_SUPPORT_REFS \
+    FEATURE_TEMPLATE_REFS; do
+    runner.require.indexed.array "${manifest_array}" || return 1
+  done
+
+  for reference in "${GROUP_VARS_FILES[@]}"; do
+    manifest+=("group_vars/${reference}")
+  done
+  for reference in "${FEATURE_PLAYBOOKS[@]}"; do
+    manifest+=("${reference}")
+  done
+  for reference in "${RUNTIME_SUPPORT_REFS[@]}"; do
+    manifest+=("${reference}")
+  done
+  if ((${#FEATURE_TEMPLATE_REFS[@]} > 0)); then
+    for reference in "${FEATURE_TEMPLATE_REFS[@]}"; do
+      manifest+=("${reference}")
+    done
+  fi
+
+  runner.stage.manifest \
+    "${local_ansible_root}" \
+    "${published_ansible_base}" \
+    "${stage_root}" \
+    "Ansible feature" \
+    "${manifest[@]}"
 }
 
 runner.authenticate.sudo() {

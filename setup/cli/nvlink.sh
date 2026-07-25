@@ -37,10 +37,9 @@ LOCAL_RUNNER_HELPER="../runner.common.sh"
 RUNNER_HELPER_NAME="runner.common.sh"
 RUNNER_HELPER_URL="${PAGES_BASE_URL}/setup/${RUNNER_HELPER_NAME}"
 RUNNER_HELPER_PATH=""
-LOCAL_COMMON_HELPER="../release.common.sh"
 COMMON_HELPER_NAME="release.common.sh"
-COMMON_HELPER_URL="${PAGES_BASE_URL}/setup/${COMMON_HELPER_NAME}"
 COMMON_HELPER_PATH=""
+RUNNER_LOCAL_REPO_ROOT=""
 REFRESH="${REFRESH:-0}"
 
 GROUP_VARS_FILES=("all.yml" "debian.yml")
@@ -52,6 +51,7 @@ RUNTIME_SUPPORT_REFS=(
   "files/nvlink/nvidia-p2p-verify.cu"
   "files/nvlink/nvidia-topology-parser.py"
 )
+FEATURE_TEMPLATE_REFS=()
 
 FEATURE_MODE="${DEBIAN_NVLINK_MODE:-preflight}"
 NVLINK_GPU_SELECT="${DEBIAN_NVLINK_GPU_SELECT:-all}"
@@ -258,6 +258,7 @@ source.runner.common() {
   local script_dir=""
   local local_helper=""
   local bootstrap_dir=""
+  local repo_root=""
 
   case "${source_path}" in
     ""|-|/dev/fd/*|/proc/self/fd/*) ;;
@@ -265,6 +266,8 @@ source.runner.common() {
       script_dir="$(cd "$(dirname "${source_path}")" && pwd)"
       local_helper="${script_dir}/${LOCAL_RUNNER_HELPER}"
       if [[ -r "${local_helper}" ]]; then
+        repo_root="$(cd "${script_dir}/../.." && pwd -P)"
+        RUNNER_LOCAL_REPO_ROOT="${repo_root}"
         RUNNER_HELPER_PATH="$(cd "$(dirname "${local_helper}")" && pwd)/$(basename "${local_helper}")"
         # shellcheck source=setup/runner.common.sh
         source "${RUNNER_HELPER_PATH}"
@@ -307,47 +310,53 @@ source.runner.common() {
 }
 
 source.release.common() {
-  local script_dir="" source_path="${BASH_SOURCE[0]:-}"
-  case "${source_path}" in ''|-|/dev/fd/*|/proc/self/fd/*) ;; *)
-    script_dir="$(cd "$(dirname "${source_path}")" && pwd)"
-    if [[ -r "${script_dir}/${LOCAL_COMMON_HELPER}" ]]; then
-      COMMON_HELPER_PATH="$(cd "$(dirname "${script_dir}/${LOCAL_COMMON_HELPER}")" && pwd)/$(basename "${LOCAL_COMMON_HELPER}")"
-      source "${COMMON_HELPER_PATH}"
-      return
-    fi
-  ;; esac
-  command -v wget >/dev/null 2>&1 || { log.error "Cannot fetch the shared helper because wget is unavailable."; exit "${EXIT_BLOCKED}"; }
-  mkdir -p "${TMP_DIR}"; log "Fetching shared helper: ${COMMON_HELPER_URL}"
-  wget -qO "${COMMON_HELPER_PATH}" "${COMMON_HELPER_URL}" || { log.error "Failed to fetch shared helper: ${COMMON_HELPER_URL}"; exit 1; }
+  local local_setup_root=""
+
+  if [[ -n "${RUNNER_LOCAL_REPO_ROOT}" ]]; then
+    local_setup_root="${RUNNER_LOCAL_REPO_ROOT}/setup"
+  fi
+  runner.stage.manifest \
+    "${local_setup_root}" \
+    "${PAGES_BASE_URL}/setup" \
+    "${TMP_DIR}" \
+    "shared release helper" \
+    "${COMMON_HELPER_NAME}" || {
+      log.error "Unable to stage the shared release helper."
+      exit "${EXIT_BLOCKED}"
+    }
+  bash -n "${COMMON_HELPER_PATH}" || {
+    log.error "The staged release helper failed shell syntax validation."
+    exit "${EXIT_BLOCKED}"
+  }
+  # shellcheck source=/tmp/devs-guide-nvlink.XXXXXX/release.common.sh
   source "${COMMON_HELPER_PATH}"
 }
 
-reset.feature.extra.vars.args() { FEATURE_GROUP_VARS_ARGS=(); local file=""; for file in "${GROUP_VARS_FILES[@]}"; do [[ -f "${PLAYBOOK_GROUP_VARS_DIR}/${file}" ]] && FEATURE_GROUP_VARS_ARGS+=(-e "@${PLAYBOOK_GROUP_VARS_DIR}/${file}"); done; }
-
-use.local.feature.files() {
-  local script_dir="" repo_root="" file="" source_path="${BASH_SOURCE[0]:-}"
-  case "${source_path}" in ''|-|/dev/fd/*|/proc/self/fd/*) return 1 ;; esac
-  script_dir="$(cd "$(dirname "${source_path}")" && pwd)"; repo_root="$(cd "${script_dir}/../.." && pwd)"
-  for file in "${GROUP_VARS_FILES[@]}"; do [[ -r "${repo_root}/ansible/group_vars/${file}" ]] || return 1; done
-  for file in "${RUNTIME_SUPPORT_REFS[@]}"; do [[ -s "${repo_root}/ansible/${file}" ]] || return 1; done
-  for file in "${FEATURE_PLAYBOOKS[@]}"; do [[ -r "${repo_root}/ansible/${file}" ]] || return 1; done
-  PLAYBOOK_ROOT="${repo_root}/ansible"; PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"; NVLINK_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NVLINK_PLAYBOOK_REL}"
-  reset.feature.extra.vars.args; log "Using local feature files from ${repo_root}"
-}
-
-fetch.file() {
-  local url="$1" destination="$2"; mkdir -p "$(dirname "${destination}")"; log "Fetching feature file: ${url}"
-  wget -qO "${destination}" "${url}" || { log.error "Failed to fetch feature file: ${url}"; exit "${EXIT_BLOCKED}"; }
-  [[ -s "${destination}" ]] || { log.error "Feature file is empty: ${url}"; exit "${EXIT_BLOCKED}"; }
+reset.feature.extra.vars.args() {
+  FEATURE_GROUP_VARS_ARGS=()
+  local file=""
+  for file in "${GROUP_VARS_FILES[@]}"; do
+    if [[ ! -s "${PLAYBOOK_GROUP_VARS_DIR}/${file}" ]]; then
+      log.error "Staged group variables are unavailable: ${PLAYBOOK_GROUP_VARS_DIR}/${file}"
+      exit "${EXIT_BLOCKED}"
+    fi
+    FEATURE_GROUP_VARS_ARGS+=(-e "@${PLAYBOOK_GROUP_VARS_DIR}/${file}")
+  done
 }
 
 prepare.feature.files() {
-  local file=""
-  if use.local.feature.files; then return; fi
-  mkdir -p "${PLAYBOOK_GROUP_VARS_DIR}"
-  for file in "${GROUP_VARS_FILES[@]}"; do fetch.file "${PAGES_BASE_URL}/ansible/group_vars/${file}" "${PLAYBOOK_GROUP_VARS_DIR}/${file}"; done
-  for file in "${RUNTIME_SUPPORT_REFS[@]}"; do fetch.file "${PAGES_BASE_URL}/ansible/${file}" "${PLAYBOOK_ROOT}/${file}"; done
-  for file in "${FEATURE_PLAYBOOKS[@]}"; do fetch.file "${PAGES_BASE_URL}/ansible/${file}" "${PLAYBOOK_ROOT}/${file}"; done
+  local local_ansible_root=""
+
+  if [[ -n "${RUNNER_LOCAL_REPO_ROOT}" ]]; then
+    local_ansible_root="${RUNNER_LOCAL_REPO_ROOT}/ansible"
+  fi
+  runner.stage.ansible.feature \
+    "${local_ansible_root}" \
+    "${PAGES_BASE_URL}/ansible" \
+    "${PLAYBOOK_ROOT}" || {
+      log.error "Unable to stage the NVLink Ansible manifest."
+      exit "${EXIT_BLOCKED}"
+    }
   reset.feature.extra.vars.args
 }
 

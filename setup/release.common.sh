@@ -46,7 +46,7 @@ PLAYLIST_PATH="${PLAYBOOK_DIR}/install.playbooks.txt"
 BASE_GROUP_VARS_PATH="${GROUP_VARS_DIR}/${BASE_GROUP_VARS_FILE}"
 PLATFORM_GROUP_VARS_PATH="${GROUP_VARS_DIR}/${PLATFORM_GROUP_VARS_FILE}"
 RELEASE_GROUP_VARS_PATH=""
-RUNTIME_SUPPORT_REFS=(packages.yml ssh.yml)
+RELEASE_RUNTIME_SUPPORT_REFS=(packages.yml ssh.yml)
 PYTHON_BOOTSTRAP_BIN=""
 PYTHON_BOOTSTRAP_VERSION=""
 HOST_DEBIAN_CODENAME=""
@@ -1015,7 +1015,7 @@ fetch.runtime.support.files() {
   local ref=""
   local dest=""
 
-  for ref in "${RUNTIME_SUPPORT_REFS[@]}"; do
+  for ref in "${RELEASE_RUNTIME_SUPPORT_REFS[@]}"; do
     dest="${PLAYBOOK_TMP_ROOT}/${ref}"
     if [[ -f "${dest}" ]]; then
       continue

@@ -26,6 +26,7 @@ FILES=(
   "cli/nvlink/index.html:${DOCS_RENDER_DIR}/cli/nvlink/index.html"
   "setup/index.html:${DOCS_RENDER_DIR}/setup/index.html"
   "setup/bootstrap/index.html:${DOCS_RENDER_DIR}/setup/bootstrap/index.html"
+  "setup/runner-common/index.html:${DOCS_RENDER_DIR}/setup/runner-common/index.html"
   "ansible/index.html:${DOCS_RENDER_DIR}/ansible/index.html"
   "actions/index.html:${DOCS_RENDER_DIR}/actions/index.html"
   "actions/build-docs/index.html:${DOCS_RENDER_DIR}/actions/build-docs/index.html"
@@ -33,6 +34,8 @@ FILES=(
   "actions/validate/runtime/index.html:${DOCS_RENDER_DIR}/actions/validate/runtime/index.html"
   "actions/validate/pages/index.html:${DOCS_RENDER_DIR}/actions/validate/pages/index.html"
   "actions/test/sudo-access/index.html:${DOCS_RENDER_DIR}/actions/test/sudo-access/index.html"
+  "actions/test/runner-staging/index.html:${DOCS_RENDER_DIR}/actions/test/runner-staging/index.html"
+  "actions/test/nvidia-facts/index.html:${DOCS_RENDER_DIR}/actions/test/nvidia-facts/index.html"
   "kiosk/index.html:${DOCS_RENDER_DIR}/kiosk/index.html"
   "kiosk/reference/index.html:${DOCS_RENDER_DIR}/kiosk/reference/index.html"
   "history/index.html:${DOCS_RENDER_DIR}/history/index.html"
@@ -226,10 +229,12 @@ check_nvidia_runner_runtime_support() {
     rc=1
     return
   fi
-  if ! grep -Fq 'packages.yml' "${remote_runner}"; then
-    echo "[validate.pages][error] published NVIDIA runner must reference packages.yml"
-    rc=1
-  fi
+  for reference in packages.yml tasks/nvidia.normalize-observations.yml; do
+    if ! grep -Fq "${reference}" "${remote_runner}"; then
+      echo "[validate.pages][error] published NVIDIA runner must reference ${reference}"
+      rc=1
+    fi
+  done
 }
 
 check_nvidia_runner_runtime_support
@@ -242,7 +247,7 @@ check_nvlink_runner_runtime_support() {
     rc=1
     return
   fi
-  for reference in packages.yml files/nvlink/nvidia-cuda-smoke.cu files/nvlink/nvidia-p2p-verify.cu files/nvlink/nvidia-topology-parser.py; do
+  for reference in packages.yml tasks/nvidia.normalize-observations.yml files/nvlink/nvidia-cuda-smoke.cu files/nvlink/nvidia-p2p-verify.cu files/nvlink/nvidia-topology-parser.py; do
     if ! grep -Fq "${reference}" "${remote_runner}"; then
       echo "[validate.pages][error] published NVLink runner must reference ${reference}"
       rc=1

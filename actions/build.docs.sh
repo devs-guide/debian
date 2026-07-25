@@ -163,7 +163,10 @@ breadcrumb_label() {
     pages) printf 'Pages' ;;
     test) printf 'Test' ;;
     sudo-access) printf 'Sudo access' ;;
+    runner-staging) printf 'Runner staging' ;;
+    nvidia-facts) printf 'NVIDIA facts' ;;
     release-common) printf 'Release helper' ;;
+    runner-common) printf 'Shared runner' ;;
     essential-packages) printf 'Essential packages' ;;
     prerequisites) printf 'Prerequisites' ;;
     app-launch) printf 'Application launch' ;;

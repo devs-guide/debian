@@ -24,6 +24,8 @@ directory.
 - [Validate runtime](/debian/actions/validate/runtime/)
 - [Validate Pages](/debian/actions/validate/pages/)
 - [Test sudo access policy](/debian/actions/test/sudo-access/)
+- [Test runner staging](/debian/actions/test/runner-staging/)
+- [Test NVIDIA facts](/debian/actions/test/nvidia-facts/)
 
 `www.pages.sh` replaces its selected publish directory. Validation scripts
 only read project content, aside from temporary download/build locations.

@@ -256,6 +256,7 @@ files=(
   "actions/requirements.validation.txt"
   "actions/fixtures/nvidia.register-normalization.yml"
   "actions/test.nvidia-facts.sh"
+  "actions/test.runner-staging.sh"
   "actions/test.sudo-access.sh"
   "actions/validate.runtime.sh"
   "actions/validate.pages.sh"
@@ -266,6 +267,7 @@ files=(
   "docs/cli/nvidia/readme.md"
   "docs/cli/nvlink/readme.md"
   "docs/setup/readme.md"
+  "docs/setup/runner-common/readme.md"
   "docs/ansible/readme.md"
   "docs/actions/readme.md"
   "docs/actions/build-docs/readme.md"
@@ -273,6 +275,8 @@ files=(
   "docs/actions/validate/runtime/readme.md"
   "docs/actions/validate/pages/readme.md"
   "docs/actions/test/sudo-access/readme.md"
+  "docs/actions/test/runner-staging/readme.md"
+  "docs/actions/test/nvidia-facts/readme.md"
   "docs/kiosk/readme.md"
   "docs/history/readme.md"
   "ansible/install.playbooks.txt"
@@ -421,12 +425,12 @@ if ! awk '
   echo "[validate.runtime][error] setup/cli/nvidia.sh must stage shared NVIDIA observation normalization"
   rc=1
 fi
-if ! grep -Fq 'destination="${PLAYBOOK_ROOT}/${reference}"' "${ROOT}/setup/cli/nvidia.sh"; then
-  echo "[validate.runtime][error] setup/cli/nvidia.sh must stage runtime support files at the runtime root"
+if ! grep -Fq 'runner.stage.ansible.feature' "${ROOT}/setup/cli/nvidia.sh"; then
+  echo "[validate.runtime][error] setup/cli/nvidia.sh must stage its declarative manifest through the shared runner"
   rc=1
 fi
-if ! grep -Fq 'validate.runtime.support.files' "${ROOT}/setup/cli/nvidia.sh"; then
-  echo "[validate.runtime][error] setup/cli/nvidia.sh must validate staged runtime support files"
+if ! grep -Fq 'runner.verify.manifest' "${ROOT}/setup/runner.common.sh"; then
+  echo "[validate.runtime][error] shared runner staging must verify every declared dependency"
   rc=1
 fi
 if ! grep -Fq 'file: ../packages.yml' "${ROOT}/ansible/cli/nvidia.yml"; then
@@ -525,6 +529,14 @@ for required_marker in \
   'runner.ensure.privileged.session' \
   'runner.run.as.root' \
   'runner.cleanup.runtime' \
+  'runner.relative.path.is.safe' \
+  'runner.fetch.file' \
+  'runner.copy.file' \
+  'runner.commit.staged.file' \
+  'runner.verify.manifest' \
+  'runner.require.indexed.array' \
+  'runner.stage.manifest' \
+  'runner.stage.ansible.feature' \
   'RUNNER_TTY_PATH:=/dev/tty' \
   'sudo -v <"${RUNNER_TTY_PATH}"' \
   'sudo -n --' \
@@ -536,11 +548,17 @@ for required_marker in \
 done
 for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   runner_path="${ROOT}/${runner}"
+  direct_fetch_count="$(
+    grep -Ec '^[[:space:]]*(if[[:space:]]+![[:space:]]+)?wget[[:space:]]+-qO[[:space:]]' "${runner_path}" || true
+  )"
   for required_marker in \
     'RUNNER_HELPER_URL' \
     'source.runner.common' \
     'runner.ensure.privileged.session' \
     'runner.run.as.root' \
+    'runner.stage.manifest' \
+    'runner.stage.ansible.feature' \
+    'FEATURE_TEMPLATE_REFS=()' \
     '/usr/bin/env -i' \
     'ensure-local-ansible' \
     'mktemp -d'; do
@@ -554,6 +572,10 @@ for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
     'runner was executed from stdin' \
     'ensure.root.or.sudo.reexec' \
     'current.script.path' \
+    'use.local.feature.files' \
+    'fetch.feature.file' \
+    'fetch.runtime.support.file' \
+    'fetch.file()' \
     'exec sudo'; do
     if grep -Fq "${obsolete_marker}" "${runner_path}"; then
       echo "[validate.runtime][error] ${runner} retains obsolete privilege marker ${obsolete_marker}"
@@ -564,13 +586,52 @@ for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
     echo "[validate.runtime][error] ${runner} must not preserve the ambient environment or fetch inside sudo"
     rc=1
   fi
+  if [[ "${direct_fetch_count}" -ne 1 ]]; then
+    echo "[validate.runtime][error] ${runner} may directly fetch only the shared-runner bootstrap; found ${direct_fetch_count} direct fetches"
+    rc=1
+  fi
 done
+if grep -Eq 'NVIDIA|NVLINK|nvidia_|nvlink_' "${ROOT}/setup/runner.common.sh"; then
+  echo "[validate.runtime][error] setup/runner.common.sh must remain free of NVIDIA/NVLink feature policy"
+  rc=1
+fi
+if grep -Eq '^RUNTIME_SUPPORT_REFS=' "${ROOT}/setup/release.common.sh"; then
+  echo "[validate.runtime][error] setup/release.common.sh must not overwrite a feature runtime manifest"
+  rc=1
+fi
 if ! grep -Fq 'ensure-local-ansible)' "${ROOT}/setup/release.common.sh" || \
    ! grep -Fq 'release.common.main "$@"' "${ROOT}/setup/release.common.sh" || \
    ! grep -Fq 'if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must expose a guarded ensure-local-ansible command"
   rc=1
 fi
+if ! bash -n "${ROOT}/actions/test.runner-staging.sh"; then
+  echo "[validate.runtime][error] actions/test.runner-staging.sh must pass bash -n"
+  rc=1
+elif ! bash "${ROOT}/actions/test.runner-staging.sh"; then
+  echo "[validate.runtime][error] shared runner staging contract tests failed"
+  rc=1
+fi
+legacy_runner_inventory="${ROOT}/docs/setup/runner-common/readme.md"
+while IFS= read -r legacy_runner_path; do
+  legacy_runner_rel="${legacy_runner_path#"${ROOT}/"}"
+  if ! grep -Fq "\`${legacy_runner_rel}\`" "${legacy_runner_inventory}"; then
+    echo "[validate.runtime][error] shared-runner migration inventory is missing ${legacy_runner_rel}"
+    rc=1
+  fi
+done < <(
+  find "${ROOT}/setup" -type f -name '*.sh' \
+    -exec grep -l 'ensure\.root\.or\.sudo\.reexec' {} + \
+    | sort
+)
+for migrated_runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+  if grep -Fq "\`${migrated_runner}\`" "${legacy_runner_inventory}" \
+    && sed -n '/The following legacy runners/,/They remain unchanged/p' "${legacy_runner_inventory}" \
+      | grep -Fq "\`${migrated_runner}\`"; then
+    echo "[validate.runtime][error] migration inventory incorrectly marks ${migrated_runner} as legacy"
+    rc=1
+  fi
+done
 if ! bash -n "${ROOT}/actions/test.sudo-access.sh"; then
   echo "[validate.runtime][error] actions/test.sudo-access.sh must pass bash -n"
   rc=1
@@ -596,7 +657,7 @@ for required_ref in \
     rc=1
   fi
 done
-for marker in 'for file in "${FEATURE_PLAYBOOKS[@]}"' 'nvidia.yml' 'nvidia_validate_from_facts: true'; do
+for marker in 'runner.stage.ansible.feature' 'nvidia.yml' 'nvidia_validate_from_facts: true'; do
   if ! grep -Fq "${marker}" "${ROOT}/setup/cli/nvlink.sh" && ! grep -Fq "${marker}" "${ROOT}/ansible/cli/nvlink.yml"; then
     echo "[validate.runtime][error] NVLink automatic NVIDIA fact refresh is missing: ${marker}"
     rc=1
@@ -837,7 +898,7 @@ if ! grep -q 'select.python.bootstrap.bin' "${ROOT}/setup/release.common.sh"; th
   echo "[validate.runtime][error] setup/release.common.sh must route controller Python selection through policy-aware provider logic"
   rc=1
 fi
-if ! grep -q 'RUNTIME_SUPPORT_REFS=(packages.yml ssh.yml)' "${ROOT}/setup/release.common.sh"; then
+if ! grep -q 'RELEASE_RUNTIME_SUPPORT_REFS=(packages.yml ssh.yml)' "${ROOT}/setup/release.common.sh"; then
   echo "[validate.runtime][error] setup/release.common.sh must fetch runtime support refs including packages.yml and ssh.yml"
   rc=1
 fi

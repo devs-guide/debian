@@ -27,6 +27,8 @@ the baseline does not implicitly install every feature.
 - [Hardware](/debian/setup/hardware/) — opt-in source-neutral host baseline.
 - [Autologin](/debian/setup/autologin/) — console autologin only.
 - [Release helper](/debian/setup/release-common/) — shared runner support.
+- [Shared setup runner](/debian/setup/runner-common/) — delegated-root and
+  dependency-manifest scaffolding, including the legacy migration inventory.
 - [Essential packages](/debian/setup/essential-packages/) — manual baseline
   reference, not an automation entrypoint.
 - [Prerequisites](/debian/setup/prerequisites/) — manual first-host reference.
