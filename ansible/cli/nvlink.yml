@@ -37,8 +37,6 @@
     nvlink_bin_dir: /opt/nvidia/bin
     nvlink_share_dir: /opt/nvidia/share/nvlink
     nvlink_log_root: /var/log/nvidia/nvlink
-    nvlink_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
-    nvlink_log_dir: "{{ nvlink_log_root }}/{{ nvlink_run_id }}"
     nvlink_smoke_binary: /opt/nvidia/bin/nvidia-cuda-smoke
     nvlink_p2p_binary: /opt/nvidia/bin/nvidia-p2p-verify
     nvlink_topology_parser: /opt/nvidia/share/nvlink/nvidia-topology-parser.py
@@ -50,6 +48,14 @@
       ansible.builtin.include_vars:
         file: ../packages.yml
         name: nvlink_package_catalog
+
+    - name: Initialize immutable NVLink run identifier
+      ansible.builtin.set_fact:
+        nvlink_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+
+    - name: Initialize immutable NVLink log directory
+      ansible.builtin.set_fact:
+        nvlink_log_dir: "{{ nvlink_log_root }}/{{ nvlink_run_id }}"
 
     - name: Normalize NVLink feature inputs
       ansible.builtin.set_fact:

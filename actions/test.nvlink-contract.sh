@@ -49,6 +49,10 @@ for marker in \
   'import_playbook: nvidia.yml' \
   'nvidia_mode: validate' \
   'nvidia_validate_from_facts: true' \
+  'Initialize immutable NVLink run identifier' \
+  'Initialize immutable NVLink log directory' \
+  'Create managed NVLink directories' \
+  'Record CUDA helper compilation output' \
   'Reread refreshed NVIDIA installation facts without taking ownership' \
   'Check live NVIDIA and CUDA prerequisite executables' \
   'Normalize the NVIDIA prerequisite fact contract' \
@@ -73,6 +77,24 @@ if ! awk '
   }
 ' "${ROOT}/ansible/cli/nvlink.yml"; then
   contract.error "NVLink must refresh, reread, and verify NVIDIA-owned facts in order"
+fi
+
+if awk '
+  /^  vars:$/ { in_vars = 1; next }
+  /^  pre_tasks:$/ { in_vars = 0 }
+  in_vars && /now\(/ { dynamic_run_path = 1 }
+  END { exit !dynamic_run_path }
+' "${ROOT}/ansible/cli/nvlink.yml"; then
+  contract.error "NVLink run paths must not evaluate now() from playbook-level vars"
+fi
+if ! awk '
+  /name: Initialize immutable NVLink run identifier/ { run_id = NR }
+  /name: Initialize immutable NVLink log directory/ { log_dir = NR }
+  /name: Create managed NVLink directories/ { directories = NR }
+  /name: Record CUDA helper compilation output/ { compilation_log = NR }
+  END { exit !(run_id > 0 && log_dir > run_id && directories > log_dir && compilation_log > directories) }
+' "${ROOT}/ansible/cli/nvlink.yml"; then
+  contract.error "NVLink must initialize one immutable log directory before writing run artifacts"
 fi
 
 for marker in \
