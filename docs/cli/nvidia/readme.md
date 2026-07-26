@@ -273,6 +273,23 @@ readiness state. The shared [GPU runner](/debian/cli/gpu/) exclusively owns
 after its own live driver/CUDA observations. NVLink never writes either file
 directly.
 
+### Edge case: NVIDIA or CUDA changed after facts were written
+
+Package upgrades, a kernel update, or running setup features in the wrong
+order can leave persisted policy behind the live host. Check `uname -r`,
+`nvidia-smi`, `/usr/local/cuda/bin/nvcc --version`, and the CUDA runtime header
+before rerunning a dependent feature.
+
+If the live installation is still the intended policy, rerun NVIDIA in
+`validate` mode with the complete current flags so it can rewrite NVIDIA
+facts and refresh the shared GPU snapshot. If the intended policy changed,
+use `apply` or `upgrade` with the newly reviewed exact policy. Do not repair a
+mismatch by editing YAML under `/etc/ansible/debian/facts/`.
+
+For the full ordered recovery procedure, publication check, rollback copies,
+and commands, see
+[NVLink recovery after earlier runners, changed drivers, or wrong execution order](/debian/cli/nvlink/#recovery-after-earlier-runners-changed-drivers-or-wrong-execution-order).
+
 At the beginning of every managed NVLink run, NVLink imports NVIDIA in
 internal `validate-from-facts` mode. NVIDIA reads its own recorded policy,
 performs live validation, and atomically refreshes its fact file before NVLink

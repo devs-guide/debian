@@ -213,6 +213,192 @@ rewrites them. A managed `apply` also removes obsolete NVLink-owned smoke,
 topology-wrapper, build-manifest, and environment overlay artifacts; it does
 not delete user-managed CUDA Samples or NVBandwidth trees.
 
+## Recovery after earlier runners, changed drivers, or wrong execution order
+
+Use this path when an older runner already wrote facts or helpers, NVIDIA or
+CUDA was upgraded outside this repository, the kernel changed, or NVLink was
+run before NVIDIA setup completed.
+
+Do not repeatedly rerun NVLink while an NVIDIA prerequisite is failing.
+NVLink consumes NVIDIA-owned facts and the shared GPU snapshot; it does not
+repair a missing kernel module or rewrite another feature's policy.
+
+### 1. Confirm the corrected runner is published
+
+After the repository change has been committed, pushed, and deployed by
+GitHub Pages, verify the published files. This prevents an old deployment from
+recreating an already-fixed failure.
+
+```bash
+publish_check_dir="$(mktemp -d /tmp/devs-guide-nvlink-publish.XXXXXX)"
+
+wget -qO "${publish_check_dir}/nvlink.sh" \
+  https://devs-guide.github.io/debian/setup/cli/nvlink.sh
+wget -qO "${publish_check_dir}/nvlink.yml" \
+  https://devs-guide.github.io/debian/ansible/cli/nvlink.yml
+
+grep -F 'runner.prepare.ansible.feature' "${publish_check_dir}/nvlink.sh"
+grep -F 'schema_version: 2' "${publish_check_dir}/nvlink.yml"
+grep -F 'rates_gbps' "${publish_check_dir}/nvlink.yml"
+
+rm -rf -- "${publish_check_dir}"
+```
+
+If any `grep` command fails, stop and resolve or wait for the Pages deployment
+before changing the host.
+
+### 2. Check live NVIDIA and CUDA state
+
+```bash
+uname -r
+nvidia-smi
+/usr/local/cuda/bin/nvcc --version
+test -r /usr/local/cuda/include/cuda_runtime.h
+```
+
+- If `nvidia-smi` cannot communicate with the driver, stop and follow the
+  [running-kernel/DKMS recovery](/debian/cli/nvidia/#edge-case-a-kernel-update-leaves-nvidia-dkms-without-matching-headers).
+  Reinstalling CUDA will not create a module for the running kernel.
+- If `nvcc` or `cuda_runtime.h` is missing, repair the intended NVIDIA/CUDA
+  policy with the NVIDIA runner before invoking NVLink.
+- If every check passes, refresh repository-owned facts with the current
+  intended policy.
+
+### 3. Refresh changed or stale NVIDIA policy
+
+If the installed driver and CUDA versions are still desired, run NVIDIA
+validation with the complete policy. This example is for the documented pair
+of RTX 3090 GPUs; change versions and hardware requirements to match the host
+instead of copying stale values from an old fact file.
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/nvidia.sh | \
+  bash -s -- validate \
+    --profile=llm \
+    --driver-source=nvidia \
+    --cuda-source=nvidia \
+    --driver-channel=production \
+    --driver-branch=595 \
+    --driver-version=595.71.05 \
+    --cuda-version=13.1 \
+    --module-flavor=open \
+    --gpu=all \
+    --require-gpu-count=2 \
+    --require-compute-capability=8.6 \
+    --persistence=auto \
+    --nccl=auto \
+    --allow-source-migration
+```
+
+Use `apply` instead of `validate` when NVIDIA was never initialized by this
+repository or when the intended package policy must change. Review the exact
+driver, CUDA, source, module, and kernel-header choices before applying them.
+
+Successful NVIDIA validation also refreshes the shared GPU snapshot. A
+separate GPU run is normally unnecessary. To refresh only vendor-neutral
+inventory for diagnostics, run:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/gpu.sh | \
+  bash -s -- apply \
+    --vendor=nvidia
+```
+
+Do not manually edit `/etc/ansible/debian/facts/nvidia.yml` or
+`/etc/ansible/debian/facts/gpu.yml`. If either producer rejects its own
+output, resolve that error before continuing.
+
+### 4. Preserve old evidence and force one helper rebuild
+
+This is recommended after running pre-schema-2 revisions. It preserves the
+previous fact and binary for rollback while ensuring `apply` compiles the
+current audited helper.
+
+```bash
+migration_id="$(date -u +%Y%m%dT%H%M%SZ)"
+
+if sudo test -f /etc/ansible/debian/facts/nvlink.yml; then
+  sudo cp -a \
+    /etc/ansible/debian/facts/nvlink.yml \
+    "/etc/ansible/debian/facts/nvlink.yml.pre-schema2.${migration_id}"
+fi
+
+if sudo test -f /opt/nvidia/bin/nvidia-p2p-verify; then
+  sudo mv \
+    /opt/nvidia/bin/nvidia-p2p-verify \
+    "/opt/nvidia/bin/nvidia-p2p-verify.pre-schema2.${migration_id}"
+fi
+```
+
+Do not remove prior `/var/log/nvidia/nvlink/<run-id>/` directories. They are
+immutable diagnostic evidence. Current `apply` removes obsolete NVLink-owned
+helpers and metadata, but preserves historical logs and user-managed CUDA
+Samples or NVBandwidth source trees.
+
+### 5. Preflight, then apply
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
+  bash -s -- preflight \
+    --gpu=all \
+    --require-exact-gpu-count=2 \
+    --require-compute-capability=8.6 \
+    --require-nvlink \
+    --expect-topology=NV4 \
+    --run-p2p-test \
+    --strict-p2p \
+    --p2p-buffer-mib=256 \
+    --p2p-iterations=20 \
+    --install-build-tools
+```
+
+If preflight succeeds:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/nvlink.sh | \
+  bash -s -- apply \
+    --gpu=all \
+    --require-exact-gpu-count=2 \
+    --require-compute-capability=8.6 \
+    --require-nvlink \
+    --expect-topology=NV4 \
+    --run-p2p-test \
+    --strict-p2p \
+    --p2p-buffer-mib=256 \
+    --p2p-iterations=20 \
+    --install-build-tools
+```
+
+NVLink refreshes NVIDIA validation from persisted policy and rereads the
+resulting NVIDIA and GPU facts before its own checks. Once those facts are
+valid, separate NVIDIA and GPU commands are not required before every run.
+
+### 6. Break a repeated failure loop
+
+Inspect producer facts and the latest evidence instead of rerunning the same
+command:
+
+```bash
+sudo sed -n '1,260p' /etc/ansible/debian/facts/nvidia.yml
+sudo sed -n '1,320p' /etc/ansible/debian/facts/gpu.yml
+sudo sed -n '1,320p' /etc/ansible/debian/facts/nvlink.yml
+sudo readlink -f /var/log/nvidia/nvlink/latest
+```
+
+Common loop indicators:
+
+- `nvidia_smi_ready: false`: repair the live driver or running-kernel module.
+- Driver/CUDA policy no longer matches installed packages: validate or apply
+  the new intended NVIDIA policy.
+- Incomplete GPU topology label mapping: refresh with `gpu.sh`; if it remains
+  incomplete, fix the shared GPU producer instead of weakening the NVLink
+  gate.
+- `schema_version: 1` after a new run: an old Pages revision is still served,
+  or the run failed before the new fact was persisted.
+- A valid route but failed link-status or P2P evidence: inspect the immutable
+  run directory. Positive link rates are evaluated dynamically; no specific
+  `rates_gbps` value is required.
+
 ## Revalidate without installation
 
 After an `apply` that built the optional P2P helper:

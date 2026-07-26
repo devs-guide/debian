@@ -18,6 +18,7 @@ Compatibility entrypoints remain available at `setup/debian.sh` and
 ## Optional runners
 
 - [CLI runner documentation](https://devs-guide.github.io/debian/cli/)
+- [Shared GPU inventory](https://devs-guide.github.io/debian/cli/gpu/)
 - [NVIDIA driver and CUDA](https://devs-guide.github.io/debian/cli/nvidia/)
 - [NVLink validation](https://devs-guide.github.io/debian/cli/nvlink/)
 - [Kiosk workflow](https://devs-guide.github.io/debian/kiosk/)

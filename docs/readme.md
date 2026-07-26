@@ -33,8 +33,8 @@ They remain source files, not documentation routes.
 
 - [Setup runners](/debian/setup/) covers bootstrap, host baseline, autologin,
   and the shared release helper.
-- [CLI runners](/debian/cli/) covers opt-in developer, kiosk, NVIDIA, and
-  NVLink features.
+- [CLI runners](/debian/cli/) covers opt-in developer, kiosk, shared GPU,
+  NVIDIA, and NVLink features.
 - [Ansible](/debian/ansible/) explains the package and user policy sources.
 - [Actions](/debian/actions/) explains publication and validation tooling.
 - [Kiosk](/debian/kiosk/) groups the supported kiosk workflow and retained
