@@ -70,13 +70,13 @@ For NVIDIA devices, three identifiers have different roles:
 
 | Identifier | Correct use |
 | --- | --- |
-| CUDA UUID | Stable selection for `CUDA_VISIBLE_DEVICES` and isolated CUDA smoke tests. |
+| CUDA UUID | Stable runtime selection for CUDA visibility and UUID-targeted feature diagnostics. |
 | PCI address | Physical-device identity, audit evidence, deterministic ordering, and a selector accepted by feature runners. |
 | `GPU0` / `GPU1` topology label | The local label used only to index the matrix in the same `nvidia-smi topo -m` capture. It is not a stable CUDA ordinal. |
 
 NVLink resolves a requested UUID or PCI selector against this snapshot and
-passes the selected records' current topology labels to its parser. This avoids
-the former error of treating a selected-list position or CUDA index as a
+uses the selected records' current topology labels to read the shared matrix
+directly. This avoids treating a selected-list position or CUDA index as a
 topology-table identity.
 
 The snapshot records a `label_mapping` result beside the raw topology matrix.

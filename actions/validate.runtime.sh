@@ -102,9 +102,7 @@ files=(
   "ansible/tasks/gpu.inventory.yml"
   "ansible/files/gpu/gpu-inventory.py"
   "ansible/files/gpu/nvidia_topology.py"
-  "ansible/files/nvlink/nvidia-cuda-smoke.cu"
   "ansible/files/nvlink/nvidia-p2p-verify.cu"
-  "ansible/files/nvlink/nvidia-topology-parser.py"
   "ansible/cli/startx.yml"
   "ansible/autologin.yml"
   "ansible/group_vars/all.yml"
@@ -1602,7 +1600,7 @@ if awk '
   in_block && $0 ~ /^  [a-z0-9_]+:/ { in_block=0 }
   in_block { print }
 ' "${ROOT}/ansible/packages.yml" | grep -q 'radeontop'; then
-  echo "[validate.runtime][error] radeontop must not be in monitoring_benchmark; reserve it for setup/gpu"
+  echo "[validate.runtime][error] radeontop must not be in monitoring_benchmark; reserve it for setup/cli/gpu.sh"
   rc=1
 fi
 if ! sed -n '/gpu_vendor_optional:/,/^[^[:space:]]/p' "${ROOT}/ansible/packages.yml" | grep -q 'radeontop'; then

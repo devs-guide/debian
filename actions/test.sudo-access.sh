@@ -345,6 +345,7 @@ for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
     # The feature runner must construct an isolated root environment explicitly.
     run_case "${runner}: delegated environment allowlist" "${runner_path}" '
     source "${TEST_RUNNER}"
+    source "${TEST_HELPER}"
     source "${TEST_RELEASE}"
     runner.run.as.root() {
       printf "ROOT"
@@ -352,7 +353,7 @@ for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
       for argument in "$@"; do printf " <%q>" "${argument}"; done
       printf "\n"
     }
-    COMMON_HELPER_PATH=/staged/release.common.sh
+    COMMON_HELPER_PATH="${TEST_RELEASE}"
     UNSAFE_SECRET=must-not-cross-boundary
     export UNSAFE_SECRET
     ensure.local.ansible.as.root

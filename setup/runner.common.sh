@@ -418,6 +418,158 @@ runner.stage.ansible.feature() {
     "${manifest[@]}"
 }
 
+runner.source.release.common() {
+  local local_setup_root="${1:-}"
+  local published_setup_base="${2:-}"
+  local stage_root="${3:-}"
+  local helper_name="${4:-release.common.sh}"
+
+  runner.stage.manifest \
+    "${local_setup_root}" \
+    "${published_setup_base}" \
+    "${stage_root}" \
+    "shared release helper" \
+    "${helper_name}" || return 1
+
+  COMMON_HELPER_PATH="${stage_root%/}/${helper_name}"
+  if ! bash -n "${COMMON_HELPER_PATH}"; then
+    log.error "The staged release helper failed shell syntax validation."
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  source "${COMMON_HELPER_PATH}"
+}
+
+runner.prepare.ansible.feature() {
+  local local_ansible_root="${1:-}"
+  local published_ansible_base="${2:-}"
+  local playbook_root="${3:-}"
+  local group_vars_root="${playbook_root%/}/group_vars"
+  local reference=""
+
+  runner.stage.ansible.feature \
+    "${local_ansible_root}" \
+    "${published_ansible_base}" \
+    "${playbook_root}" || return 1
+
+  FEATURE_GROUP_VARS_ARGS=()
+  for reference in "${GROUP_VARS_FILES[@]}"; do
+    runner.verify.staged.file "${group_vars_root}/${reference}" || {
+      log.error "Staged group variables are unavailable: ${group_vars_root}/${reference}"
+      return 1
+    }
+    FEATURE_GROUP_VARS_ARGS+=(-e "@${group_vars_root}/${reference}")
+  done
+
+  FEATURE_PLAYBOOK_PATHS=()
+  for reference in "${FEATURE_PLAYBOOKS[@]}"; do
+    runner.verify.staged.file "${playbook_root%/}/${reference}" || {
+      log.error "Staged playbook is unavailable: ${playbook_root%/}/${reference}"
+      return 1
+    }
+    FEATURE_PLAYBOOK_PATHS+=("${playbook_root%/}/${reference}")
+  done
+}
+
+runner.ensure.local.ansible() {
+  [[ -n "${COMMON_HELPER_PATH:-}" && -x /bin/bash ]] \
+    && runner.verify.staged.file "${COMMON_HELPER_PATH}" || {
+    log.error "The shared release helper must be staged before bootstrapping Ansible."
+    return 1
+  }
+  runner.run.as.root /usr/bin/env -i \
+    HOME=/root \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    TMPDIR=/tmp \
+    "TMP_ROOT_DIR=${TMP_ROOT_DIR}" \
+    "TMP_DIR=${TMP_DIR}" \
+    "PAGES_BASE_URL=${PAGES_BASE_URL}" \
+    "PYTHON_VERSION=${PYTHON_VERSION}" \
+    "PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}" \
+    "PYTHON_MIN_VERSION=${PYTHON_MIN_VERSION}" \
+    "PYTHON_SOURCE_PREFIX=${PYTHON_SOURCE_PREFIX}" \
+    "PYTHON_BIN=${PYTHON_BIN}" \
+    "PYTHON_SRC_DIR=${PYTHON_SRC_DIR}" \
+    "PYTHON_SRC_ARCHIVE=${PYTHON_SRC_ARCHIVE}" \
+    "PYTHON_SRC_URL=${PYTHON_SRC_URL}" \
+    "CONTROLLER_PYTHON_POLICY=${CONTROLLER_PYTHON_POLICY}" \
+    "SYSTEM_PYTHON_BIN=${SYSTEM_PYTHON_BIN}" \
+    "ANSIBLE_VENV=${ANSIBLE_VENV}" \
+    "ANSIBLE_VENV_BIN=${ANSIBLE_VENV_BIN}" \
+    "ANSIBLE_CORE_VERSION=${ANSIBLE_CORE_VERSION}" \
+    "ANSIBLE_CORE_SPEC=${ANSIBLE_CORE_SPEC}" \
+    "MANAGED_TARGET_PYTHON_HOME=${MANAGED_TARGET_PYTHON_HOME}" \
+    "MANAGED_TARGET_PYTHON_PATH=${MANAGED_TARGET_PYTHON_PATH}" \
+    "MANAGED_TARGET_HANDOFF_MARKER=${MANAGED_TARGET_HANDOFF_MARKER}" \
+    /bin/bash "${COMMON_HELPER_PATH}" ensure-local-ansible
+}
+
+runner.run.ansible.playbooks() {
+  local extra_vars_path="${1:-}"
+  shift || true
+  local -a playbooks=("$@")
+  local playbook=""
+
+  runner.verify.staged.file "${extra_vars_path}" || {
+    log.error "Feature extra-vars file is unavailable: ${extra_vars_path:-unset}"
+    return 1
+  }
+  ((${#playbooks[@]} > 0)) || {
+    log.error "No Ansible playbook was supplied."
+    return 64
+  }
+  for playbook in "${playbooks[@]}"; do
+    runner.verify.staged.file "${playbook}" || {
+      log.error "Staged playbook is unavailable: ${playbook:-unset}"
+      return 1
+    }
+  done
+  runner.run.as.root /usr/bin/env -i \
+    HOME=/root \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    TMPDIR=/tmp \
+    "${ANSIBLE_VENV_BIN}" \
+      -i localhost, \
+      -c local \
+      "${FEATURE_GROUP_VARS_ARGS[@]}" \
+      -e "@${extra_vars_path}" \
+      "${playbooks[@]}"
+}
+
+runner.report.command() {
+  local report_path="${1:-}"
+  local label="${2:-command}"
+  shift 2 || true
+
+  {
+    printf '\n## %s\n' "${label}"
+    if (($# == 0)); then
+      printf 'unavailable: no command supplied\n'
+    elif [[ "$1" == */* && ! -x "$1" ]]; then
+      printf 'unavailable: %s\n' "$1"
+    elif [[ "$1" != */* ]] && ! command -v "$1" >/dev/null 2>&1; then
+      printf 'unavailable: %s\n' "$1"
+    else
+      "$@" 2>&1 || true
+    fi
+  } | tee -a "${report_path}"
+}
+
+runner.report.text() {
+  local report_path="${1:-}"
+  local label="${2:-file}"
+  local path="${3:-}"
+
+  {
+    printf '\n## %s\n' "${label}"
+    if [[ -r "${path}" ]]; then
+      sed -n '1,240p' "${path}"
+    else
+      printf 'unavailable: %s\n' "${path:-unset}"
+    fi
+  } | tee -a "${report_path}"
+}
+
 runner.authenticate.sudo() {
   if [[ "$(runner.euid)" -eq 0 ]]; then
     RUNNER_SUDO_AUTHENTICATED=1

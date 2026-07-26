@@ -104,18 +104,9 @@ groups:
       - numactl
       - nvtop
   nvlink_validation_support:
-    description: Build and validation tools for the standalone CUDA/NVLink feature; never installed by baseline playbooks.
+    description: Build toolchain for the opt-in directed CUDA P2P helper; never installed by baseline playbooks.
     packages:
       - build-essential
-      - cmake
-      - ninja-build
-      - git
-      - jq
-      - pciutils
-  nvlink_bandwidth_optional:
-    description: Optional build dependency for pinned NVIDIA NVBandwidth diagnostics.
-    packages:
-      - libboost-program-options-dev
   dev_tools:
     description: Developer and shell utilities.
     packages:

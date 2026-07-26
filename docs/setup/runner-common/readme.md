@@ -22,7 +22,10 @@ The helper provides:
 - one unprivileged HTTP(S) implementation for managed runner-source files;
 - local-copy or published-source manifest staging;
 - verification that every declared dependency is regular, readable, and
-  non-empty before a privileged command consumes it.
+  non-empty before a privileged command consumes it;
+- release-helper staging and syntax validation;
+- Ansible feature preparation, clean controller bootstrap, explicit playbook
+  execution, and preflight report helpers shared by migrated CLI runners.
 
 ## Delegated-root flow
 
@@ -75,6 +78,22 @@ bootstrap performed by the streamed entrypoint. Once loaded, all release
 helper, playbook, task, file, and template staging goes through the shared
 implementation. Those managed source-file downloads are never performed
 inside sudo.
+
+After the bootstrap trust boundary is established, migrated features use:
+
+- `runner.source.release.common` to stage, syntax-check, and source the release
+  helper;
+- `runner.prepare.ansible.feature` to stage the declared manifest and build
+  group-variable and playbook path arrays;
+- `runner.ensure.local.ansible` to invoke the existing controller bootstrap
+  through a clean delegated-root environment;
+- `runner.run.ansible.playbooks` to run explicit playbook paths with one
+  verified extra-vars file;
+- `runner.report.command` and `runner.report.text` to append read-only
+  preflight evidence.
+
+Feature-specific argument parsing, policy checks, extra-vars rendering,
+preflight contents, and managed-mode decisions remain in each CLI runner.
 
 ## Migration status
 

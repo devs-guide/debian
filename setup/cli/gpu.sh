@@ -21,8 +21,6 @@ RUNNER_TMP_PARENT="${DEBIAN_RUNNER_TMP_PARENT:-/tmp}"
 TMP_DIR=""
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
 PLAYBOOK_ROOT=""
-PLAYBOOK_GROUP_VARS_DIR=""
-GPU_PLAYBOOK_REL="cli/gpu.yml"
 GPU_PLAYBOOK_PATH=""
 GPU_EXTRA_VARS_PATH=""
 PREFLIGHT_REPORT_PATH=""
@@ -47,6 +45,7 @@ FEATURE_MODE="${DEBIAN_GPU_MODE:-preflight}"
 GPU_VENDOR="${DEBIAN_GPU_VENDOR:-auto}"
 SHOW_HELP=0
 declare -a FEATURE_GROUP_VARS_ARGS=()
+declare -a FEATURE_PLAYBOOK_PATHS=()
 
 usage() {
   cat <<'EOF_USAGE'
@@ -96,8 +95,6 @@ validate.configuration() {
 configure.runtime.paths() {
   TMP_DIR="${RUNNER_RUNTIME_DIR}"
   PLAYBOOK_ROOT="${TMP_DIR}/runtime"
-  PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
-  GPU_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${GPU_PLAYBOOK_REL}"
   GPU_EXTRA_VARS_PATH="${TMP_DIR}/cli.gpu.extra-vars.yml"
   PREFLIGHT_REPORT_PATH="${TMP_DIR}/preflight.txt"
   COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
@@ -147,32 +144,27 @@ source.runner.common() {
 source.release.common() {
   local local_setup_root=""
   [[ -z "${RUNNER_LOCAL_REPO_ROOT}" ]] || local_setup_root="${RUNNER_LOCAL_REPO_ROOT}/setup"
-  runner.stage.manifest "${local_setup_root}" "${PAGES_BASE_URL}/setup" "${TMP_DIR}" "shared release helper" "${COMMON_HELPER_NAME}" || {
+  runner.source.release.common \
+    "${local_setup_root}" \
+    "${PAGES_BASE_URL}/setup" \
+    "${TMP_DIR}" \
+    "${COMMON_HELPER_NAME}" || {
     log.error "Unable to stage the shared release helper."
     exit "${EXIT_BLOCKED}"
   }
-  bash -n "${COMMON_HELPER_PATH}" || { log.error "The staged release helper failed shell syntax validation."; exit "${EXIT_BLOCKED}"; }
-  # shellcheck source=/tmp/devs-guide-gpu.XXXXXX/release.common.sh
-  source "${COMMON_HELPER_PATH}"
-}
-
-reset.feature.extra.vars.args() {
-  FEATURE_GROUP_VARS_ARGS=()
-  local file=""
-  for file in "${GROUP_VARS_FILES[@]}"; do
-    [[ -s "${PLAYBOOK_GROUP_VARS_DIR}/${file}" ]] || { log.error "Staged group variables are unavailable: ${PLAYBOOK_GROUP_VARS_DIR}/${file}"; exit "${EXIT_BLOCKED}"; }
-    FEATURE_GROUP_VARS_ARGS+=(-e "@${PLAYBOOK_GROUP_VARS_DIR}/${file}")
-  done
 }
 
 prepare.feature.files() {
   local local_ansible_root=""
   [[ -z "${RUNNER_LOCAL_REPO_ROOT}" ]] || local_ansible_root="${RUNNER_LOCAL_REPO_ROOT}/ansible"
-  runner.stage.ansible.feature "${local_ansible_root}" "${PAGES_BASE_URL}/ansible" "${PLAYBOOK_ROOT}" || {
+  runner.prepare.ansible.feature \
+    "${local_ansible_root}" \
+    "${PAGES_BASE_URL}/ansible" \
+    "${PLAYBOOK_ROOT}" || {
     log.error "Unable to stage the shared GPU Ansible manifest."
     exit "${EXIT_BLOCKED}"
   }
-  reset.feature.extra.vars.args
+  GPU_PLAYBOOK_PATH="${FEATURE_PLAYBOOK_PATHS[0]}"
 }
 
 write.extra.vars.file() {
@@ -186,13 +178,14 @@ EOF_VARS
 }
 
 run.feature.playbook() {
-  runner.run.as.root /usr/bin/env -i \
-    HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin TMPDIR=/tmp \
-    "${ANSIBLE_VENV_BIN}" -i localhost, -c local "${FEATURE_GROUP_VARS_ARGS[@]}" \
-      -e "@${GPU_EXTRA_VARS_PATH}" "${GPU_PLAYBOOK_PATH}"
+  runner.run.ansible.playbooks "${GPU_EXTRA_VARS_PATH}" "${GPU_PLAYBOOK_PATH}"
 }
 
-report.command() { local label="$1"; shift; { printf '\n## %s\n' "${label}"; "$@" 2>&1 || true; } | tee -a "${PREFLIGHT_REPORT_PATH}"; }
+report.command() {
+  local label="$1"
+  shift
+  runner.report.command "${PREFLIGHT_REPORT_PATH}" "${label}" "$@"
+}
 
 run.read.only.preflight() {
   : > "${PREFLIGHT_REPORT_PATH}"

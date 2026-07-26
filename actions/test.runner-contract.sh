@@ -29,6 +29,12 @@ for marker in \
   'runner.require.indexed.array' \
   'runner.stage.manifest' \
   'runner.stage.ansible.feature' \
+  'runner.source.release.common' \
+  'runner.prepare.ansible.feature' \
+  'runner.ensure.local.ansible' \
+  'runner.run.ansible.playbooks' \
+  'runner.report.command' \
+  'runner.report.text' \
   'RUNNER_TTY_PATH:=/dev/tty' \
   'sudo -v <"${RUNNER_TTY_PATH}"' \
   'sudo -n --' \
@@ -46,11 +52,11 @@ for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
     'RUNNER_HELPER_URL' \
     'source.runner.common' \
     'runner.ensure.privileged.session' \
-    'runner.run.as.root' \
-    'runner.stage.manifest' \
-    'runner.stage.ansible.feature' \
+    'runner.source.release.common' \
+    'runner.prepare.ansible.feature' \
+    'runner.run.ansible.playbooks' \
+    'runner.report.command' \
     'FEATURE_TEMPLATE_REFS=()' \
-    '/usr/bin/env -i' \
     'mktemp -d'; do
     require_contains "${runner}" "${marker}"
   done
@@ -75,7 +81,7 @@ for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
 done
 
 for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
-  require_contains "${runner}" 'ensure-local-ansible'
+  require_contains "${runner}" 'runner.ensure.local.ansible'
 done
 
 reject_regex "setup/runner.common.sh" 'NVIDIA|NVLINK|nvidia_|nvlink_'

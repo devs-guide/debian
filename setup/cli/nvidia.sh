@@ -33,7 +33,6 @@ TMP_ROOT_DIR="${RUNNER_TMP_PARENT}"
 TMP_DIR=""
 PAGES_BASE_URL="${PAGES_BASE_URL:-https://devs-guide.github.io/debian}"
 PLAYBOOK_ROOT=""
-PLAYBOOK_GROUP_VARS_DIR=""
 LOCAL_RUNNER_HELPER="../runner.common.sh"
 RUNNER_HELPER_NAME="runner.common.sh"
 RUNNER_HELPER_URL="${PAGES_BASE_URL}/setup/${RUNNER_HELPER_NAME}"
@@ -51,7 +50,6 @@ RUNTIME_SUPPORT_REFS=(
   "files/gpu/nvidia_topology.py"
 )
 FEATURE_TEMPLATE_REFS=()
-NVIDIA_PLAYBOOK_REL="cli/nvidia.yml"
 NVIDIA_PLAYBOOK_PATH=""
 NVIDIA_EXTRA_VARS_PATH=""
 PREFLIGHT_REPORT_PATH=""
@@ -89,6 +87,7 @@ SHOW_HELP=0
 
 CLI_SEEN_VARIABLES=""
 declare -a FEATURE_GROUP_VARS_ARGS=()
+declare -a FEATURE_PLAYBOOK_PATHS=()
 
 usage() {
   cat <<'EOF_USAGE'
@@ -348,9 +347,7 @@ validate.configuration() {
 configure.runtime.paths() {
   TMP_DIR="${RUNNER_RUNTIME_DIR}"
   PLAYBOOK_ROOT="${TMP_DIR}/runtime"
-  PLAYBOOK_GROUP_VARS_DIR="${PLAYBOOK_ROOT}/group_vars"
   COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-  NVIDIA_PLAYBOOK_PATH="${PLAYBOOK_ROOT}/${NVIDIA_PLAYBOOK_REL}"
   NVIDIA_EXTRA_VARS_PATH="${TMP_DIR}/cli.nvidia.extra-vars.yml"
   PREFLIGHT_REPORT_PATH="${TMP_DIR}/preflight.txt"
 }
@@ -417,33 +414,14 @@ source.release.common() {
   if [[ -n "${RUNNER_LOCAL_REPO_ROOT}" ]]; then
     local_setup_root="${RUNNER_LOCAL_REPO_ROOT}/setup"
   fi
-  runner.stage.manifest \
+  runner.source.release.common \
     "${local_setup_root}" \
     "${PAGES_BASE_URL}/setup" \
     "${TMP_DIR}" \
-    "shared release helper" \
     "${COMMON_HELPER_NAME}" || {
       log.error "Unable to stage the shared release helper."
       exit "${EXIT_BLOCKED}"
     }
-  bash -n "${COMMON_HELPER_PATH}" || {
-    log.error "The staged release helper failed shell syntax validation."
-    exit "${EXIT_BLOCKED}"
-  }
-  # shellcheck source=/tmp/devs-guide-nvidia.XXXXXX/release.common.sh
-  source "${COMMON_HELPER_PATH}"
-}
-
-reset.feature.extra.vars.args() {
-  FEATURE_GROUP_VARS_ARGS=()
-  local file=""
-  for file in "${GROUP_VARS_FILES[@]}"; do
-    if [[ ! -s "${PLAYBOOK_GROUP_VARS_DIR}/${file}" ]]; then
-      log.error "Staged group variables are unavailable: ${PLAYBOOK_GROUP_VARS_DIR}/${file}"
-      exit "${EXIT_BLOCKED}"
-    fi
-    FEATURE_GROUP_VARS_ARGS+=(-e "@${PLAYBOOK_GROUP_VARS_DIR}/${file}")
-  done
 }
 
 prepare.feature.files() {
@@ -452,14 +430,14 @@ prepare.feature.files() {
   if [[ -n "${RUNNER_LOCAL_REPO_ROOT}" ]]; then
     local_ansible_root="${RUNNER_LOCAL_REPO_ROOT}/ansible"
   fi
-  runner.stage.ansible.feature \
+  runner.prepare.ansible.feature \
     "${local_ansible_root}" \
     "${PAGES_BASE_URL}/ansible" \
     "${PLAYBOOK_ROOT}" || {
       log.error "Unable to stage the NVIDIA Ansible manifest."
       exit "${EXIT_BLOCKED}"
     }
-  reset.feature.extra.vars.args
+  NVIDIA_PLAYBOOK_PATH="${FEATURE_PLAYBOOK_PATHS[0]}"
 }
 
 write.nvidia.extra.vars.file() {
@@ -500,66 +478,23 @@ EOF_VARS
 }
 
 ensure.local.ansible.as.root() {
-  runner.run.as.root /usr/bin/env -i \
-    HOME=/root \
-    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-    TMPDIR=/tmp \
-    "TMP_ROOT_DIR=${TMP_ROOT_DIR}" \
-    "TMP_DIR=${TMP_DIR}" \
-    "PAGES_BASE_URL=${PAGES_BASE_URL}" \
-    "PYTHON_VERSION=${PYTHON_VERSION}" \
-    "PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR}" \
-    "PYTHON_MIN_VERSION=${PYTHON_MIN_VERSION}" \
-    "PYTHON_SOURCE_PREFIX=${PYTHON_SOURCE_PREFIX}" \
-    "PYTHON_BIN=${PYTHON_BIN}" \
-    "PYTHON_SRC_DIR=${PYTHON_SRC_DIR}" \
-    "PYTHON_SRC_ARCHIVE=${PYTHON_SRC_ARCHIVE}" \
-    "PYTHON_SRC_URL=${PYTHON_SRC_URL}" \
-    "CONTROLLER_PYTHON_POLICY=${CONTROLLER_PYTHON_POLICY}" \
-    "SYSTEM_PYTHON_BIN=${SYSTEM_PYTHON_BIN}" \
-    "ANSIBLE_VENV=${ANSIBLE_VENV}" \
-    "ANSIBLE_VENV_BIN=${ANSIBLE_VENV_BIN}" \
-    "ANSIBLE_CORE_VERSION=${ANSIBLE_CORE_VERSION}" \
-    "ANSIBLE_CORE_SPEC=${ANSIBLE_CORE_SPEC}" \
-    "MANAGED_TARGET_PYTHON_HOME=${MANAGED_TARGET_PYTHON_HOME}" \
-    "MANAGED_TARGET_PYTHON_PATH=${MANAGED_TARGET_PYTHON_PATH}" \
-    "MANAGED_TARGET_HANDOFF_MARKER=${MANAGED_TARGET_HANDOFF_MARKER}" \
-    /bin/bash "${COMMON_HELPER_PATH}" ensure-local-ansible
+  runner.ensure.local.ansible
 }
 
 run.feature.playbook() {
-  runner.run.as.root /usr/bin/env -i \
-    HOME=/root \
-    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-    TMPDIR=/tmp \
-    "${ANSIBLE_VENV_BIN}" \
-      -i localhost, \
-      -c local \
-      "${FEATURE_GROUP_VARS_ARGS[@]}" \
-      -e "@${NVIDIA_EXTRA_VARS_PATH}" \
-      "${NVIDIA_PLAYBOOK_PATH}"
+  runner.run.ansible.playbooks "${NVIDIA_EXTRA_VARS_PATH}" "${NVIDIA_PLAYBOOK_PATH}"
 }
 
 report.command() {
   local label="$1"
   shift
-  {
-    printf '\n## %s\n' "${label}"
-    "$@" 2>&1 || true
-  } | tee -a "${PREFLIGHT_REPORT_PATH}"
+  runner.report.command "${PREFLIGHT_REPORT_PATH}" "${label}" "$@"
 }
 
 report.text() {
   local label="$1"
   local path="$2"
-  {
-    printf '\n## %s\n' "${label}"
-    if [[ -r "${path}" ]]; then
-      sed -n '1,240p' "${path}"
-    else
-      printf 'unavailable: %s\n' "${path}"
-    fi
-  } | tee -a "${PREFLIGHT_REPORT_PATH}"
+  runner.report.text "${PREFLIGHT_REPORT_PATH}" "${label}" "${path}"
 }
 
 run.read.only.preflight() {
@@ -660,7 +595,6 @@ main() {
   fi
 
   if [[ "${FEATURE_MODE}" == preflight ]]; then
-    prepare.feature.files
     run.read.only.preflight
     return 0
   fi

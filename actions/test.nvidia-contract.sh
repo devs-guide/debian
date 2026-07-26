@@ -51,7 +51,7 @@ for reference in \
     contract.error "NVIDIA runtime manifest is missing ${reference}"
   fi
 done
-require_contains "setup/cli/nvidia.sh" 'runner.stage.ansible.feature'
+require_contains "setup/cli/nvidia.sh" 'runner.prepare.ansible.feature'
 require_contains "setup/runner.common.sh" 'runner.verify.manifest'
 require_contains "ansible/cli/nvidia.yml" 'file: ../packages.yml'
 require_regex "ansible/packages.yml" '^[[:space:]]*nvidia_runtime_support:'

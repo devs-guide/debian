@@ -330,7 +330,7 @@ EOF
 run.preflight() {
   log "Feature mode: ${FEATURE_MODE}"
   log "Package groups default: base, storage, hardware_info, monitoring_benchmark, performance_power"
-  log "GPU packages are intentionally excluded; use future setup/gpu for GPU drivers, passthrough, and telemetry"
+  log "GPU packages are intentionally excluded; use setup/cli/gpu.sh for shared GPU inventory and feature-specific runners for driver policy"
   log "Package groups optional: archive_iso_tools=${DEBIAN_HARDWARE_ARCHIVE_TOOLS}, firmware=${DEBIAN_HARDWARE_FIRMWARE}, dev_tools=${DEBIAN_HARDWARE_DEV_TOOLS}"
   log "Optional playbooks: performance.yml=${DEBIAN_HARDWARE_APPLY_PERFORMANCE}, power.yml=${DEBIAN_HARDWARE_POWER_POLICY}"
 

@@ -27,7 +27,7 @@ for marker in \
   'tasks/gpu.inventory.yml' \
   'files/gpu/gpu-inventory.py' \
   'files/gpu/nvidia_topology.py' \
-  'runner.stage.ansible.feature' \
+  'runner.prepare.ansible.feature' \
   'runner.ensure.privileged.session'; do
   require_contains "setup/cli/gpu.sh" "${marker}"
 done
@@ -87,11 +87,6 @@ for marker in \
   require_contains "ansible/files/gpu/nvidia_topology.py" "${marker}"
 done
 reject_contains "ansible/files/gpu/nvidia_topology.py" 'if source_label not in labels:'
-for marker in --source-label --destination-label; do
-  require_contains "ansible/files/nvlink/nvidia-topology-parser.py" "${marker}"
-done
-reject_contains "ansible/files/nvlink/nvidia-topology-parser.py" '--source-index'
-reject_contains "ansible/files/nvlink/nvidia-topology-parser.py" '--destination-index'
 
 for consumer in ansible/cli/nvidia.yml ansible/cli/nvlink.yml; do
   if awk '
@@ -106,19 +101,6 @@ done
 
 if [[ "${SHELL_ONLY}" -eq 0 ]]; then
   fixture="${ROOT}/actions/fixtures/nvidia-topology.gpu0-gpu1.txt"
-  result="$(PYTHONPATH="${ROOT}/ansible/files/gpu" python3 "${ROOT}/ansible/files/nvlink/nvidia-topology-parser.py" \
-    --topology "${fixture}" --source-label GPU0 --destination-label GPU1)" || {
-    contract.error "exact NVIDIA topology fixture must parse successfully"
-    result=""
-  }
-  [[ "${result}" == *'"route": "NV4"'* ]] || contract.error "GPU0 -> GPU1 must resolve to NV4 from the exact topology fixture"
-  reordered_fixture="${ROOT}/actions/fixtures/nvidia-topology.gpu1-gpu0.txt"
-  reordered_result="$(PYTHONPATH="${ROOT}/ansible/files/gpu" python3 "${ROOT}/ansible/files/nvlink/nvidia-topology-parser.py" \
-    --topology "${reordered_fixture}" --source-label GPU0 --destination-label GPU1)" || {
-    contract.error "reordered NVIDIA topology fixture must parse successfully"
-    reordered_result=""
-  }
-  [[ "${reordered_result}" == *'"route": "NV4"'* ]] || contract.error "GPU0 -> GPU1 must resolve from a reordered topology header"
   mapping_result="$(PYTHONPATH="${ROOT}/ansible/files/gpu" python3 - "${fixture}" "${ROOT}/ansible/files/gpu/gpu-inventory.py" <<'PY'
 import json
 import importlib.util
@@ -198,10 +180,6 @@ PY
   [[ "${mapping_result}" == *'"row_labels": ["GPU0", "GPU1"]'* ]] || contract.error "topology route-row labels must match runtime indices"
   [[ "${mapping_result}" == *'"topology_label": "GPU0"'* ]] || contract.error "GPU index 0 must map to topology label GPU0"
   [[ "${mapping_result}" == *'"topology_label": "GPU1"'* ]] || contract.error "GPU index 1 must map to topology label GPU1"
-  if PYTHONPATH="${ROOT}/ansible/files/gpu" python3 "${ROOT}/ansible/files/nvlink/nvidia-topology-parser.py" \
-    --topology "${fixture}" --source-label GPU0 --destination-label GPU9 >/dev/null 2>&1; then
-    contract.error "unknown topology labels must fail closed"
-  fi
 else
   echo "[${ACTION_LABEL}] shell-only mode: deferred Python fixture execution to CI"
 fi
