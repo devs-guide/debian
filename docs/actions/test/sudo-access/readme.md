@@ -6,7 +6,8 @@ source_path: actions/test.sudo-access.sh
 
 # Sudo access policy test
 
-Exercises the NVIDIA and NVLink delegated-root contract using shell mocks.
+Exercises the GPU, NVIDIA, NVLink, and LLM-host delegated-root contract using
+shell mocks.
 
 ```bash
 bash actions/test.sudo-access.sh
@@ -25,8 +26,8 @@ The suite verifies:
 - preflight remains unprivileged;
 - delegated root receives only the explicit environment allowlist and original
   argument boundaries; and
-- no delegated sudo command downloads content or invokes the NVIDIA/NVLink
-  runner again.
+- no delegated sudo command downloads content or invokes a feature runner
+  again.
 
 The test also verifies that `apply` is a positional mode token after the
 `bash -s --` separator. It does not invoke real sudo, download content,

@@ -1,0 +1,5 @@
+Memory Device
+        Size: 128 GB
+        Type Detail: Non-Volatile Registered (Buffered)
+        Manufacturer: Intel
+        Part Number: Persistent Memory

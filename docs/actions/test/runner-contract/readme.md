@@ -13,9 +13,10 @@ Run the complete shared-runner contract:
 bash actions/test.runner-contract.sh
 ```
 
-It checks the shared privilege/staging API, NVIDIA and NVLink integration,
-clean root environment, single bootstrap fetch, and documented legacy-runner
-inventory. It then executes the shell-only staging and sudo mock suites.
+It checks the shared privilege/staging API, GPU/NVIDIA/NVLink and LLM-host
+integration, clean root environment, single bootstrap fetch, and documented
+legacy-runner inventory. It then executes the shell-only staging and sudo mock
+suites.
 
 The action does not call real sudo, access the network, install software, or
 run Ansible.

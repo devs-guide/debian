@@ -23,6 +23,7 @@ bash actions/test.documentation-contract.sh
 bash actions/test.publication-manifest.sh
 bash actions/test.runner-contract.sh
 bash actions/test.gpu-contract.sh --shell-only
+bash actions/test.llm-host-contract.sh --shell-only
 bash actions/test.nvidia-contract.sh --shell-only
 bash actions/test.nvlink-contract.sh --shell-only
 ```
@@ -42,6 +43,7 @@ selected output directory.
 - [Test sudo access policy](/debian/actions/test/sudo-access/)
 - [Test runner staging](/debian/actions/test/runner-staging/)
 - [Test GPU contract](/debian/actions/test/gpu-contract/)
+- [Test LLM host contract](/debian/actions/test/llm-host-contract/)
 - [Test NVIDIA contract](/debian/actions/test/nvidia-contract/)
 - [Test NVIDIA facts](/debian/actions/test/nvidia-facts/)
 - [Test NVLink contract](/debian/actions/test/nvlink-contract/)

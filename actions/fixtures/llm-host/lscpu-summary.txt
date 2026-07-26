@@ -1,0 +1,10 @@
+Architecture:                         x86_64
+Byte Order:                           Little Endian
+CPU(s):                               8
+On-line CPU(s) list:                  0-7
+Model name:                           Intel(R) Xeon(R) Platinum 8351N CPU @ 2.40GHz
+Socket(s):                            1
+Core(s) per socket:                   4
+Thread(s) per core:                   2
+NUMA node(s):                         2
+Virtualization:                       VT-x

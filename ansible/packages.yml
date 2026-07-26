@@ -107,6 +107,24 @@ groups:
     description: Build toolchain for the opt-in directed CUDA P2P helper; never installed by baseline playbooks.
     packages:
       - build-essential
+  llm_host_support:
+    description: Opt-in host inventory and capacity tools for LLM feature runners; never installed by baseline playbooks.
+    packages:
+      - numactl
+      - libnuma-dev
+      - hwloc
+      - libhwloc-dev
+      - jq
+      - pciutils
+      - dmidecode
+      - linux-perf
+      - sysstat
+      - vmtouch
+      - nvme-cli
+      - htop
+      - iotop-c
+      - linux-cpupower
+      - ndctl
   dev_tools:
     description: Developer and shell utilities.
     packages:

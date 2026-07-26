@@ -77,7 +77,7 @@ is_publishable_markdown() {
 
   case "${relative}" in
     readme.md|\
-    cli/readme.md|cli/*/readme.md|\
+    cli/readme.md|cli/*/readme.md|cli/*/*/readme.md|\
     setup/readme.md|setup/*/readme.md|\
     ansible/readme.md|ansible/*/readme.md|\
     actions/readme.md|actions/*/readme.md|actions/*/*/readme.md|\
@@ -139,6 +139,9 @@ breadcrumb_label() {
     actions) printf 'Actions' ;;
     kiosk) printf 'Kiosk' ;;
     history) printf 'History' ;;
+    gpu) printf 'GPU' ;;
+    llm) printf 'LLM' ;;
+    host) printf 'Host' ;;
     nvidia) printf 'NVIDIA' ;;
     nvlink) printf 'NVLink' ;;
     startx) printf 'STARTX' ;;
@@ -164,6 +167,8 @@ breadcrumb_label() {
     test) printf 'Test' ;;
     sudo-access) printf 'Sudo access' ;;
     documentation-contract) printf 'Documentation contract' ;;
+    gpu-contract) printf 'GPU contract' ;;
+    llm-host-contract) printf 'LLM host contract' ;;
     nvidia-contract) printf 'NVIDIA contract' ;;
     nvlink-contract) printf 'NVLink contract' ;;
     publication-manifest) printf 'Publication manifest' ;;

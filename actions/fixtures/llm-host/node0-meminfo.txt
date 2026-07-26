@@ -1,0 +1,2 @@
+Node 0 MemTotal:       268435456 kB
+Node 0 MemFree:        209715200 kB

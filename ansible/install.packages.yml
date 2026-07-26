@@ -17,6 +17,9 @@
       - desktop_rdp_optional
       - apple_media_optional
       - gpu_vendor_optional
+      - nvidia_runtime_support
+      - nvlink_validation_support
+      - llm_host_support
       - performance_power
       - firmware
     package_group_allowlist: []

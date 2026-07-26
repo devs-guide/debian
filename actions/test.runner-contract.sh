@@ -42,7 +42,7 @@ for marker in \
   require_contains "${runner_helper}" "${marker}"
 done
 
-for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   runner_path="${ROOT}/${runner}"
   direct_fetch_count="$(
     grep -Ec '^[[:space:]]*(if[[:space:]]+![[:space:]]+)?wget[[:space:]]+-qO[[:space:]]' "${runner_path}" || true
@@ -80,7 +80,7 @@ for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   fi
 done
 
-for runner in setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for runner in setup/cli/llm/host.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   require_contains "${runner}" 'runner.ensure.local.ansible'
 done
 
@@ -104,7 +104,7 @@ done < <(
     -exec grep -l 'ensure\.root\.or\.sudo\.reexec' {} + \
     | sort
 )
-for migrated_runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for migrated_runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   if sed -n '/The following legacy runners/,/They remain unchanged/p' "${legacy_runner_inventory}" \
     | grep -Fq "\`${migrated_runner}\`"; then
     contract.error "migration inventory incorrectly marks ${migrated_runner} as legacy"

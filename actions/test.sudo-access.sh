@@ -229,7 +229,7 @@ expect_status 1 "${CASE_STATUS}" "no-TTY helper"
 expect_contains 'no usable /dev/tty is available' "${CASE_OUTPUT}" "no-TTY diagnostic"
 expect_count 0 'sudo <-v>' "${CASE_TRACE}" "no-TTY prompt"
 
-for runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   runner_path="${ROOT}/${runner}"
 
   # A cancelled prompt must stop at the first managed-mode operation.
@@ -388,5 +388,6 @@ expect_not_contains 'curl' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'nvidia.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'nvlink.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'gpu.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
+expect_not_contains 'host.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 
 exit "${rc}"
