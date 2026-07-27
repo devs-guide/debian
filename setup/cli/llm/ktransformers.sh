@@ -82,9 +82,10 @@ Options:
   --matrix-profile=PROFILE       Select an exact reviewed compatibility entry.
   --repository-url=HTTPS_URL     Exact KTransformers HTTPS Git repository.
   --release=TAG                  Exact reviewed KTransformers tag.
-  --commit=FULL_40_CHAR_SHA      Lowercase full KTransformers commit.
+  --commit=FULL_40_CHARACTER_SHA Lowercase full KTransformers commit.
   --sglang-repository-url=URL    Exact reviewed SGLang-KT HTTPS repository.
-  --sglang-commit=FULL_SHA       Lowercase full SGLang submodule commit.
+  --sglang-commit=FULL_40_CHARACTER_SHA
+                                 Lowercase full SGLang submodule commit.
   Toolchain:
   --install-profile=source       Use the reviewed source-build workflow.
   --python-version=X.Y.Z         Exact matrix-approved Python 3.12 patch.

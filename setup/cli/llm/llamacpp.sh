@@ -91,7 +91,7 @@ Options:
   --matrix-profile=PROFILE       Select an exact reviewed compatibility entry.
   --repository-url=HTTPS_URL     Credential-free HTTPS Git URL ending in .git.
   --release=TAG                  Exact reviewed upstream tag.
-  --commit=FULL_40_CHAR_SHA      Lowercase full commit resolved from the tag.
+  --commit=FULL_40_CHARACTER_SHA Lowercase full commit resolved from the tag.
   Build:
   --build-profile=PROFILE        Reviewed CPU/CUDA build-policy identifier.
   --cuda-architectures=LIST      Reviewed CUDA SM list; initial profile uses 86.

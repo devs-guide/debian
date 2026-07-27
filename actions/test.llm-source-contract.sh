@@ -43,7 +43,6 @@ for runner in setup/cli/llm/llamacpp.sh setup/cli/llm/ktransformers.sh; do
     '--repository-url=' \
     '--release=' \
     '--commit=' \
-    'FULL_40_CHARACTER_SHA' \
     'runner.ensure.privileged.session' \
     'runner.prepare.ansible.feature' \
     'validate.reviewed.source' \
@@ -53,6 +52,16 @@ for runner in setup/cli/llm/llamacpp.sh setup/cli/llm/ktransformers.sh; do
   reject_regex "${runner}" 'https://[^[:space:]]+@'
   reject_regex "${runner}" 'git[[:space:]]+clone[^#]*(main|master|latest)'
 done
+
+require_contains \
+  "setup/cli/llm/llamacpp.sh" \
+  '--commit=FULL_40_CHARACTER_SHA'
+require_contains \
+  "setup/cli/llm/ktransformers.sh" \
+  '--commit=FULL_40_CHARACTER_SHA'
+require_contains \
+  "setup/cli/llm/ktransformers.sh" \
+  '--sglang-commit=FULL_40_CHARACTER_SHA'
 
 for marker in \
   '--sglang-repository-url=' \
