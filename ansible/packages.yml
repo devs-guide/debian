@@ -125,6 +125,49 @@ groups:
       - iotop-c
       - linux-cpupower
       - ndctl
+  llamacpp_build:
+    description: Opt-in native CPU and CUDA build toolchain for the reviewed llama.cpp feature; never installed by baseline playbooks.
+    packages:
+      - build-essential
+      - cmake
+      - ninja-build
+      - git
+      - pkg-config
+      - ccache
+      - libnuma-dev
+      - libssl-dev
+      - jq
+  ktransformers_build:
+    description: Opt-in Python, KT-Kernel, and SGLang-KT source build toolchain; never installed by baseline playbooks.
+    packages:
+      - build-essential
+      - cmake
+      - ninja-build
+      - git
+      - pkg-config
+      - ccache
+      - patchelf
+      - numactl
+      - libnuma-dev
+      - libhwloc-dev
+      - hwloc
+      - libtbb-dev
+      - libssl-dev
+      - zlib1g-dev
+      - libbz2-dev
+      - libgdbm-dev
+      - libgdbm-compat-dev
+      - libreadline-dev
+      - libsqlite3-dev
+      - libffi-dev
+      - liblzma-dev
+      - libncurses-dev
+      - libnss3-dev
+      - libexpat1-dev
+      - uuid-dev
+      - tk-dev
+      - xz-utils
+      - jq
   dev_tools:
     description: Developer and shell utilities.
     packages:

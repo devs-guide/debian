@@ -82,6 +82,15 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
     --no-install-support-packages
 ```
 
+For a checked-out repository, use the same modes and flags directly:
+
+```bash
+./setup/cli/llm/host.sh preflight \
+  --profile=generic \
+  --owner="$(id -un)" \
+  --group="$(id -gn)"
+```
+
 ## Flag reference
 
 | Flag | Behavior |
@@ -100,6 +109,91 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
 | `--install-support-packages` | On `apply`, installs only the opt-in `llm_host_support` package group. |
 | `--no-install-support-packages` | Skips the optional package transaction. This is the default. |
 | `--help` | Prints usage without staging or changing the host. |
+
+Flag dependencies fail before staging or sudo:
+
+- `--require-p2p` requires `--require-nvlink`.
+- `--require-nvlink` requires `--require-nvidia`.
+- `--profile=icelake-pmem-dual-3090` enables the Memory Mode, NVIDIA,
+  NVLink, P2P, and 36-physical-core requirements even when the equivalent
+  flags are omitted.
+
+## Recommended remote acceptance sequence
+
+After publishing the runner, execute these steps on the target host in order.
+Keep the policy values identical across all managed runs.
+
+1. Capture a read-only report:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
+  bash -s -- preflight \
+    --profile=icelake-pmem-dual-3090 \
+    --owner=gpt \
+    --group=gpt \
+    --host-reserve-gib=96 \
+    --gpu-reserve-mib=4096 \
+    --require-physical-cores=36 \
+    --require-memory-mode \
+    --require-nvidia \
+    --require-nvlink \
+    --require-p2p \
+    --no-install-support-packages
+```
+
+2. Apply the contract and install only the optional host support group:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
+  bash -s -- apply \
+    --profile=icelake-pmem-dual-3090 \
+    --owner=gpt \
+    --group=gpt \
+    --host-reserve-gib=96 \
+    --gpu-reserve-mib=4096 \
+    --require-physical-cores=36 \
+    --require-memory-mode \
+    --require-nvidia \
+    --require-nvlink \
+    --require-p2p \
+    --install-support-packages
+```
+
+3. Run the same `apply` command again. The second run is the idempotency
+   check: no existing directory ownership or modes should be rewritten, and
+   already-installed packages should remain unchanged.
+
+4. Validate without allowing a package transaction:
+
+```bash
+wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
+  bash -s -- validate \
+    --profile=icelake-pmem-dual-3090 \
+    --owner=gpt \
+    --group=gpt \
+    --host-reserve-gib=96 \
+    --gpu-reserve-mib=4096 \
+    --require-physical-cores=36 \
+    --require-memory-mode \
+    --require-nvidia \
+    --require-nvlink \
+    --require-p2p \
+    --no-install-support-packages
+```
+
+5. Review the persisted result and managed inspection helpers:
+
+```bash
+sudo sed -n '1,320p' /etc/ansible/debian/facts/llm-host.yml
+/opt/llm/bin/llm-host-status
+/opt/llm/bin/llm-host-capacity
+/opt/llm/bin/llm-host-numa
+/opt/llm/bin/llm-host-env
+```
+
+Acceptance requires `readiness.host_ready: true`, matching current GPU UUIDs,
+the expected CPU/NUMA and Memory Mode evidence, and no unexpected ownership
+or mode changes under `/opt/llm` or `/models`.
 
 ## Facts and ownership
 
@@ -138,3 +232,12 @@ unavailable. `unknown` makes no claim. The generic profile can record
 PCIe or NVLink bandwidth is not hard-coded here. Link-rate evidence remains
 owned by the NVLink producer and is treated as positive/active evidence rather
 than a fixed throughput threshold.
+
+## Next implementation
+
+After remote preflight, first apply, idempotent second apply, and validate are
+accepted, run `setup/cli/llm/llamacpp.sh` with one reviewed repository/tag/full
+commit tuple. Accept its model-free build and one local-GGUF smoke before
+running `setup/cli/llm/ktransformers.sh`. KTransformers remains independently
+owned and does not consume the llama.cpp runtime. Model acquisition and the
+first 80 GB MoE smoke remain later acceptance gates.

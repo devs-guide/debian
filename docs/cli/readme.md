@@ -16,6 +16,8 @@ a shell pipeline.
 - [Codex](/debian/cli/codex/) — Node and Codex CLI setup.
 - [GPU](/debian/cli/gpu/) — shared PCI/runtime inventory for GPU-aware features.
 - [LLM host](/debian/cli/llm/host/) — shared CPU, NUMA, memory, and GPU-producer readiness contract.
+- [llama.cpp](/debian/cli/llm/llamacpp/) — reviewed exact-source CPU/CUDA runtime.
+- [KTransformers](/debian/cli/llm/ktransformers/) — reviewed heterogeneous KT-Kernel/SGLang-KT runtime.
 - [Kiosk app](/debian/cli/kiosk.app/) — kiosk feature orchestration.
 - [Node](/debian/cli/node/) — Node LTS setup.
 - [NVIDIA](/debian/cli/nvidia/) — opt-in NVIDIA driver and CUDA readiness.

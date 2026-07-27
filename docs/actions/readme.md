@@ -30,7 +30,9 @@ bash actions/test.nvlink-contract.sh --shell-only
 
 These checks have no install or deployment side effect. Rendering/publishing
 commands are documented separately because they intentionally write a
-selected output directory.
+selected output directory. The LLM reviewed-source contract is intentionally
+left to GitHub Actions; CUDA compilation and runtime acceptance are performed
+only on the remote GPU host.
 
 - [Build documentation](/debian/actions/build-docs/)
 - [Publish Pages tree](/debian/actions/publish/)
@@ -44,6 +46,7 @@ selected output directory.
 - [Test runner staging](/debian/actions/test/runner-staging/)
 - [Test GPU contract](/debian/actions/test/gpu-contract/)
 - [Test LLM host contract](/debian/actions/test/llm-host-contract/)
+- [Test LLM reviewed-source contract](/debian/actions/test/llm-source-contract/)
 - [Test NVIDIA contract](/debian/actions/test/nvidia-contract/)
 - [Test NVIDIA facts](/debian/actions/test/nvidia-facts/)
 - [Test NVLink contract](/debian/actions/test/nvlink-contract/)

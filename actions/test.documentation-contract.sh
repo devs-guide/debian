@@ -64,8 +64,16 @@ require.runner.options.documented "setup/cli/nvidia.sh" "docs/cli/nvidia/readme.
 require.runner.options.documented "setup/cli/nvlink.sh" "docs/cli/nvlink/readme.md"
 require.runner.options.documented "setup/cli/gpu.sh" "docs/cli/gpu/readme.md"
 require.runner.options.documented "setup/cli/llm/host.sh" "docs/cli/llm/host/readme.md"
+require.runner.options.documented "setup/cli/llm/llamacpp.sh" "docs/cli/llm/llamacpp/readme.md"
+require.runner.options.documented "setup/cli/llm/ktransformers.sh" "docs/cli/llm/ktransformers/readme.md"
 
-for document in docs/cli/gpu/readme.md docs/cli/llm/host/readme.md docs/cli/nvidia/readme.md docs/cli/nvlink/readme.md; do
+for document in \
+  docs/cli/gpu/readme.md \
+  docs/cli/llm/host/readme.md \
+  docs/cli/llm/llamacpp/readme.md \
+  docs/cli/llm/ktransformers/readme.md \
+  docs/cli/nvidia/readme.md \
+  docs/cli/nvlink/readme.md; do
   for marker in \
     'wget -qO- https://devs-guide.github.io/debian/setup/cli/' \
     '/dev/tty'; do
@@ -80,6 +88,8 @@ require_contains "docs/cli/llm/host/readme.md" '/etc/ansible/debian/facts/llm-ho
 require_contains "docs/cli/llm/host/readme.md" '/etc/ansible/debian/facts/gpu.yml'
 require_contains "docs/cli/llm/host/readme.md" '/etc/ansible/debian/facts/nvidia.yml'
 require_contains "docs/cli/llm/host/readme.md" '/etc/ansible/debian/facts/nvlink.yml'
+require_contains "docs/cli/llm/llamacpp/readme.md" '/etc/ansible/debian/facts/llamacpp.yml'
+require_contains "docs/cli/llm/ktransformers/readme.md" '/etc/ansible/debian/facts/ktransformers.yml'
 require_contains "docs/cli/nvidia/readme.md" '/etc/ansible/debian/facts/nvidia.yml'
 require_contains "docs/cli/nvidia/readme.md" '/etc/ansible/debian/facts/gpu.yml'
 require_contains "docs/cli/nvlink/readme.md" '/etc/ansible/debian/facts/nvidia.yml'

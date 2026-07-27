@@ -97,11 +97,13 @@ preflight contents, and managed-mode decisions remain in each CLI runner.
 
 ## Migration status
 
-The GPU, NVIDIA, NVLink, and LLM-host runners use the shared privilege and
-staging contracts:
+The GPU, NVIDIA, NVLink, LLM-host, llama.cpp, and KTransformers runners use
+the shared privilege and staging contracts:
 
 - `setup/cli/gpu.sh`
 - `setup/cli/llm/host.sh`
+- `setup/cli/llm/llamacpp.sh`
+- `setup/cli/llm/ktransformers.sh`
 - `setup/cli/nvidia.sh`
 - `setup/cli/nvlink.sh`
 

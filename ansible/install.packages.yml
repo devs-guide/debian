@@ -20,6 +20,8 @@
       - nvidia_runtime_support
       - nvlink_validation_support
       - llm_host_support
+      - llamacpp_build
+      - ktransformers_build
       - performance_power
       - firmware
     package_group_allowlist: []

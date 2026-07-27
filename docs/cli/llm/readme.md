@@ -12,6 +12,13 @@ owns its own facts and managed artifacts while consuming earlier contracts.
 
 - [Host readiness](/debian/cli/llm/host/) — CPU, NUMA, memory, reserve, and
   GPU-producer prerequisites.
+- [llama.cpp](/debian/cli/llm/llamacpp/) — exact-source CPU/CUDA build and
+  opt-in local-GGUF smoke.
+- [KTransformers](/debian/cli/llm/ktransformers/) — exact-source KT-Kernel and
+  SGLang-KT model-free toolchain.
 
-KTransformers, model-catalog, smoke-test, llama.cpp, and Ollama runners are
-later phases. Phase 1 installs none of those runtimes and downloads no models.
+The accepted order is host readiness, standalone llama.cpp build/smoke,
+KTransformers toolchain, model catalog/acquisition, then the bounded 80 GB MoE
+smoke. llama.cpp and KTransformers accept exact reviewed repository URLs and
+full commits so future builds can be added through compatibility-matrix
+updates without following floating upstream branches.
