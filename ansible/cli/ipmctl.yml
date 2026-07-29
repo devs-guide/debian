@@ -66,6 +66,8 @@
         ipmctl_edk2_source_dir: "/opt/src/ipmctl/{{ ipmctl_profile }}/edk2"
         ipmctl_worktree_dir: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}/ipmctl"
         ipmctl_edk2_worktree_dir: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}/edk2"
+        ipmctl_os_patch_script_path: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}/ipmctl/{{ ipmctl_profile_policy.os_patch_script }}"
+        ipmctl_os_patch_file_path: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}/ipmctl/{{ ipmctl_profile_policy.os_patch }}"
         ipmctl_run_log_dir: "{{ ipmctl_log_root }}/{{ ipmctl_run_id }}"
 
     - name: Validate exact ipmctl source and mode policy
@@ -78,6 +80,9 @@
           - ipmctl_profile_policy.edk2_repository_url == ipmctl_edk2_repository_url
           - ipmctl_profile_policy.edk2_release == ipmctl_edk2_release
           - ipmctl_profile_policy.edk2_commit == ipmctl_edk2_commit
+          - ipmctl_profile_policy.binary_version is match('^[0-9]{2}[.][0-9]{2}[.][0-9]{2}[.][0-9]{4}$')
+          - ipmctl_profile_policy.os_patch_script == 'patch_OS.sh'
+          - ipmctl_profile_policy.os_patch == 'src/os/patches/0001-Ignore-STATIC_ASSERTs-and-NULL-define-for-os-and-ut-builds.patch'
           - ipmctl_build_type_effective in ipmctl_profile_policy.allowed_build_types
           - ipmctl_profile_policy.install_prefix == '/usr/local'
           - ipmctl_commit is match('^[0-9a-f]{40}$')
@@ -166,6 +171,27 @@
             and (ipmctl_previous_facts.ipmctl.source.profile | default('') == ipmctl_profile)
             and (ipmctl_previous_facts.ipmctl.source.commit | default('') == ipmctl_commit)
             and (ipmctl_previous_facts.ipmctl.source.edk2_commit | default('') == ipmctl_edk2_commit)
+            and
+            (
+              ipmctl_previous_facts.ipmctl.source.binary_version
+              | default('')
+              ==
+              ipmctl_profile_policy.binary_version
+            )
+            and
+            (
+              ipmctl_previous_facts.ipmctl.source.os_patch_script
+              | default('')
+              ==
+              ipmctl_profile_policy.os_patch_script
+            )
+            and
+            (
+              ipmctl_previous_facts.ipmctl.source.os_patch
+              | default('')
+              ==
+              ipmctl_profile_policy.os_patch
+            )
             and (ipmctl_previous_facts.ipmctl.source.build_type | default('') == ipmctl_build_type_effective)
           }}
 
@@ -349,6 +375,119 @@
         - ipmctl_mode_effective == 'apply'
         - not ipmctl_install_is_current | bool
 
+    - name: Inspect pinned upstream Linux patch procedure
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ ipmctl_os_patch_script_path }}"
+        - "{{ ipmctl_os_patch_file_path }}"
+      register: ipmctl_os_patch_stats
+      when:
+        - ipmctl_mode_effective == 'apply'
+        - not ipmctl_install_is_current | bool
+        - ipmctl_updateedk_result.rc | default(1) | int == 0
+
+    - name: Inventory pinned upstream Linux patches
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/find
+          - "{{ ipmctl_worktree_dir }}/src/os/patches"
+          - -maxdepth
+          - "1"
+          - -type
+          - f
+          - -name
+          - "*.patch"
+          - -printf
+          - "%f\n"
+      register: ipmctl_os_patch_inventory
+      changed_when: false
+      failed_when: false
+      when:
+        - ipmctl_mode_effective == 'apply'
+        - not ipmctl_install_is_current | bool
+        - ipmctl_updateedk_result.rc | default(1) | int == 0
+
+    - name: Inspect pinned upstream Linux patch targets
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/git
+          - -C
+          - "{{ ipmctl_worktree_dir }}"
+          - apply
+          - --numstat
+          - "{{ ipmctl_os_patch_file_path }}"
+      register: ipmctl_os_patch_plan
+      changed_when: false
+      failed_when: false
+      when:
+        - ipmctl_mode_effective == 'apply'
+        - not ipmctl_install_is_current | bool
+        - ipmctl_updateedk_result.rc | default(1) | int == 0
+
+    - name: Require exact pinned upstream Linux patch contract
+      ansible.builtin.assert:
+        that:
+          - ipmctl_os_patch_stats.results[0].stat.exists | default(false)
+          - ipmctl_os_patch_stats.results[1].stat.exists | default(false)
+          - ipmctl_os_patch_inventory.rc | default(1) | int == 0
+          - >-
+            (ipmctl_os_patch_inventory.stdout_lines | default([]))
+            ==
+            [ipmctl_profile_policy.os_patch | basename]
+          - ipmctl_os_patch_plan.rc | default(1) | int == 0
+          - ipmctl_os_patch_plan.stdout_lines | default([]) | length == 1
+          - >-
+            (
+              (
+                ipmctl_os_patch_plan.stdout_lines
+                | default([''])
+                | first
+              ).split('\t')
+              | last
+            )
+            ==
+            'MdePkg/Include/Base.h'
+        fail_msg: >-
+          The pinned upstream Linux patch procedure is missing, changed, or
+          targets files outside the reviewed EDK2 Base.h compatibility change.
+      when:
+        - ipmctl_mode_effective == 'apply'
+        - not ipmctl_install_is_current | bool
+        - ipmctl_updateedk_result.rc | default(1) | int == 0
+
+    - name: Apply pinned upstream Linux compatibility patch
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/bash
+          - "{{ ipmctl_os_patch_script_path }}"
+        chdir: "{{ ipmctl_worktree_dir }}"
+      register: ipmctl_os_patch_result
+      changed_when: ipmctl_os_patch_result.rc == 0
+      failed_when: false
+      when:
+        - ipmctl_mode_effective == 'apply'
+        - not ipmctl_install_is_current | bool
+        - ipmctl_updateedk_result.rc | default(1) | int == 0
+
+    - name: Verify pinned upstream Linux compatibility patch application
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/git
+          - -C
+          - "{{ ipmctl_worktree_dir }}"
+          - apply
+          - --reverse
+          - --check
+          - "{{ ipmctl_os_patch_file_path }}"
+      register: ipmctl_os_patch_verify
+      changed_when: false
+      failed_when: false
+      when:
+        - ipmctl_mode_effective == 'apply'
+        - not ipmctl_install_is_current | bool
+        - ipmctl_os_patch_result.rc | default(1) | int == 0
+
     - name: Configure reviewed ipmctl build
       ansible.builtin.command:
         argv:
@@ -358,6 +497,7 @@
           - -B
           - "{{ ipmctl_worktree_dir }}/build"
           - "-DCMAKE_BUILD_TYPE={{ 'Release' if ipmctl_build_type_effective == 'release' else 'Debug' }}"
+          - "-DBUILDNUM={{ ipmctl_profile_policy.binary_version }}"
           - -DCMAKE_INSTALL_PREFIX=/usr/local
         creates: "{{ ipmctl_worktree_dir }}/build/CMakeCache.txt"
       register: ipmctl_configure_result
@@ -366,7 +506,7 @@
       when:
         - ipmctl_mode_effective == 'apply'
         - not ipmctl_install_is_current | bool
-        - ipmctl_updateedk_result.rc | default(1) | int == 0
+        - ipmctl_os_patch_verify.rc | default(1) | int == 0
 
     - name: Build reviewed ipmctl source
       ansible.builtin.command:
@@ -394,6 +534,18 @@
           updateedk rc={{ ipmctl_updateedk_result.rc | default('not-run') }}
           {{ ipmctl_updateedk_result.stdout | default('') }}
           {{ ipmctl_updateedk_result.stderr | default('') }}
+          patch inventory rc={{ ipmctl_os_patch_inventory.rc | default('not-run') }}
+          {{ ipmctl_os_patch_inventory.stdout | default('') }}
+          {{ ipmctl_os_patch_inventory.stderr | default('') }}
+          patch plan rc={{ ipmctl_os_patch_plan.rc | default('not-run') }}
+          {{ ipmctl_os_patch_plan.stdout | default('') }}
+          {{ ipmctl_os_patch_plan.stderr | default('') }}
+          patch apply rc={{ ipmctl_os_patch_result.rc | default('not-run') }}
+          {{ ipmctl_os_patch_result.stdout | default('') }}
+          {{ ipmctl_os_patch_result.stderr | default('') }}
+          patch verify rc={{ ipmctl_os_patch_verify.rc | default('not-run') }}
+          {{ ipmctl_os_patch_verify.stdout | default('') }}
+          {{ ipmctl_os_patch_verify.stderr | default('') }}
           configure rc={{ ipmctl_configure_result.rc | default('not-run') }}
           {{ ipmctl_configure_result.stdout | default('') }}
           {{ ipmctl_configure_result.stderr | default('') }}
@@ -408,6 +560,10 @@
       ansible.builtin.assert:
         that:
           - ipmctl_updateedk_result.rc | default(1) | int == 0
+          - ipmctl_os_patch_inventory.rc | default(1) | int == 0
+          - ipmctl_os_patch_plan.rc | default(1) | int == 0
+          - ipmctl_os_patch_result.rc | default(1) | int == 0
+          - ipmctl_os_patch_verify.rc | default(1) | int == 0
           - ipmctl_configure_result.rc | default(1) | int == 0
           - ipmctl_build_result.rc | default(1) | int == 0
         fail_msg: >-
@@ -470,7 +626,7 @@
         that:
           - ipmctl_inventory.schema_version | int == 1
           - ipmctl_inventory.binary.available | bool
-          - (ipmctl_release | regex_replace('^v', '')) in ipmctl_inventory.binary.version
+          - ipmctl_profile_policy.binary_version in ipmctl_inventory.binary.version
           - ipmctl_inventory.readiness.inventory_ready | bool
         fail_msg: >-
           The reviewed ipmctl binary is unavailable, has the wrong version, or
@@ -677,6 +833,9 @@
               edk2_repository_url: {{ ipmctl_edk2_repository_url | to_json }}
               edk2_release: {{ ipmctl_edk2_release | to_json }}
               edk2_commit: {{ ipmctl_edk2_commit | to_json }}
+              binary_version: {{ ipmctl_profile_policy.binary_version | to_json }}
+              os_patch_script: {{ ipmctl_profile_policy.os_patch_script | to_json }}
+              os_patch: {{ ipmctl_profile_policy.os_patch | to_json }}
               build_type: {{ ipmctl_build_type_effective | to_json }}
               install_prefix: "/usr/local"
             inventory: {{ ipmctl_final_inventory | to_json }}

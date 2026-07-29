@@ -26,6 +26,8 @@ supporting every Intel Optane PMem generation:
 | edk2 repository | `https://github.com/tianocore/edk2.git` |
 | edk2 tag | `edk2-stable202405` |
 | edk2 commit | `3e722403cd16388a0e4044e705a2b34c841d76ca` |
+| managed binary version | `03.00.00.0538` |
+| upstream Linux patch script | `patch_OS.sh` |
 | install prefix | `/usr/local` |
 
 The release includes build-procedure fixes and a PBR parser crash fix. This is
@@ -38,6 +40,7 @@ References:
 - [Debian package search](https://packages.debian.org/ipmctl)
 - [upstream 03.x README](https://github.com/intel/ipmctl/blob/v03.00.00.0538/README.md)
 - [v03.00.00.0538 release](https://github.com/intel/ipmctl/releases/tag/v03.00.00.0538)
+- [upstream Linux build failure and patch procedure](https://github.com/intel/ipmctl/issues/199)
 - [upstream CMake dependency policy](https://github.com/intel/ipmctl/blob/v03.00.00.0538/CMakeLists.txt)
 - [Debian 13 libndctl6](https://packages.debian.org/trixie/libs/libndctl6)
 - [ipmctl module output contract](https://docs.pmem.io/ipmctl-user-guide/module-discovery/show-device)
@@ -92,6 +95,24 @@ With `--install-build-tools`, the runner authenticates sudo once and installs
 only the opt-in `ipmctl_build` package group. It then fetches and verifies both
 reviewed Git tags as the invoking user. Source-network access never runs under
 sudo.
+
+The pinned Linux build order is `updateedk.sh`, `patch_OS.sh`, then CMake.
+Intel's upstream patch disables the EDK2 `NULL` definition and incompatible
+UEFI static assertions only for OS/unit-test builds. This preserves the
+Release build's `-Werror` policy on Debian 13 and avoids a project-owned EDK2
+fork.
+
+The `.0499` and `.0538` upstream tags point to the same ipmctl commit, while
+`.0499` is the annotated tag preferred by an unconstrained `git describe`.
+Both CI and the remote build therefore pass
+`-DBUILDNUM=03.00.00.0538` explicitly and verify that exact installed binary
+version. Source tag, source commit, and binary version remain separate
+provenance fields.
+
+Managed facts created before these binary-version and upstream-patch
+provenance fields are considered stale. The next `apply` rebuilds the managed
+installation once using the corrected sequence; later matching runs remain
+idempotent.
 
 Then perform privileged read-only validation:
 

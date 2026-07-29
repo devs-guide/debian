@@ -28,6 +28,7 @@ for file in \
   ansible/files/ipmctl/source-profile.py \
   ansible/files/ipmctl/ipmctl-inventory.py \
   ansible/files/ipmctl/compatibility-matrix.yml \
+  actions/test.ipmctl-source-build.sh \
   docs/cli/ipmctl/readme.md \
   actions/fixtures/ipmctl/memory-mode/version.txt \
   actions/fixtures/ipmctl/memory-mode/memory-resources.txt \
@@ -68,6 +69,13 @@ for marker in \
   "ipmctl_mode_effective == 'goal-apply'" \
   'ipmctl_goal_confirmation_authorized | bool' \
   'Return machine-readable PMem goal-plan disposition' \
+  'Apply pinned upstream Linux compatibility patch' \
+  'Verify pinned upstream Linux compatibility patch application' \
+  '"-DBUILDNUM={{ ipmctl_profile_policy.binary_version }}"' \
+  'ipmctl_previous_facts.ipmctl.source.binary_version' \
+  'ipmctl_previous_facts.ipmctl.source.os_patch_script' \
+  'ipmctl_previous_facts.ipmctl.source.os_patch' \
+  'ipmctl_profile_policy.binary_version in ipmctl_inventory.binary.version' \
   'namespace_deleted: false' \
   'pcd_deleted: false' \
   'firmware_changed: false' \
@@ -75,6 +83,36 @@ for marker in \
   'reboot_performed: false'; do
   require_contains "ansible/cli/ipmctl.yml" "${marker}"
 done
+
+for marker in \
+  'IPMCTL_BINARY_VERSION="03.00.00.0538"' \
+  'IPMCTL_OS_PATCH="src/os/patches/0001-Ignore-STATIC_ASSERTs-and-NULL-define-for-os-and-ut-builds.patch"' \
+  './updateedk.sh' \
+  './patch_OS.sh' \
+  'git apply --numstat' \
+  'git apply --reverse --check' \
+  '-DBUILDNUM="${IPMCTL_BINARY_VERSION}"' \
+  "grep -R -Fq -- '-Werror' build/CMakeFiles" \
+  'version_token' \
+  'ldd "${TEST_ROOT}/install/bin/ipmctl"'; do
+  require_contains "actions/test.ipmctl-source-build.sh" "${marker}"
+done
+
+for file in actions/test.ipmctl-source-build.sh ansible/cli/ipmctl.yml; do
+  reject_contains "${file}" '-Wno-error'
+done
+
+update_line="$(grep -n -m1 'updateedk[.]sh' actions/test.ipmctl-source-build.sh | cut -d: -f1)"
+patch_line="$(
+  grep -n -m1 '^[[:space:]]*[.]/patch_OS[.]sh[[:space:]]*|' \
+    actions/test.ipmctl-source-build.sh |
+    cut -d: -f1
+)"
+cmake_line="$(grep -n -m1 'cmake -S' actions/test.ipmctl-source-build.sh | cut -d: -f1)"
+if [[ -z "${update_line}" || -z "${patch_line}" || -z "${cmake_line}" ]] ||
+  ((update_line >= patch_line || patch_line >= cmake_line)); then
+  contract.error "ipmctl source build must run updateedk.sh, patch_OS.sh, then CMake"
+fi
 
 for prohibited in \
   'delete -pcd' \

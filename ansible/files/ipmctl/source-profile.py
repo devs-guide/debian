@@ -93,6 +93,18 @@ def main() -> int:
     }
     if mismatches:
         fail("source tuple is not reviewed: " + json.dumps(mismatches, sort_keys=True))
+    if not re.fullmatch(
+        r"[0-9]{2}\.[0-9]{2}\.[0-9]{2}\.[0-9]{4}",
+        str(profile.get("binary_version", "")),
+    ):
+        fail("reviewed profile must declare a four-component binary_version")
+    if profile.get("os_patch_script") != "patch_OS.sh":
+        fail("reviewed profile must use the pinned upstream patch_OS.sh")
+    if profile.get("os_patch") != (
+        "src/os/patches/"
+        "0001-Ignore-STATIC_ASSERTs-and-NULL-define-for-os-and-ut-builds.patch"
+    ):
+        fail("reviewed profile contains an unexpected upstream OS patch")
     print(json.dumps(profile, sort_keys=True))
     return 0
 
