@@ -39,6 +39,7 @@ for marker in \
   'runner.ensure.local.ansible' \
   '--profile=generic|icelake-pmem-dual-3090' \
   '--require-memory-mode' \
+  '--require-ipmctl' \
   '--require-nvidia' \
   '--require-nvlink' \
   '--require-p2p' \
@@ -60,6 +61,12 @@ for marker in \
   'Validate required NVIDIA producer contracts' \
   'Validate required NVLink producer contract' \
   'Validate required directed P2P evidence' \
+  'Validate required ipmctl producer contract' \
+  'Verify live ipmctl has no pending PMem goal' \
+  'Require live ipmctl identity and settled goal state' \
+  '/etc/ansible/debian/facts/ipmctl.yml' \
+  'producers:' \
+  'ipmctl:' \
   'Read live NVIDIA PCI NUMA affinity' \
   'numa_affinity:' \
   'Create only missing managed LLM directories' \

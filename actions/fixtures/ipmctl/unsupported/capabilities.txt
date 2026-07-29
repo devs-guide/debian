@@ -1,0 +1,5 @@
+PlatformConfigSupported=0
+AllowedVolatileMode=1LM
+CurrentVolatileMode=1LM
+AllowedAppDirectMode=None
+ModesSupported=1LM

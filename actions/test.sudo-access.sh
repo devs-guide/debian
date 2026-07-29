@@ -229,7 +229,7 @@ expect_status 1 "${CASE_STATUS}" "no-TTY helper"
 expect_contains 'no usable /dev/tty is available' "${CASE_OUTPUT}" "no-TTY diagnostic"
 expect_count 0 'sudo <-v>' "${CASE_TRACE}" "no-TTY prompt"
 
-for runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for runner in setup/cli/gpu.sh setup/cli/ipmctl.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   runner_path="${ROOT}/${runner}"
 
   # A cancelled prompt must stop at the first managed-mode operation.
@@ -254,6 +254,7 @@ for runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/c
     source.release.common() { printf "ACTIVITY source-release\n" >> "${TEST_TRACE}"; }
     require.apt() { printf "ACTIVITY package\n" >> "${TEST_TRACE}"; }
     prepare.feature.files() { printf "ACTIVITY fetch\n" >> "${TEST_TRACE}"; }
+    stage.reviewed.sources() { :; }
     ensure.local.ansible.as.root() { printf "ACTIVITY bootstrap\n" >> "${TEST_TRACE}"; }
     run.feature.playbook() { printf "ACTIVITY ansible\n" >> "${TEST_TRACE}"; }
     run.managed.mode
@@ -283,6 +284,7 @@ for runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/c
     require.debian() { :; }
     require.supported.platform() { :; }
     prepare.feature.files() { :; }
+    stage.reviewed.sources() { :; }
     ensure.local.ansible.as.root() { :; }
     write.nvidia.extra.vars.file() { :; }
     write.extra.vars.file() { :; }
@@ -311,6 +313,7 @@ for runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/c
     require.debian() { :; }
     require.supported.platform() { :; }
     prepare.feature.files() { :; }
+    stage.reviewed.sources() { :; }
     ensure.local.ansible.as.root() { :; }
     write.nvidia.extra.vars.file() { :; }
     write.extra.vars.file() { :; }
@@ -330,7 +333,10 @@ for runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/nvidia.sh setup/c
       return 99
     }
     source.runner.common() { :; }
+    source.release.common() { :; }
+    require.debian() { :; }
     prepare.feature.files() { :; }
+    validate.reviewed.source() { :; }
     run.read.only.preflight() { printf "PREFLIGHT_OK\n"; }
     main preflight
   '
@@ -388,6 +394,7 @@ expect_not_contains 'curl' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'nvidia.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'nvlink.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'gpu.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
+expect_not_contains 'ipmctl.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 expect_not_contains 'host.sh' "${ALL_SUDO_TRACE}" "delegated sudo command set"
 
 exit "${rc}"

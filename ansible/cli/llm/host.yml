@@ -16,6 +16,7 @@
     llm_host_gpu_reserve_mib: 4096
     llm_host_require_physical_cores: 0
     llm_host_require_memory_mode: false
+    llm_host_require_ipmctl: false
     llm_host_require_nvidia: false
     llm_host_require_nvlink: false
     llm_host_require_p2p: false
@@ -26,6 +27,7 @@
     llm_host_gpu_facts_path: /etc/ansible/debian/facts/gpu.yml
     llm_host_nvidia_facts_path: /etc/ansible/debian/facts/nvidia.yml
     llm_host_nvlink_facts_path: /etc/ansible/debian/facts/nvlink.yml
+    llm_host_ipmctl_facts_path: /etc/ansible/debian/facts/ipmctl.yml
     llm_host_managed_directories:
       - /opt/src
       - /opt/venvs
@@ -50,6 +52,11 @@
         llm_host_require_memory_mode_effective: >-
           {{
             (llm_host_require_memory_mode | bool)
+            or (llm_host_profile | lower == 'icelake-pmem-dual-3090')
+          }}
+        llm_host_require_ipmctl_effective: >-
+          {{
+            (llm_host_require_ipmctl | bool)
             or (llm_host_profile | lower == 'icelake-pmem-dual-3090')
           }}
         llm_host_require_nvidia_effective: >-
@@ -159,6 +166,84 @@
           llm_host_inventory.memory_mode.classification }}. Required Memory
           Mode must be verified by ipmctl or remain consistent with DMI
           persistent-memory evidence.
+
+    - name: Check producer-owned ipmctl facts
+      ansible.builtin.stat:
+        path: "{{ llm_host_ipmctl_facts_path }}"
+      register: llm_host_ipmctl_fact_stat
+
+    - name: Require ipmctl facts selected by host policy
+      ansible.builtin.assert:
+        that:
+          - not (llm_host_require_ipmctl_effective | bool) or llm_host_ipmctl_fact_stat.stat.exists
+        fail_msg: >-
+          Authoritative ipmctl facts are required. Run setup/cli/ipmctl.sh
+          apply and validate before this host profile.
+
+    - name: Initialize optional ipmctl fact document
+      ansible.builtin.set_fact:
+        llm_host_ipmctl_facts: {}
+
+    - name: Read available ipmctl facts
+      ansible.builtin.slurp:
+        src: "{{ llm_host_ipmctl_facts_path }}"
+      register: llm_host_ipmctl_fact_raw
+      when: llm_host_ipmctl_fact_stat.stat.exists
+
+    - name: Decode available ipmctl facts
+      ansible.builtin.set_fact:
+        llm_host_ipmctl_facts: "{{ llm_host_ipmctl_fact_raw.content | b64decode | from_yaml }}"
+      when: llm_host_ipmctl_fact_stat.stat.exists
+
+    - name: Validate authoritative ipmctl producer contract
+      ansible.builtin.assert:
+        that:
+          - llm_host_ipmctl_facts.ipmctl.schema_version | default(0) | int == 1
+          - llm_host_ipmctl_facts.ipmctl.readiness.tool_ready | default(false) | bool
+          - llm_host_ipmctl_facts.ipmctl.readiness.inventory_ready | default(false) | bool
+          - llm_host_ipmctl_facts.ipmctl.readiness.settled | default(false) | bool
+          - llm_host_ipmctl_facts.ipmctl.inventory.pending_goal.present | default(true) == false
+          - not (llm_host_require_memory_mode_effective | bool) or llm_host_ipmctl_facts.ipmctl.readiness.memory_mode_verified | default(false) | bool
+        fail_msg: >-
+          ipmctl facts must describe a live, completely inventoried, settled
+          platform. Required Memory Mode must have positive ipmctl evidence.
+      when: llm_host_require_ipmctl_effective | bool
+
+    - name: Verify live ipmctl version agrees with producer facts
+      ansible.builtin.command:
+        argv:
+          - ipmctl
+          - version
+      register: llm_host_live_ipmctl_version
+      changed_when: false
+      when: llm_host_require_ipmctl_effective | bool
+
+    - name: Verify live ipmctl has no pending PMem goal
+      ansible.builtin.command:
+        argv:
+          - ipmctl
+          - show
+          - -a
+          - -goal
+      register: llm_host_live_ipmctl_goal
+      changed_when: false
+      when: llm_host_require_ipmctl_effective | bool
+
+    - name: Require live ipmctl identity and settled goal state
+      ansible.builtin.assert:
+        that:
+          - llm_host_live_ipmctl_version.rc | int == 0
+          - llm_host_ipmctl_facts.ipmctl.inventory.binary.version in llm_host_live_ipmctl_version.stdout
+          - llm_host_live_ipmctl_goal.rc | int == 0
+          - >-
+            not (
+              llm_host_live_ipmctl_goal.stdout
+              | regex_search('(?im)^\\s*Status\\s*(?:=|:|\\|)\\s*New\\b')
+            )
+        fail_msg: >-
+          Live ipmctl does not match the producer-owned facts or reports a
+          pending PMem goal. Revalidate ipmctl before host validation.
+      when: llm_host_require_ipmctl_effective | bool
 
     - name: Enforce host memory reserve
       ansible.builtin.assert:
@@ -478,6 +563,13 @@
               gpu_mib_per_device: {{ llm_host_gpu_reserve_mib_effective | int }}
               low_host_reserve_allowed: {{ llm_host_allow_low_reserve | bool | to_json }}
             producers:
+              ipmctl:
+                required: {{ llm_host_require_ipmctl_effective | bool | to_json }}
+                path: {{ llm_host_ipmctl_facts_path | to_json }}
+                schema_version: {{ llm_host_ipmctl_facts.ipmctl.schema_version | default(0) | int }}
+                source_profile: {{ llm_host_ipmctl_facts.ipmctl.source.profile | default('') | to_json }}
+                current_mode: {{ llm_host_ipmctl_facts.ipmctl.inventory.memory_resources.current_mode | default('unknown') | to_json }}
+                settled: {{ llm_host_ipmctl_facts.ipmctl.readiness.settled | default(false) | bool | to_json }}
               gpu:
                 required: {{ llm_host_require_nvidia_effective | bool | to_json }}
                 path: {{ llm_host_gpu_facts_path | to_json }}
@@ -567,6 +659,7 @@
           - "Physical cores/logical CPUs: {{ llm_host_inventory.cpu.physical_core_count }}/{{ llm_host_inventory.cpu.logical_count }}"
           - "Physical-core CPU list: {{ llm_host_inventory.cpu.selected_cpu_list }}"
           - "Memory Mode evidence: {{ llm_host_inventory.memory_mode.classification }}"
+          - "ipmctl required/settled: {{ llm_host_require_ipmctl_effective }}/{{ llm_host_ipmctl_facts.ipmctl.readiness.settled | default(false) }}"
           - "Host reserve: {{ llm_host_reserve_gib_effective }} GiB"
           - "NVIDIA/NVLink/P2P required: {{ llm_host_require_nvidia_effective }}/{{ llm_host_require_nvlink_effective }}/{{ llm_host_require_p2p_effective }}"
           - "Shared LLM host readiness: READY"

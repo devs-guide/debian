@@ -63,6 +63,7 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
     --gpu-reserve-mib=4096 \
     --require-physical-cores=36 \
     --require-memory-mode \
+    --require-ipmctl \
     --require-nvidia \
     --require-nvlink \
     --require-p2p \
@@ -103,6 +104,7 @@ For a checked-out repository, use the same modes and flags directly:
 | `--gpu-reserve-mib=N` | Per-device VRAM reservation exported for later runtimes. It does not allocate or test VRAM. Default: 4096 MiB. |
 | `--require-physical-cores=N` | Requires at least N physical cores and records one logical CPU from each core. |
 | `--require-memory-mode` | Requires `verified` ipmctl evidence or `consistent` DMI persistent-memory evidence. Unknown evidence fails closed. |
+| `--require-ipmctl` | Requires current schema-1 `/etc/ansible/debian/facts/ipmctl.yml`, a matching live binary, complete inventory, and matching fact/live evidence that no PMem goal is pending. |
 | `--require-nvidia` | Requires schema-1 GPU/NVIDIA facts and matching live UUIDs, loaded driver, `nvidia-smi`, `nvcc`, and CUDA runtime headers. |
 | `--require-nvlink` | Also requires a current schema-2 NVLink fact with a physical pair, NVLink route, and positive link evidence. Requires `--require-nvidia`. |
 | `--require-p2p` | Also requires a completed passing directed CUDA P2P result. Requires `--require-nvlink`. |
@@ -114,7 +116,7 @@ Flag dependencies fail before staging or sudo:
 
 - `--require-p2p` requires `--require-nvlink`.
 - `--require-nvlink` requires `--require-nvidia`.
-- `--profile=icelake-pmem-dual-3090` enables the Memory Mode, NVIDIA,
+- `--profile=icelake-pmem-dual-3090` enables the Memory Mode, ipmctl, NVIDIA,
   NVLink, P2P, and 36-physical-core requirements even when the equivalent
   flags are omitted.
 
@@ -135,6 +137,7 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
     --gpu-reserve-mib=4096 \
     --require-physical-cores=36 \
     --require-memory-mode \
+    --require-ipmctl \
     --require-nvidia \
     --require-nvlink \
     --require-p2p \
@@ -153,6 +156,7 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
     --gpu-reserve-mib=4096 \
     --require-physical-cores=36 \
     --require-memory-mode \
+    --require-ipmctl \
     --require-nvidia \
     --require-nvlink \
     --require-p2p \
@@ -175,6 +179,7 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/llm/host.sh | \
     --gpu-reserve-mib=4096 \
     --require-physical-cores=36 \
     --require-memory-mode \
+    --require-ipmctl \
     --require-nvidia \
     --require-nvlink \
     --require-p2p \
@@ -208,13 +213,15 @@ The runner writes:
 
 It consumes but never owns:
 
+- `/etc/ansible/debian/facts/ipmctl.yml`
 - `/etc/ansible/debian/facts/gpu.yml`
 - `/etc/ansible/debian/facts/nvidia.yml`
 - `/etc/ansible/debian/facts/nvlink.yml`
 
-If a driver, CUDA toolkit, kernel, GPU, NVLink bridge, or GPU ordering changes,
-refresh those producers in that order before rerunning host validation. The
-host gate compares live UUIDs to shared GPU facts and fails on stale identity.
+If a PMem goal, driver, CUDA toolkit, kernel, GPU, NVLink bridge, or GPU
+ordering changes, refresh those producers before rerunning host validation.
+After a PMem goal and maintenance reboot, run `ipmctl.sh validate` first. The
+host gate rejects pending PMem goals and stale producer identity.
 
 Managed paths include `/opt/src`, `/opt/venvs`, `/opt/llm`, and the `/models`
 subtree. Missing directories are created for the selected owner. Existing
@@ -224,10 +231,12 @@ ownership repair.
 
 ## Memory Mode classification
 
-`verified` means `ipmctl` reported positive Memory Mode capacity. `consistent`
-means DMI records provide persistent-memory evidence but the stronger query is
-unavailable. `unknown` makes no claim. The generic profile can record
-`unknown`; `--require-memory-mode` and the exact Ice Lake profile reject it.
+`verified` means live inventory reported positive Memory Mode capacity.
+`consistent` means DMI records provide persistent-memory evidence but the
+stronger query is unavailable. `unknown` makes no claim. The generic profile
+can record `unknown`; `--require-memory-mode` rejects it. The exact Ice Lake
+profile also requires source-managed ipmctl facts with positive PMem volatile
+capacity, DDR cache capacity, and no pending goal.
 
 PCIe or NVLink bandwidth is not hard-coded here. Link-rate evidence remains
 owned by the NVLink producer and is treated as positive/active evidence rather

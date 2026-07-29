@@ -47,6 +47,7 @@ LLM_HOST_ALLOW_LOW_RESERVE="${DEBIAN_LLM_HOST_ALLOW_LOW_RESERVE:-false}"
 LLM_HOST_GPU_RESERVE_MIB="${DEBIAN_LLM_HOST_GPU_RESERVE_MIB:-4096}"
 LLM_HOST_REQUIRE_PHYSICAL_CORES="${DEBIAN_LLM_HOST_REQUIRE_PHYSICAL_CORES:-0}"
 LLM_HOST_REQUIRE_MEMORY_MODE="${DEBIAN_LLM_HOST_REQUIRE_MEMORY_MODE:-false}"
+LLM_HOST_REQUIRE_IPMCTL="${DEBIAN_LLM_HOST_REQUIRE_IPMCTL:-false}"
 LLM_HOST_REQUIRE_NVIDIA="${DEBIAN_LLM_HOST_REQUIRE_NVIDIA:-false}"
 LLM_HOST_REQUIRE_NVLINK="${DEBIAN_LLM_HOST_REQUIRE_NVLINK:-false}"
 LLM_HOST_REQUIRE_P2P="${DEBIAN_LLM_HOST_REQUIRE_P2P:-false}"
@@ -73,6 +74,7 @@ Options:
   --gpu-reserve-mib=N
   --require-physical-cores=N
   --require-memory-mode
+  --require-ipmctl
   --require-nvidia
   --require-nvlink
   --require-p2p
@@ -108,6 +110,7 @@ parse.arguments() {
       --gpu-reserve-mib=*) LLM_HOST_GPU_RESERVE_MIB="${argument#*=}" ;;
       --require-physical-cores=*) LLM_HOST_REQUIRE_PHYSICAL_CORES="${argument#*=}" ;;
       --require-memory-mode) LLM_HOST_REQUIRE_MEMORY_MODE=true ;;
+      --require-ipmctl) LLM_HOST_REQUIRE_IPMCTL=true ;;
       --require-nvidia) LLM_HOST_REQUIRE_NVIDIA=true ;;
       --require-nvlink) LLM_HOST_REQUIRE_NVLINK=true ;;
       --require-p2p) LLM_HOST_REQUIRE_P2P=true ;;
@@ -156,6 +159,7 @@ validate.configuration() {
   fi
   if [[ "${LLM_HOST_PROFILE}" == icelake-pmem-dual-3090 ]]; then
     LLM_HOST_REQUIRE_MEMORY_MODE=true
+    LLM_HOST_REQUIRE_IPMCTL=true
     LLM_HOST_REQUIRE_NVIDIA=true
     LLM_HOST_REQUIRE_NVLINK=true
     LLM_HOST_REQUIRE_P2P=true
@@ -266,6 +270,7 @@ llm_host_allow_low_reserve: ${LLM_HOST_ALLOW_LOW_RESERVE}
 llm_host_gpu_reserve_mib: ${LLM_HOST_GPU_RESERVE_MIB}
 llm_host_require_physical_cores: ${LLM_HOST_REQUIRE_PHYSICAL_CORES}
 llm_host_require_memory_mode: ${LLM_HOST_REQUIRE_MEMORY_MODE}
+llm_host_require_ipmctl: ${LLM_HOST_REQUIRE_IPMCTL}
 llm_host_require_nvidia: ${LLM_HOST_REQUIRE_NVIDIA}
 llm_host_require_nvlink: ${LLM_HOST_REQUIRE_NVLINK}
 llm_host_require_p2p: ${LLM_HOST_REQUIRE_P2P}
@@ -286,12 +291,15 @@ run.read.only.preflight() {
   runner.report.text "${PREFLIGHT_REPORT_PATH}" "Shared GPU facts" /etc/ansible/debian/facts/gpu.yml
   runner.report.text "${PREFLIGHT_REPORT_PATH}" "NVIDIA readiness facts" /etc/ansible/debian/facts/nvidia.yml
   runner.report.text "${PREFLIGHT_REPORT_PATH}" "NVLink readiness facts" /etc/ansible/debian/facts/nvlink.yml
+  runner.report.text "${PREFLIGHT_REPORT_PATH}" "ipmctl readiness facts" /etc/ansible/debian/facts/ipmctl.yml
   report.command "CPU summary" lscpu
   report.command "CPU topology" lscpu --parse=CPU,SOCKET,CORE,ONLINE,NODE
   report.command "Host memory" sed -n '1,24p' /proc/meminfo
   report.command "NUMA topology" numactl --hardware
   report.command "NVIDIA runtime inventory" nvidia-smi --query-gpu=index,name,uuid,pci.bus_id,memory.total,driver_version,compute_cap --format=csv,noheader
   report.command "Persistent-memory resources" ipmctl show -memoryresources
+  report.command "Persistent-memory system capabilities" ipmctl show -a -system -capabilities
+  report.command "Pending persistent-memory goal" ipmctl show -a -goal
   log "Preflight is read-only: it did not install packages, create directories, write facts, download models, or alter kernel, CPU, memory, swap, NVIDIA, or boot policy."
 }
 

@@ -136,6 +136,7 @@ expect_not_contains 'unexpected wget' "${CASE_OUTPUT}" "missing declarative arra
 
 for feature_runner in \
   setup/cli/gpu.sh \
+  setup/cli/ipmctl.sh \
   setup/cli/llm/host.sh \
   setup/cli/llm/llamacpp.sh \
   setup/cli/llm/ktransformers.sh \
@@ -167,7 +168,7 @@ for feature_runner in \
   expect_contains 'FEATURE_MANIFEST_OK' "${CASE_OUTPUT}" "${feature_runner} complete local manifest"
 done
 
-for feature_runner in setup/cli/gpu.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for feature_runner in setup/cli/gpu.sh setup/cli/ipmctl.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   run_case "${feature_runner} rejects an incomplete local checkout" '
     partial_root="${TEST_CASE_ROOT}/partial"
     mkdir -p "${partial_root}/setup/cli"

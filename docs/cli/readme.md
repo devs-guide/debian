@@ -15,6 +15,7 @@ a shell pipeline.
 
 - [Codex](/debian/cli/codex/) — Node and Codex CLI setup.
 - [GPU](/debian/cli/gpu/) — shared PCI/runtime inventory for GPU-aware features.
+- [ipmctl](/debian/cli/ipmctl/) — pinned Intel Optane PMem inventory and guarded memory-allocation goals.
 - [LLM host](/debian/cli/llm/host/) — shared CPU, NUMA, memory, and GPU-producer readiness contract.
 - [llama.cpp](/debian/cli/llm/llamacpp/) — reviewed exact-source CPU/CUDA runtime.
 - [KTransformers](/debian/cli/llm/ktransformers/) — reviewed heterogeneous KT-Kernel/SGLang-KT runtime.

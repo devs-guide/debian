@@ -20,6 +20,7 @@
       - nvidia_runtime_support
       - nvlink_validation_support
       - llm_host_support
+      - ipmctl_build
       - llamacpp_build
       - ktransformers_build
       - performance_power

@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   deploy-www:
+    needs: validate-ipmctl-source
     runs-on: ubuntu-slim
     timeout-minutes: 10
 
@@ -45,6 +46,7 @@ jobs:
       - name: Validate runtime contract
         env:
           LLM_SOURCE_NETWORK_VERIFY: "1"
+          IPMCTL_SOURCE_NETWORK_VERIFY: "1"
         run: bash ./actions/validate.runtime.sh
 
       - name: Install Pages build dependencies
@@ -62,3 +64,22 @@ jobs:
           publish_dir: ./static
           publish_branch: www
           force_orphan: true
+
+  validate-ipmctl-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: debian:13
+
+    steps:
+      - name: Install pinned ipmctl build dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            git ca-certificates build-essential cmake pkgconf python3 \
+            ndctl daxctl libndctl6 libndctl-dev asciidoctor
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build reviewed ipmctl source
+        run: bash ./actions/test.ipmctl-source-build.sh

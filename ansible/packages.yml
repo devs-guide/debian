@@ -125,6 +125,20 @@ groups:
       - iotop-c
       - linux-cpupower
       - ndctl
+  ipmctl_build:
+    description: Opt-in Debian 13 source build and PMem inventory dependencies for pinned ipmctl; never installed by baseline playbooks.
+    packages:
+      - git
+      - ca-certificates
+      - build-essential
+      - cmake
+      - pkgconf
+      - python3
+      - ndctl
+      - daxctl
+      - libndctl6
+      - libndctl-dev
+      - asciidoctor
   llamacpp_build:
     description: Opt-in native CPU and CUDA build toolchain for the reviewed llama.cpp feature; never installed by baseline playbooks.
     packages:

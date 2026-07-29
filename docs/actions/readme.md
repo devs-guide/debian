@@ -23,6 +23,7 @@ bash actions/test.documentation-contract.sh
 bash actions/test.publication-manifest.sh
 bash actions/test.runner-contract.sh
 bash actions/test.gpu-contract.sh --shell-only
+bash actions/test.ipmctl-contract.sh --shell-only
 bash actions/test.llm-host-contract.sh --shell-only
 bash actions/test.nvidia-contract.sh --shell-only
 bash actions/test.nvlink-contract.sh --shell-only
@@ -45,11 +46,15 @@ only on the remote GPU host.
 - [Test sudo access policy](/debian/actions/test/sudo-access/)
 - [Test runner staging](/debian/actions/test/runner-staging/)
 - [Test GPU contract](/debian/actions/test/gpu-contract/)
+- [Test ipmctl contract](/debian/actions/test/ipmctl-contract/)
 - [Test LLM host contract](/debian/actions/test/llm-host-contract/)
 - [Test LLM reviewed-source contract](/debian/actions/test/llm-source-contract/)
 - [Test NVIDIA contract](/debian/actions/test/nvidia-contract/)
 - [Test NVIDIA facts](/debian/actions/test/nvidia-facts/)
 - [Test NVLink contract](/debian/actions/test/nvlink-contract/)
 
-`www.pages.sh` replaces its selected publish directory. Validation scripts
-only read project content, aside from temporary download/build locations.
+`www.pages.sh` replaces its selected publish directory. Contract validation
+only reads project content, aside from temporary fixture locations. The
+dedicated ipmctl source-build action clones and compiles the reviewed source
+pins in an isolated Debian 13 CI job; it does not install onto the Actions
+runner host.
