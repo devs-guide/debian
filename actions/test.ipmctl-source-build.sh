@@ -10,8 +10,8 @@ IPMCTL_RELEASE="v03.00.00.0538"
 IPMCTL_COMMIT="a71f2fb1c90dd07f9862b71c789881132193e8f9"
 IPMCTL_BINARY_VERSION="03.00.00.0538"
 IPMCTL_OS_PATCH="src/os/patches/0001-Ignore-STATIC_ASSERTs-and-NULL-define-for-os-and-ut-builds.patch"
-EDK2_RELEASE="edk2-stable202405"
-EDK2_COMMIT="3e722403cd16388a0e4044e705a2b34c841d76ca"
+EDK2_RELEASE="edk2-stable202111"
+EDK2_COMMIT="bb1bba3d776733c41dbfa2d1dc0fe234819a79f2"
 
 cleanup() {
   if [[ -n "${TEST_ROOT:-}" && "${TEST_ROOT}" == "${TEST_PARENT%/}/test.ipmctl-source-build."* ]]; then
@@ -56,6 +56,14 @@ git -C "${TEST_ROOT}/edk2" checkout -q --detach "${EDK2_COMMIT}"
   )"
   if [[ "${patch_targets}" != "MdePkg/Include/Base.h" ]]; then
     echo "[${ACTION_LABEL}][error] upstream OS patch targets changed: ${patch_targets}" >&2
+    exit 1
+  fi
+  if ! git apply --check \
+    --ignore-space-change \
+    --ignore-whitespace \
+    --whitespace=nowarn \
+    "${IPMCTL_OS_PATCH}"; then
+    echo "[${ACTION_LABEL}][error] upstream OS patch cannot be applied to the reviewed EDK2 source" >&2
     exit 1
   fi
   ./patch_OS.sh | tee "${TEST_ROOT}/patch-os.txt"

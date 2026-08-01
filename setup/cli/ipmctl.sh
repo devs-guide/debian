@@ -55,8 +55,8 @@ REPOSITORY_URL="${DEBIAN_IPMCTL_REPOSITORY_URL:-https://github.com/intel/ipmctl.
 RELEASE="${DEBIAN_IPMCTL_RELEASE:-v03.00.00.0538}"
 COMMIT="${DEBIAN_IPMCTL_COMMIT:-a71f2fb1c90dd07f9862b71c789881132193e8f9}"
 EDK2_REPOSITORY_URL="${DEBIAN_IPMCTL_EDK2_REPOSITORY_URL:-https://github.com/tianocore/edk2.git}"
-EDK2_RELEASE="${DEBIAN_IPMCTL_EDK2_RELEASE:-edk2-stable202405}"
-EDK2_COMMIT="${DEBIAN_IPMCTL_EDK2_COMMIT:-3e722403cd16388a0e4044e705a2b34c841d76ca}"
+EDK2_RELEASE="${DEBIAN_IPMCTL_EDK2_RELEASE:-edk2-stable202111}"
+EDK2_COMMIT="${DEBIAN_IPMCTL_EDK2_COMMIT:-bb1bba3d776733c41dbfa2d1dc0fe234819a79f2}"
 BUILD_TYPE="${DEBIAN_IPMCTL_BUILD_TYPE:-release}"
 INSTALL_BUILD_TOOLS="${DEBIAN_IPMCTL_INSTALL_BUILD_TOOLS:-false}"
 GOAL="${DEBIAN_IPMCTL_GOAL:-}"
@@ -100,8 +100,8 @@ Reviewed Debian 13 source install:
       --release=v03.00.00.0538 \
       --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
       --edk2-repository-url=https://github.com/tianocore/edk2.git \
-      --edk2-release=edk2-stable202405 \
-      --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+      --edk2-release=edk2-stable202111 \
+      --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
       --build-type=release \
       --install-build-tools
 
@@ -113,8 +113,8 @@ Destructive Memory Mode workflow:
       --release=v03.00.00.0538 \
       --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
       --edk2-repository-url=https://github.com/tianocore/edk2.git \
-      --edk2-release=edk2-stable202405 \
-      --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+      --edk2-release=edk2-stable202111 \
+      --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
       --build-type=release \
       --goal=memory-mode \
       --socket=all \
@@ -127,8 +127,8 @@ Destructive Memory Mode workflow:
       --release=v03.00.00.0538 \
       --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
       --edk2-repository-url=https://github.com/tianocore/edk2.git \
-      --edk2-release=edk2-stable202405 \
-      --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+      --edk2-release=edk2-stable202111 \
+      --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
       --build-type=release \
       --goal=memory-mode \
       --socket=all \

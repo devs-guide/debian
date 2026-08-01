@@ -24,8 +24,8 @@ supporting every Intel Optane PMem generation:
 | ipmctl tag | `v03.00.00.0538` |
 | ipmctl commit | `a71f2fb1c90dd07f9862b71c789881132193e8f9` |
 | edk2 repository | `https://github.com/tianocore/edk2.git` |
-| edk2 tag | `edk2-stable202405` |
-| edk2 commit | `3e722403cd16388a0e4044e705a2b34c841d76ca` |
+| edk2 tag | `edk2-stable202111` |
+| edk2 commit | `bb1bba3d776733c41dbfa2d1dc0fe234819a79f2` |
 | managed binary version | `03.00.00.0538` |
 | upstream Linux patch script | `patch_OS.sh` |
 | install prefix | `/usr/local` |
@@ -69,8 +69,8 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
     --release=v03.00.00.0538 \
     --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
     --edk2-repository-url=https://github.com/tianocore/edk2.git \
-    --edk2-release=edk2-stable202405 \
-    --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+    --edk2-release=edk2-stable202111 \
+    --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
     --build-type=release \
     --no-install-build-tools
 ```
@@ -85,8 +85,8 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
     --release=v03.00.00.0538 \
     --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
     --edk2-repository-url=https://github.com/tianocore/edk2.git \
-    --edk2-release=edk2-stable202405 \
-    --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+    --edk2-release=edk2-stable202111 \
+    --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
     --build-type=release \
     --install-build-tools
 ```
@@ -97,10 +97,11 @@ reviewed Git tags as the invoking user. Source-network access never runs under
 sudo.
 
 The pinned Linux build order is `updateedk.sh`, `patch_OS.sh`, then CMake.
-Intel's upstream patch disables the EDK2 `NULL` definition and incompatible
-UEFI static assertions only for OS/unit-test builds. This preserves the
-Release build's `-Werror` policy on Debian 13 and avoids a project-owned EDK2
-fork.
+The reviewed EDK2 `stable202111` source contains the `Base.h` preimage required
+by Intel's upstream patch, which disables the EDK2 `NULL` definition and
+incompatible UEFI static assertions only for OS/unit-test builds. This
+preserves the Release build's `-Werror` policy on Debian 13 and avoids a
+project-owned EDK2 fork.
 
 The `.0499` and `.0538` upstream tags point to the same ipmctl commit, while
 `.0499` is the annotated tag preferred by an unconstrained `git describe`.
@@ -124,8 +125,8 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
     --release=v03.00.00.0538 \
     --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
     --edk2-repository-url=https://github.com/tianocore/edk2.git \
-    --edk2-release=edk2-stable202405 \
-    --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+    --edk2-release=edk2-stable202111 \
+    --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
     --build-type=release \
     --no-install-build-tools
 ```
@@ -146,8 +147,8 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
     --release=v03.00.00.0538 \
     --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
     --edk2-repository-url=https://github.com/tianocore/edk2.git \
-    --edk2-release=edk2-stable202405 \
-    --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+    --edk2-release=edk2-stable202111 \
+    --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
     --build-type=debug \
     --no-install-build-tools
 ```
@@ -171,8 +172,8 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
     --release=v03.00.00.0538 \
     --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
     --edk2-repository-url=https://github.com/tianocore/edk2.git \
-    --edk2-release=edk2-stable202405 \
-    --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+    --edk2-release=edk2-stable202111 \
+    --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
     --build-type=release \
     --goal=memory-mode \
     --socket=all \
@@ -189,8 +190,8 @@ wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
     --release=v03.00.00.0538 \
     --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
     --edk2-repository-url=https://github.com/tianocore/edk2.git \
-    --edk2-release=edk2-stable202405 \
-    --edk2-commit=3e722403cd16388a0e4044e705a2b34c841d76ca \
+    --edk2-release=edk2-stable202111 \
+    --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
     --build-type=release \
     --goal=memory-mode \
     --socket=all \

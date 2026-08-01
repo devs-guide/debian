@@ -13,8 +13,8 @@
     ipmctl_release: v03.00.00.0538
     ipmctl_commit: a71f2fb1c90dd07f9862b71c789881132193e8f9
     ipmctl_edk2_repository_url: https://github.com/tianocore/edk2.git
-    ipmctl_edk2_release: edk2-stable202405
-    ipmctl_edk2_commit: 3e722403cd16388a0e4044e705a2b34c841d76ca
+    ipmctl_edk2_release: edk2-stable202111
+    ipmctl_edk2_commit: bb1bba3d776733c41dbfa2d1dc0fe234819a79f2
     ipmctl_build_type: release
     ipmctl_install_build_tools: false
     ipmctl_staged_source_path: ""
@@ -425,6 +425,26 @@
         - not ipmctl_install_is_current | bool
         - ipmctl_updateedk_result.rc | default(1) | int == 0
 
+    - name: Verify pinned upstream Linux patch applicability
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/git
+          - -C
+          - "{{ ipmctl_worktree_dir }}"
+          - apply
+          - --check
+          - --ignore-space-change
+          - --ignore-whitespace
+          - --whitespace=nowarn
+          - "{{ ipmctl_os_patch_file_path }}"
+      register: ipmctl_os_patch_preflight
+      changed_when: false
+      failed_when: false
+      when:
+        - ipmctl_mode_effective == 'apply'
+        - not ipmctl_install_is_current | bool
+        - ipmctl_updateedk_result.rc | default(1) | int == 0
+
     - name: Require exact pinned upstream Linux patch contract
       ansible.builtin.assert:
         that:
@@ -436,6 +456,7 @@
             ==
             [ipmctl_profile_policy.os_patch | basename]
           - ipmctl_os_patch_plan.rc | default(1) | int == 0
+          - ipmctl_os_patch_preflight.rc | default(1) | int == 0
           - ipmctl_os_patch_plan.stdout_lines | default([]) | length == 1
           - >-
             (
@@ -468,7 +489,7 @@
       when:
         - ipmctl_mode_effective == 'apply'
         - not ipmctl_install_is_current | bool
-        - ipmctl_updateedk_result.rc | default(1) | int == 0
+        - ipmctl_os_patch_preflight.rc | default(1) | int == 0
 
     - name: Verify pinned upstream Linux compatibility patch application
       ansible.builtin.command:
@@ -540,6 +561,9 @@
           patch plan rc={{ ipmctl_os_patch_plan.rc | default('not-run') }}
           {{ ipmctl_os_patch_plan.stdout | default('') }}
           {{ ipmctl_os_patch_plan.stderr | default('') }}
+          patch preflight rc={{ ipmctl_os_patch_preflight.rc | default('not-run') }}
+          {{ ipmctl_os_patch_preflight.stdout | default('') }}
+          {{ ipmctl_os_patch_preflight.stderr | default('') }}
           patch apply rc={{ ipmctl_os_patch_result.rc | default('not-run') }}
           {{ ipmctl_os_patch_result.stdout | default('') }}
           {{ ipmctl_os_patch_result.stderr | default('') }}
@@ -562,6 +586,7 @@
           - ipmctl_updateedk_result.rc | default(1) | int == 0
           - ipmctl_os_patch_inventory.rc | default(1) | int == 0
           - ipmctl_os_patch_plan.rc | default(1) | int == 0
+          - ipmctl_os_patch_preflight.rc | default(1) | int == 0
           - ipmctl_os_patch_result.rc | default(1) | int == 0
           - ipmctl_os_patch_verify.rc | default(1) | int == 0
           - ipmctl_configure_result.rc | default(1) | int == 0

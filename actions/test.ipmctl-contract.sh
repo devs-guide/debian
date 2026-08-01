@@ -70,7 +70,9 @@ for marker in \
   'ipmctl_goal_confirmation_authorized | bool' \
   'Return machine-readable PMem goal-plan disposition' \
   'Apply pinned upstream Linux compatibility patch' \
+  'Verify pinned upstream Linux patch applicability' \
   'Verify pinned upstream Linux compatibility patch application' \
+  'ipmctl_os_patch_preflight.rc' \
   '"-DBUILDNUM={{ ipmctl_profile_policy.binary_version }}"' \
   'ipmctl_previous_facts.ipmctl.source.binary_version' \
   'ipmctl_previous_facts.ipmctl.source.os_patch_script' \
@@ -90,6 +92,10 @@ for marker in \
   './updateedk.sh' \
   './patch_OS.sh' \
   'git apply --numstat' \
+  'git apply --check' \
+  '--ignore-space-change' \
+  '--ignore-whitespace' \
+  '--whitespace=nowarn' \
   'git apply --reverse --check' \
   '-DBUILDNUM="${IPMCTL_BINARY_VERSION}"' \
   "grep -R -Fq -- '-Werror' build/CMakeFiles" \
@@ -108,10 +114,11 @@ patch_line="$(
     actions/test.ipmctl-source-build.sh |
     cut -d: -f1
 )"
+preflight_line="$(grep -n -m1 'git apply --check' actions/test.ipmctl-source-build.sh | cut -d: -f1)"
 cmake_line="$(grep -n -m1 'cmake -S' actions/test.ipmctl-source-build.sh | cut -d: -f1)"
-if [[ -z "${update_line}" || -z "${patch_line}" || -z "${cmake_line}" ]] ||
-  ((update_line >= patch_line || patch_line >= cmake_line)); then
-  contract.error "ipmctl source build must run updateedk.sh, patch_OS.sh, then CMake"
+if [[ -z "${update_line}" || -z "${preflight_line}" || -z "${patch_line}" || -z "${cmake_line}" ]] ||
+  ((update_line >= preflight_line || preflight_line >= patch_line || patch_line >= cmake_line)); then
+  contract.error "ipmctl source build must run updateedk.sh, patch preflight, patch_OS.sh, then CMake"
 fi
 
 for prohibited in \
@@ -205,8 +212,8 @@ if [[ "${SHELL_ONLY}" -eq 0 ]]; then
     --release v03.00.00.0538 \
     --commit a71f2fb1c90dd07f9862b71c789881132193e8f9 \
     --edk2-repository-url https://github.com/tianocore/edk2.git \
-    --edk2-release edk2-stable202405 \
-    --edk2-commit 3e722403cd16388a0e4044e705a2b34c841d76ca >/dev/null || rc=1
+    --edk2-release edk2-stable202111 \
+    --edk2-commit bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 >/dev/null || rc=1
 
   if python3 "${profile_helper}" \
     --matrix "${matrix}" \
@@ -215,8 +222,8 @@ if [[ "${SHELL_ONLY}" -eq 0 ]]; then
     --release v03.00.00.0538 \
     --commit a71f2fb \
     --edk2-repository-url https://github.com/tianocore/edk2.git \
-    --edk2-release edk2-stable202405 \
-    --edk2-commit 3e722403cd16388a0e4044e705a2b34c841d76ca >/dev/null 2>&1; then
+    --edk2-release edk2-stable202111 \
+    --edk2-commit bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 >/dev/null 2>&1; then
     contract.error "a shortened ipmctl commit was accepted"
   fi
 
@@ -298,8 +305,8 @@ if [[ "${SHELL_ONLY}" -eq 0 && "${NETWORK_VERIFY}" == 1 ]]; then
   actual_ipmctl="$(resolve_remote_tag https://github.com/intel/ipmctl.git v03.00.00.0538)"
   [[ "${actual_ipmctl}" == a71f2fb1c90dd07f9862b71c789881132193e8f9 ]] ||
     contract.error "ipmctl reviewed tag changed: ${actual_ipmctl}"
-  actual_edk2="$(resolve_remote_tag https://github.com/tianocore/edk2.git edk2-stable202405)"
-  [[ "${actual_edk2}" == 3e722403cd16388a0e4044e705a2b34c841d76ca ]] ||
+  actual_edk2="$(resolve_remote_tag https://github.com/tianocore/edk2.git edk2-stable202111)"
+  [[ "${actual_edk2}" == bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 ]] ||
     contract.error "edk2 reviewed tag changed: ${actual_edk2}"
 else
   echo "[${ACTION_LABEL}] source network verification deferred to GitHub Actions"
