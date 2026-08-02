@@ -45,3 +45,7 @@ PUBLISH_DIR=/tmp/debian-pages DOCS_SITE_ROOT=/debian \
 
 The output directory is disposable generated content. Do not hand-edit
 `static/`; change its source and rebuild instead.
+
+Pull requests run runtime validation and build this artifact without
+deployment. Only a successful push to `main` grants the deploy job write
+permission and publishes the previously built artifact to the `www` branch.

@@ -12,26 +12,32 @@ on:
       - "readme.md"
       - "actions/**"
       - ".github/workflows/www.pages.yml"
+  pull_request:
+    paths:
+      - "setup/**"
+      - "ansible/**"
+      - "docs/**"
+      - "www/**"
+      - "readme.md"
+      - "actions/**"
+      - ".github/workflows/www.pages.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: www-pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy-www:
-    needs: validate-ipmctl-source
+  validate-runtime:
     runs-on: ubuntu-slim
     timeout-minutes: 10
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Configure validation Python
         uses: actions/setup-python@v5
@@ -46,8 +52,16 @@ jobs:
       - name: Validate runtime contract
         env:
           LLM_SOURCE_NETWORK_VERIFY: "1"
-          IPMCTL_SOURCE_NETWORK_VERIFY: "1"
         run: bash ./actions/validate.runtime.sh
+
+  build-www:
+    needs: validate-runtime
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install Pages build dependencies
         run: sudo apt-get update && sudo apt-get install -y pandoc rsync
@@ -57,6 +71,31 @@ jobs:
           PUBLISH_DIR: static
         run: bash ./actions/www.pages.sh
 
+      - name: Upload static Pages tree
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: www-static
+          path: static
+          if-no-files-found: error
+
+  deploy-www:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-www
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download static Pages tree
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: www-static
+          path: static
+
       - name: Deploy static to www branch
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -64,22 +103,3 @@ jobs:
           publish_dir: ./static
           publish_branch: www
           force_orphan: true
-
-  validate-ipmctl-source:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    container: debian:13
-
-    steps:
-      - name: Install pinned ipmctl build dependencies
-        run: |
-          apt-get update
-          apt-get install -y \
-            git ca-certificates build-essential cmake pkgconf python3 \
-            ndctl daxctl libndctl6 libndctl-dev asciidoctor
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build reviewed ipmctl source
-        run: bash ./actions/test.ipmctl-source-build.sh

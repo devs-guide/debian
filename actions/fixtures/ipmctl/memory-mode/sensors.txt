@@ -1,2 +1,0 @@
-DimmID=0x0001
-Health=Healthy

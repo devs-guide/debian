@@ -1,914 +1,429 @@
 ---
-- name: "[debian]: pinned ipmctl inventory and guarded PMem goals"
+- name: "[debian]: pinned ipmctl source installer"
   hosts: localhost
   connection: local
   gather_facts: false
-  become: true
+  become: false
 
   vars:
     ansible_python_interpreter: "{{ ansible_python_interpreter_managed }}"
-    ipmctl_mode: validate
-    ipmctl_profile: trixie-v03.00.00.0538
-    ipmctl_repository_url: https://github.com/intel/ipmctl.git
-    ipmctl_release: v03.00.00.0538
+    ipmctl_mode: install
+    ipmctl_build_user: ""
+    ipmctl_build_group: ""
+    ipmctl_build_home: ""
+    ipmctl_repository: https://github.com/intel/ipmctl.git
+    ipmctl_tag: v03.00.00.0538
     ipmctl_commit: a71f2fb1c90dd07f9862b71c789881132193e8f9
-    ipmctl_edk2_repository_url: https://github.com/tianocore/edk2.git
-    ipmctl_edk2_release: edk2-stable202111
-    ipmctl_edk2_commit: bb1bba3d776733c41dbfa2d1dc0fe234819a79f2
-    ipmctl_build_type: release
-    ipmctl_install_build_tools: false
-    ipmctl_staged_source_path: ""
-    ipmctl_staged_edk2_path: ""
-    ipmctl_goal: ""
-    ipmctl_socket_target: ""
-    ipmctl_goal_plan_result_path: ""
-    ipmctl_goal_confirmation_authorized: false
-    ipmctl_matrix_path: "{{ playbook_dir }}/../files/ipmctl/compatibility-matrix.yml"
-    ipmctl_inventory_helper_path: "{{ playbook_dir }}/../files/ipmctl/ipmctl-inventory.py"
-    ipmctl_facts_path: /etc/ansible/debian/facts/ipmctl.yml
-    ipmctl_transaction_root: /var/lib/ansible/debian/ipmctl/transactions
-    ipmctl_log_root: /var/log/ipmctl
+    ipmctl_expected_version: 03.00.00.0538
+    ipmctl_edk2_repository: https://github.com/tianocore/edk2.git
+    ipmctl_edk2_tag: edk2-stable202511
+    ipmctl_edk2_commit: 46548b1adac82211d8d11da12dd914f41e7aa775
+    ipmctl_install_prefix: /usr/local
+    ipmctl_binary_path: /usr/local/bin/ipmctl
+    ipmctl_receipt_root: /var/lib/devs-guide/ipmctl
+    ipmctl_receipt_path: /var/lib/devs-guide/ipmctl/receipt.json
+    ipmctl_install_manifest_path: /var/lib/devs-guide/ipmctl/install_manifest.txt
+    ipmctl_patch_root: "{{ playbook_dir }}/../files/ipmctl/patches"
+    ipmctl_patches:
+      - id: edk2-stable202511-host-os-build
+        filename: 0001-edk2-stable202511-host-os-build.patch
+        sha256: ac6f0ea143c357c582135472defe8e936a63d7997221a29d4d0e4c349d7ac013
+        repository: edk2
+        target: MdePkg/Include/Base.h
+        preimage_sha256: fedaf9edaebc77a3e94649dc344fad8047cfe04b3ec09b2e3be4dcb008517c28
+        postimage_sha256: 57fb0c2cf0c147c7f787faca9a0ad4f8fb1aa3c6b1702f1faecda35852a19804
+      - id: ipmctl-disable-c-release-werror
+        filename: 0002-ipmctl-disable-c-release-werror.patch
+        sha256: d1928dc874219578abbc9eab5cc7a826ccf88457bd148f268aff367d134321b8
+        repository: ipmctl
+        target: CMakeLists.txt
+        preimage_sha256: fb89ac2c0f78a2a0cbf898def22363fd87495d0e851d74688e7acf18db88ef8c
+        postimage_sha256: 17d0c9a012cae4ee2a2415e446a4cd44bff4e897cd7492438cd19d8c96e83f66
+      - id: ipmctl-remove-pie-from-shared-linker-flags
+        filename: 0003-ipmctl-remove-pie-from-shared-linker-flags.patch
+        sha256: f926a6b07ad33b09f09032e6fd06a9229855d9d0501cfc7e67ecbb4c3c28a031
+        repository: ipmctl
+        target: CMakeLists.txt
+        preimage_sha256: 17d0c9a012cae4ee2a2415e446a4cd44bff4e897cd7492438cd19d8c96e83f66
+        postimage_sha256: f8e59840ef844f5631ccb1502a5cde79845f0779e267e13dd02bbb29efd80165
+    ipmctl_patch_receipt:
+      - filename: 0001-edk2-stable202511-host-os-build.patch
+        sha256: ac6f0ea143c357c582135472defe8e936a63d7997221a29d4d0e4c349d7ac013
+      - filename: 0002-ipmctl-disable-c-release-werror.patch
+        sha256: d1928dc874219578abbc9eab5cc7a826ccf88457bd148f268aff367d134321b8
+      - filename: 0003-ipmctl-remove-pie-from-shared-linker-flags.patch
+        sha256: f926a6b07ad33b09f09032e6fd06a9229855d9d0501cfc7e67ecbb4c3c28a031
 
   pre_tasks:
-    - name: Load reviewed ipmctl compatibility matrix
-      ansible.builtin.set_fact:
-        ipmctl_matrix: "{{ lookup('file', ipmctl_matrix_path) | from_json }}"
-
-    - name: Select reviewed ipmctl profile
-      ansible.builtin.set_fact:
-        ipmctl_profile_matches: >-
-          {{
-            ipmctl_matrix.profiles
-            | selectattr('feature', 'equalto', 'ipmctl')
-            | selectattr('id', 'equalto', ipmctl_profile)
-            | list
-          }}
-
-    - name: Require one reviewed ipmctl profile
-      ansible.builtin.assert:
-        that:
-          - ipmctl_matrix.schema_version | int == 1
-          - ipmctl_profile_matches | length == 1
-        fail_msg: "The requested ipmctl source profile is not uniquely reviewed."
-
-    - name: Normalize ipmctl policy
-      ansible.builtin.set_fact:
-        ipmctl_profile_policy: "{{ ipmctl_profile_matches[0] }}"
-        ipmctl_mode_effective: "{{ ipmctl_mode | lower }}"
-        ipmctl_build_type_effective: "{{ ipmctl_build_type | lower }}"
-        ipmctl_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}"
-
-    - name: Resolve managed ipmctl paths
-      ansible.builtin.set_fact:
-        ipmctl_source_root: "/opt/src/ipmctl/{{ ipmctl_profile }}"
-        ipmctl_build_root: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}"
-        ipmctl_source_dir: "/opt/src/ipmctl/{{ ipmctl_profile }}/ipmctl"
-        ipmctl_edk2_source_dir: "/opt/src/ipmctl/{{ ipmctl_profile }}/edk2"
-        ipmctl_worktree_dir: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}/ipmctl"
-        ipmctl_edk2_worktree_dir: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}/edk2"
-        ipmctl_os_patch_script_path: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}/ipmctl/{{ ipmctl_profile_policy.os_patch_script }}"
-        ipmctl_os_patch_file_path: "/opt/build/ipmctl/{{ ipmctl_profile }}/{{ ipmctl_build_type_effective }}/ipmctl/{{ ipmctl_profile_policy.os_patch }}"
-        ipmctl_run_log_dir: "{{ ipmctl_log_root }}/{{ ipmctl_run_id }}"
-
-    - name: Validate exact ipmctl source and mode policy
-      ansible.builtin.assert:
-        that:
-          - ipmctl_mode_effective in ['apply', 'validate', 'goal-plan', 'goal-apply']
-          - ipmctl_profile_policy.repository_url == ipmctl_repository_url
-          - ipmctl_profile_policy.release == ipmctl_release
-          - ipmctl_profile_policy.commit == ipmctl_commit
-          - ipmctl_profile_policy.edk2_repository_url == ipmctl_edk2_repository_url
-          - ipmctl_profile_policy.edk2_release == ipmctl_edk2_release
-          - ipmctl_profile_policy.edk2_commit == ipmctl_edk2_commit
-          - ipmctl_profile_policy.binary_version is match('^[0-9]{2}[.][0-9]{2}[.][0-9]{2}[.][0-9]{4}$')
-          - ipmctl_profile_policy.os_patch_script == 'patch_OS.sh'
-          - ipmctl_profile_policy.os_patch == 'src/os/patches/0001-Ignore-STATIC_ASSERTs-and-NULL-define-for-os-and-ut-builds.patch'
-          - ipmctl_build_type_effective in ipmctl_profile_policy.allowed_build_types
-          - ipmctl_profile_policy.install_prefix == '/usr/local'
-          - ipmctl_commit is match('^[0-9a-f]{40}$')
-          - ipmctl_edk2_commit is match('^[0-9a-f]{40}$')
-          - ipmctl_facts_path == '/etc/ansible/debian/facts/ipmctl.yml'
-          - >-
-            ipmctl_mode_effective not in ['goal-plan', 'goal-apply']
-            or
-            (
-              ipmctl_goal_plan_result_path
-              is match('^/(?:[^/]+/)*devs-guide-ipmctl[.][A-Za-z0-9]+/goal-plan[.]result$')
-              and '..' not in ipmctl_goal_plan_result_path
-            )
-          - >-
-            ipmctl_mode_effective != 'goal-apply'
-            or
-            ipmctl_goal_confirmation_authorized | bool
-        fail_msg: >-
-          ipmctl and edk2 URLs, tags, full commits, build type, and install
-          prefix must match the reviewed compatibility profile. goal-apply
-          additionally requires runner authorization after exact operator
-          confirmation.
-
     - name: Read Debian release and architecture
       ansible.builtin.command:
         argv: "{{ item }}"
       loop:
         - [/usr/bin/dpkg, --print-architecture]
-        - [/usr/bin/sh, -c, ". /etc/os-release && printf '%s\\n' \"${ID}:${VERSION_ID}\""]
+        - [/usr/bin/sh, -c, ". /etc/os-release && printf '%s:%s\\n' \"${ID:-}\" \"${VERSION_ID:-}\""]
       register: ipmctl_platform_queries
       changed_when: false
 
-    - name: Require Debian 13 amd64
+    - name: Validate fixed installer policy
       ansible.builtin.assert:
         that:
+          - ipmctl_mode == 'install'
           - ipmctl_platform_queries.results[0].stdout | trim == 'amd64'
           - ipmctl_platform_queries.results[1].stdout | trim == 'debian:13'
-        fail_msg: "The reviewed ipmctl source profile supports Debian 13 amd64 only."
+          - ipmctl_build_user is match('^[a-z_][a-z0-9_-]*[$]?$')
+          - ipmctl_build_user != 'root'
+          - ipmctl_build_group is match('^[a-z_][a-z0-9_-]*[$]?$')
+          - ipmctl_build_home is match('^/[^\n\r]+$')
+          - ipmctl_install_prefix == '/usr/local'
+          - ipmctl_patches | length == 3
+        fail_msg: >-
+          The reviewed installer supports only Debian 13 amd64, one pinned
+          Release tuple, /usr/local, and a non-root build user.
+
+    - name: Resolve per-run source paths
+      ansible.builtin.set_fact:
+        ipmctl_run_id: "{{ lookup('pipe', '/usr/bin/date -u +%Y%m%dT%H%M%S%N') }}"
+        ipmctl_cache_root: "{{ ipmctl_build_home }}/.cache/devs-guide/ipmctl"
+
+    - name: Resolve mutable worktree paths
+      ansible.builtin.set_fact:
+        ipmctl_run_root: "{{ ipmctl_cache_root }}/runs/{{ ipmctl_run_id }}"
+        ipmctl_source_dir: "{{ ipmctl_cache_root }}/runs/{{ ipmctl_run_id }}/ipmctl"
+        ipmctl_edk2_source_dir: "{{ ipmctl_cache_root }}/runs/{{ ipmctl_run_id }}/edk2"
+        ipmctl_build_dir: "{{ ipmctl_cache_root }}/runs/{{ ipmctl_run_id }}/build"
 
   tasks:
-    - name: Create managed ipmctl evidence directories
-      ansible.builtin.file:
+    - name: Inspect managed receipt and installed binary
+      ansible.builtin.stat:
         path: "{{ item }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      loop:
-        - "{{ ipmctl_facts_path | dirname }}"
-        - "{{ ipmctl_transaction_root }}"
-        - "{{ ipmctl_log_root }}"
-        - "{{ ipmctl_run_log_dir }}"
-
-    - name: Initialize previous managed ipmctl facts
-      ansible.builtin.set_fact:
-        ipmctl_previous_facts: {}
-
-    - name: Inspect previous managed ipmctl facts
-      ansible.builtin.stat:
-        path: "{{ ipmctl_facts_path }}"
-      register: ipmctl_previous_fact_stat
-
-    - name: Read previous managed ipmctl facts
-      ansible.builtin.slurp:
-        src: "{{ ipmctl_facts_path }}"
-      register: ipmctl_previous_fact_raw
-      when: ipmctl_previous_fact_stat.stat.exists
-
-    - name: Decode previous managed ipmctl facts
-      ansible.builtin.set_fact:
-        ipmctl_previous_facts: "{{ ipmctl_previous_fact_raw.content | b64decode | from_yaml }}"
-      when: ipmctl_previous_fact_stat.stat.exists
-
-    - name: Inspect installed ipmctl binary
-      ansible.builtin.stat:
-        path: /usr/local/bin/ipmctl
         follow: false
-      register: ipmctl_installed_binary_stat
+        checksum_algorithm: sha256
+      loop:
+        - "{{ ipmctl_receipt_path }}"
+        - "{{ ipmctl_binary_path }}"
+      register: ipmctl_initial_stats
 
-    - name: Determine whether the reviewed ipmctl install is current
+    - name: Refuse an unmanaged local ipmctl binary
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (ipmctl_initial_stats.results[1].stat.exists | default(false))
+            or (ipmctl_initial_stats.results[0].stat.isreg | default(false))
+        fail_msg: >-
+          {{ ipmctl_binary_path }} exists without the devs-guide receipt.
+          Refusing to overwrite an unmanaged installation.
+
+    - name: Decode the optional managed receipt safely
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |-
+            import json
+            import sys
+            p = sys.argv[1]
+            try:
+                with open(p, encoding="utf-8") as receipt:
+                    print(json.dumps(json.load(receipt)))
+            except Exception:
+                print("{}")
+          - "{{ ipmctl_receipt_path }}"
+      register: ipmctl_receipt_query
+      changed_when: false
+      when: ipmctl_initial_stats.results[0].stat.isreg | default(false)
+
+    - name: Normalize the previous receipt
+      ansible.builtin.set_fact:
+        ipmctl_previous_receipt: "{{ ipmctl_receipt_query.stdout | default('{}') | from_json }}"
+
+    - name: Read current binary version and linkage
+      ansible.builtin.command:
+        argv: "{{ item }}"
+      loop:
+        - ["{{ ipmctl_binary_path }}", version]
+        - [/usr/bin/ldd, "{{ ipmctl_binary_path }}"]
+      register: ipmctl_current_software
+      changed_when: false
+      failed_when: false
+      when: ipmctl_initial_stats.results[1].stat.isreg | default(false)
+
+    - name: Determine whether installation is current
       ansible.builtin.set_fact:
         ipmctl_install_is_current: >-
           {{
-            ipmctl_installed_binary_stat.stat.exists
-            and ipmctl_previous_fact_stat.stat.exists
-            and (ipmctl_previous_facts.ipmctl.source.profile | default('') == ipmctl_profile)
-            and (ipmctl_previous_facts.ipmctl.source.commit | default('') == ipmctl_commit)
-            and (ipmctl_previous_facts.ipmctl.source.edk2_commit | default('') == ipmctl_edk2_commit)
+            (ipmctl_initial_stats.results[0].stat.isreg | default(false))
+            and (ipmctl_initial_stats.results[1].stat.isreg | default(false))
+            and (ipmctl_previous_receipt.schema_version | default(0) | int == 1)
+            and (ipmctl_previous_receipt.platform.debian | default('') == '13')
+            and (ipmctl_previous_receipt.platform.architecture | default('') == 'amd64')
+            and (ipmctl_previous_receipt.ipmctl.tag | default('') == ipmctl_tag)
+            and (ipmctl_previous_receipt.ipmctl.commit | default('') == ipmctl_commit)
+            and (ipmctl_previous_receipt.ipmctl.version | default('') == ipmctl_expected_version)
+            and (ipmctl_previous_receipt.edk2.tag | default('') == ipmctl_edk2_tag)
+            and (ipmctl_previous_receipt.edk2.commit | default('') == ipmctl_edk2_commit)
+            and (ipmctl_previous_receipt.patches | default([]) == ipmctl_patch_receipt)
+            and (ipmctl_previous_receipt.install.prefix | default('') == ipmctl_install_prefix)
+            and (ipmctl_previous_receipt.install.binary | default('') == ipmctl_binary_path)
             and
             (
-              ipmctl_previous_facts.ipmctl.source.binary_version
-              | default('')
-              ==
-              ipmctl_profile_policy.binary_version
+              ipmctl_initial_stats.results[1].stat.checksum | default('')
+              == ipmctl_previous_receipt.install.binary_sha256 | default('')
             )
+            and (ipmctl_current_software.results[0].rc | default(1) | int == 0)
             and
-            (
-              ipmctl_previous_facts.ipmctl.source.os_patch_script
-              | default('')
-              ==
-              ipmctl_profile_policy.os_patch_script
-            )
-            and
-            (
-              ipmctl_previous_facts.ipmctl.source.os_patch
-              | default('')
-              ==
-              ipmctl_profile_policy.os_patch
-            )
-            and (ipmctl_previous_facts.ipmctl.source.build_type | default('') == ipmctl_build_type_effective)
-          }}
-
-    - name: Inspect Debian ipmctl package ownership
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/dpkg-query
-          - -W
-          - "-f=${Status}"
-          - ipmctl
-      register: ipmctl_debian_package
-      changed_when: false
-      failed_when: false
-
-    - name: Inspect configured APT candidate for ipmctl
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/apt-cache
-          - policy
-          - ipmctl
-      register: ipmctl_apt_policy
-      changed_when: false
-      failed_when: false
-
-    - name: Refuse Debian-packaged or foreign-repository ipmctl migration
-      ansible.builtin.assert:
-        that:
-          - ipmctl_debian_package.rc | int != 0
-          - >-
-            (
-              ipmctl_apt_policy.stdout
-              | regex_findall('(?m)^\\s*Candidate:\\s*(\\S+)')
-              | first
-              | default('(none)')
-            ) == '(none)'
-        fail_msg: >-
-          A Debian ipmctl package is installed or an ipmctl package candidate
-          is exposed by configured repositories. Remove the foreign
-          Bookworm/Sid package and repository through a separately reviewed
-          package migration before using this source-managed runner.
-
-    - name: Refuse unmanaged local ipmctl replacement
-      ansible.builtin.assert:
-        that:
-          - >-
-            not ipmctl_installed_binary_stat.stat.exists
-            or
-            (
-              ipmctl_previous_fact_stat.stat.exists
-              and
-              ipmctl_previous_facts.ipmctl.source.profile | default('') == ipmctl_profile
-              and
-              ipmctl_previous_facts.ipmctl.source.commit | default('') == ipmctl_commit
-            )
-        fail_msg: >-
-          /usr/local/bin/ipmctl exists without matching managed provenance.
-          It will not be overwritten automatically.
-      when: ipmctl_mode_effective == 'apply'
-
-    - name: Require staged source trees for apply
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop:
-        - "{{ ipmctl_staged_source_path }}"
-        - "{{ ipmctl_staged_edk2_path }}"
-      register: ipmctl_staged_source_stats
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Validate pre-sudo staged source trees
-      ansible.builtin.assert:
-        that:
-          - ipmctl_staged_source_path | length > 0
-          - ipmctl_staged_edk2_path | length > 0
-          - ipmctl_staged_source_stats.results[0].stat.isdir | default(false)
-          - ipmctl_staged_source_stats.results[1].stat.isdir | default(false)
-        fail_msg: "apply requires exact ipmctl and edk2 source staged before sudo."
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Reset only the selected mutable ipmctl build workspace
-      ansible.builtin.file:
-        path: "{{ ipmctl_build_root }}"
-        state: absent
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Create managed source and build parents
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-      loop:
-        - "{{ ipmctl_source_root }}"
-        - "{{ ipmctl_build_root }}"
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Copy pristine pre-sudo source trees
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/cp
-          - -a
-          - --no-preserve=ownership
-          - "{{ item.source }}"
-          - "{{ item.destination }}"
-        creates: "{{ item.destination }}/.git"
-      loop:
-        - source: "{{ ipmctl_staged_source_path }}"
-          destination: "{{ ipmctl_source_dir }}"
-        - source: "{{ ipmctl_staged_edk2_path }}"
-          destination: "{{ ipmctl_edk2_source_dir }}"
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Verify pristine source identities
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/git
-          - -C
-          - "{{ item.path }}"
-          - rev-parse
-          - HEAD
-      loop:
-        - path: "{{ ipmctl_source_dir }}"
-          commit: "{{ ipmctl_commit }}"
-        - path: "{{ ipmctl_edk2_source_dir }}"
-          commit: "{{ ipmctl_edk2_commit }}"
-      register: ipmctl_source_heads
-      changed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Require exact pristine source identities
-      ansible.builtin.assert:
-        that:
-          - item.stdout | trim == item.item.commit
-        fail_msg: "A managed ipmctl source tree is at the wrong commit."
-      loop: "{{ ipmctl_source_heads.results | default([]) }}"
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Copy pristine sources into mutable build workspace
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/cp
-          - -a
-          - --no-preserve=ownership
-          - "{{ item.source }}"
-          - "{{ item.destination }}"
-        creates: "{{ item.destination }}/.git"
-      loop:
-        - source: "{{ ipmctl_source_dir }}"
-          destination: "{{ ipmctl_worktree_dir }}"
-        - source: "{{ ipmctl_edk2_source_dir }}"
-          destination: "{{ ipmctl_edk2_worktree_dir }}"
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Populate reviewed edk2 components in mutable ipmctl worktree
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/bash
-          - "{{ ipmctl_worktree_dir }}/updateedk.sh"
-        chdir: "{{ ipmctl_worktree_dir }}"
-        creates: "{{ ipmctl_worktree_dir }}/MdePkg"
-      register: ipmctl_updateedk_result
-      changed_when: ipmctl_updateedk_result.rc == 0
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Inspect pinned upstream Linux patch procedure
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop:
-        - "{{ ipmctl_os_patch_script_path }}"
-        - "{{ ipmctl_os_patch_file_path }}"
-      register: ipmctl_os_patch_stats
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_updateedk_result.rc | default(1) | int == 0
-
-    - name: Inventory pinned upstream Linux patches
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/find
-          - "{{ ipmctl_worktree_dir }}/src/os/patches"
-          - -maxdepth
-          - "1"
-          - -type
-          - f
-          - -name
-          - "*.patch"
-          - -printf
-          - "%f\n"
-      register: ipmctl_os_patch_inventory
-      changed_when: false
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_updateedk_result.rc | default(1) | int == 0
-
-    - name: Inspect pinned upstream Linux patch targets
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/git
-          - -C
-          - "{{ ipmctl_worktree_dir }}"
-          - apply
-          - --numstat
-          - "{{ ipmctl_os_patch_file_path }}"
-      register: ipmctl_os_patch_plan
-      changed_when: false
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_updateedk_result.rc | default(1) | int == 0
-
-    - name: Verify pinned upstream Linux patch applicability
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/git
-          - -C
-          - "{{ ipmctl_worktree_dir }}"
-          - apply
-          - --check
-          - --ignore-space-change
-          - --ignore-whitespace
-          - --whitespace=nowarn
-          - "{{ ipmctl_os_patch_file_path }}"
-      register: ipmctl_os_patch_preflight
-      changed_when: false
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_updateedk_result.rc | default(1) | int == 0
-
-    - name: Require exact pinned upstream Linux patch contract
-      ansible.builtin.assert:
-        that:
-          - ipmctl_os_patch_stats.results[0].stat.exists | default(false)
-          - ipmctl_os_patch_stats.results[1].stat.exists | default(false)
-          - ipmctl_os_patch_inventory.rc | default(1) | int == 0
-          - >-
-            (ipmctl_os_patch_inventory.stdout_lines | default([]))
-            ==
-            [ipmctl_profile_policy.os_patch | basename]
-          - ipmctl_os_patch_plan.rc | default(1) | int == 0
-          - ipmctl_os_patch_preflight.rc | default(1) | int == 0
-          - ipmctl_os_patch_plan.stdout_lines | default([]) | length == 1
-          - >-
             (
               (
-                ipmctl_os_patch_plan.stdout_lines
-                | default([''])
-                | first
-              ).split('\t')
-              | last
-            )
-            ==
-            'MdePkg/Include/Base.h'
-        fail_msg: >-
-          The pinned upstream Linux patch procedure is missing, changed, or
-          targets files outside the reviewed EDK2 Base.h compatibility change.
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_updateedk_result.rc | default(1) | int == 0
-
-    - name: Apply pinned upstream Linux compatibility patch
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/bash
-          - "{{ ipmctl_os_patch_script_path }}"
-        chdir: "{{ ipmctl_worktree_dir }}"
-      register: ipmctl_os_patch_result
-      changed_when: ipmctl_os_patch_result.rc == 0
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_os_patch_preflight.rc | default(1) | int == 0
-
-    - name: Verify pinned upstream Linux compatibility patch application
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/git
-          - -C
-          - "{{ ipmctl_worktree_dir }}"
-          - apply
-          - --reverse
-          - --check
-          - "{{ ipmctl_os_patch_file_path }}"
-      register: ipmctl_os_patch_verify
-      changed_when: false
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_os_patch_result.rc | default(1) | int == 0
-
-    - name: Configure reviewed ipmctl build
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/cmake
-          - -S
-          - "{{ ipmctl_worktree_dir }}"
-          - -B
-          - "{{ ipmctl_worktree_dir }}/build"
-          - "-DCMAKE_BUILD_TYPE={{ 'Release' if ipmctl_build_type_effective == 'release' else 'Debug' }}"
-          - "-DBUILDNUM={{ ipmctl_profile_policy.binary_version }}"
-          - -DCMAKE_INSTALL_PREFIX=/usr/local
-        creates: "{{ ipmctl_worktree_dir }}/build/CMakeCache.txt"
-      register: ipmctl_configure_result
-      changed_when: ipmctl_configure_result.rc == 0
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_os_patch_verify.rc | default(1) | int == 0
-
-    - name: Build reviewed ipmctl source
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/cmake
-          - --build
-          - "{{ ipmctl_worktree_dir }}/build"
-          - -j
-          - "{{ ansible_processor_vcpus | default(1) | string }}"
-      register: ipmctl_build_result
-      changed_when: ipmctl_build_result.rc == 0
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-        - ipmctl_configure_result.rc | default(1) | int == 0
-
-    - name: Record source-build output before enforcement
-      ansible.builtin.copy:
-        dest: "{{ ipmctl_run_log_dir }}/build.txt"
-        owner: root
-        group: root
-        mode: '0644'
-        content: |
-          updateedk rc={{ ipmctl_updateedk_result.rc | default('not-run') }}
-          {{ ipmctl_updateedk_result.stdout | default('') }}
-          {{ ipmctl_updateedk_result.stderr | default('') }}
-          patch inventory rc={{ ipmctl_os_patch_inventory.rc | default('not-run') }}
-          {{ ipmctl_os_patch_inventory.stdout | default('') }}
-          {{ ipmctl_os_patch_inventory.stderr | default('') }}
-          patch plan rc={{ ipmctl_os_patch_plan.rc | default('not-run') }}
-          {{ ipmctl_os_patch_plan.stdout | default('') }}
-          {{ ipmctl_os_patch_plan.stderr | default('') }}
-          patch preflight rc={{ ipmctl_os_patch_preflight.rc | default('not-run') }}
-          {{ ipmctl_os_patch_preflight.stdout | default('') }}
-          {{ ipmctl_os_patch_preflight.stderr | default('') }}
-          patch apply rc={{ ipmctl_os_patch_result.rc | default('not-run') }}
-          {{ ipmctl_os_patch_result.stdout | default('') }}
-          {{ ipmctl_os_patch_result.stderr | default('') }}
-          patch verify rc={{ ipmctl_os_patch_verify.rc | default('not-run') }}
-          {{ ipmctl_os_patch_verify.stdout | default('') }}
-          {{ ipmctl_os_patch_verify.stderr | default('') }}
-          configure rc={{ ipmctl_configure_result.rc | default('not-run') }}
-          {{ ipmctl_configure_result.stdout | default('') }}
-          {{ ipmctl_configure_result.stderr | default('') }}
-          build rc={{ ipmctl_build_result.rc | default('not-run') }}
-          {{ ipmctl_build_result.stdout | default('') }}
-          {{ ipmctl_build_result.stderr | default('') }}
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Require successful reviewed source build
-      ansible.builtin.assert:
-        that:
-          - ipmctl_updateedk_result.rc | default(1) | int == 0
-          - ipmctl_os_patch_inventory.rc | default(1) | int == 0
-          - ipmctl_os_patch_plan.rc | default(1) | int == 0
-          - ipmctl_os_patch_preflight.rc | default(1) | int == 0
-          - ipmctl_os_patch_result.rc | default(1) | int == 0
-          - ipmctl_os_patch_verify.rc | default(1) | int == 0
-          - ipmctl_configure_result.rc | default(1) | int == 0
-          - ipmctl_build_result.rc | default(1) | int == 0
-        fail_msg: >-
-          The reviewed {{ ipmctl_build_type_effective }} build failed. Review
-          {{ ipmctl_run_log_dir }}/build.txt. Release never falls back to Debug
-          automatically.
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Install reviewed ipmctl build under /usr/local
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/cmake
-          - --install
-          - "{{ ipmctl_worktree_dir }}/build"
-      register: ipmctl_install_result
-      changed_when: true
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Refresh dynamic linker cache
-      ansible.builtin.command:
-        argv:
-          - /usr/sbin/ldconfig
-      changed_when: true
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Preserve CMake install manifest
-      ansible.builtin.copy:
-        src: "{{ ipmctl_worktree_dir }}/build/install_manifest.txt"
-        dest: "{{ ipmctl_transaction_root }}/{{ ipmctl_run_id }}.install-manifest.txt"
-        remote_src: true
-        owner: root
-        group: root
-        mode: '0644'
-      when:
-        - ipmctl_mode_effective == 'apply'
-        - not ipmctl_install_is_current | bool
-
-    - name: Collect privileged read-only ipmctl inventory
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/python3
-          - "{{ ipmctl_inventory_helper_path }}"
-          - --log-dir
-          - "{{ ipmctl_run_log_dir }}/before"
-      register: ipmctl_inventory_raw
-      changed_when: false
-
-    - name: Decode privileged ipmctl inventory
-      ansible.builtin.set_fact:
-        ipmctl_inventory: "{{ ipmctl_inventory_raw.stdout | from_json }}"
-
-    - name: Require installed reviewed ipmctl and readable inventory
-      ansible.builtin.assert:
-        that:
-          - ipmctl_inventory.schema_version | int == 1
-          - ipmctl_inventory.binary.available | bool
-          - ipmctl_profile_policy.binary_version in ipmctl_inventory.binary.version
-          - ipmctl_inventory.readiness.inventory_ready | bool
-        fail_msg: >-
-          The reviewed ipmctl binary is unavailable, has the wrong version, or
-          cannot produce a complete privileged inventory.
-
-    - name: Require existing managed provenance outside apply
-      ansible.builtin.assert:
-        that:
-          - ipmctl_previous_fact_stat.stat.exists
-          - ipmctl_previous_facts.ipmctl.schema_version | default(0) | int == 1
-          - ipmctl_previous_facts.ipmctl.source.profile | default('') == ipmctl_profile
-          - ipmctl_previous_facts.ipmctl.source.commit | default('') == ipmctl_commit
-          - ipmctl_previous_facts.ipmctl.source.edk2_commit | default('') == ipmctl_edk2_commit
-        fail_msg: "Run the reviewed ipmctl apply mode before validation or goal operations."
-      when: ipmctl_mode_effective != 'apply'
-
-    - name: Normalize requested PMem goal
-      ansible.builtin.set_fact:
-        ipmctl_requested_mode: "{{ ipmctl_goal }}"
-        ipmctl_goal_properties: >-
-          {{
-            ['MemoryMode=100']
-            if ipmctl_goal == 'memory-mode'
-            else
-            (
-              ['MemoryMode=0', 'PersistentMemoryType=AppDirect']
-              if ipmctl_goal == 'app-direct'
-              else
-              ['MemoryMode=0', 'PersistentMemoryType=AppDirectNotInterleaved']
-            )
-          }}
-        ipmctl_requested_sockets: >-
-          {{
-            ipmctl_inventory.hardware.socket_ids
-            if ipmctl_socket_target == 'all'
-            else ipmctl_socket_target.split(',') | map('int') | list
-          }}
-      when: ipmctl_mode_effective in ['goal-plan', 'goal-apply']
-
-    - name: Build exact PMem goal command
-      ansible.builtin.set_fact:
-        ipmctl_goal_argv: >-
-          {{
-            ['ipmctl', 'create', '-force', '-goal']
-            +
-            (
-              []
-              if ipmctl_socket_target == 'all'
-              else ['-socket', ipmctl_socket_target]
-            )
-            + ipmctl_goal_properties
-          }}
-        ipmctl_goal_is_noop: >-
-          {{
-            ipmctl_inventory.readiness.settled | bool
-            and
-            (ipmctl_requested_sockets | sort == ipmctl_inventory.hardware.socket_ids | sort)
-            and
-            (
-              (ipmctl_goal == 'memory-mode' and ipmctl_inventory.memory_resources.current_mode == 'memory-mode')
-              or
-              (ipmctl_goal == 'app-direct' and ipmctl_inventory.memory_resources.current_mode == 'app-direct')
-              or
-              (
-                ipmctl_goal == 'app-direct-not-interleaved'
-                and
-                ipmctl_inventory.memory_resources.current_mode == 'app-direct-not-interleaved'
+                ipmctl_current_software.results[0].stdout
+                | default('')
+                | regex_search('[0-9]{2}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}')
+                | default('')
               )
+              == ipmctl_expected_version
             )
-          }}
-      when: ipmctl_mode_effective in ['goal-plan', 'goal-apply']
-
-    - name: Fail closed on unsafe PMem goal prerequisites
-      ansible.builtin.assert:
-        that:
-          - ipmctl_inventory.hardware.present | bool
-          - ipmctl_inventory.hardware.topology_verified | bool
-          - ipmctl_inventory.hardware.manageable | bool
-          - ipmctl_inventory.hardware.healthy | bool
-          - ipmctl_inventory.hardware.security_safe_for_goal | bool
-          - ipmctl_inventory.readiness.goal_change_supported | bool
-          - ipmctl_inventory.readiness.settled | bool
-          - ipmctl_inventory.ndctl.namespace_count | int == 0
-          - ipmctl_requested_sockets | length > 0
-          - ipmctl_requested_sockets | difference(ipmctl_inventory.hardware.socket_ids) | length == 0
-          - ipmctl_inventory.hardware.socket_ids | difference(ipmctl_requested_sockets) | length == 0
-          - ipmctl_goal != 'memory-mode' or ipmctl_inventory.capabilities.memory_mode_supported | bool
-          - ipmctl_goal == 'memory-mode' or ipmctl_inventory.capabilities.app_direct_supported | bool
-        fail_msg: >-
-          PMem goals require healthy, manageable, unlocked modules, supported
-          platform modes, complete socket targets, no namespaces, and no
-          pending goal. The runner never deletes namespaces or repairs PCD.
-      when:
-        - ipmctl_mode_effective in ['goal-plan', 'goal-apply']
-        - not ipmctl_goal_is_noop | bool
-
-    - name: Display complete read-only PMem goal plan
-      ansible.builtin.debug:
-        msg:
-          - "Current mode: {{ ipmctl_inventory.memory_resources.current_mode }}"
-          - "Requested mode: {{ ipmctl_requested_mode }}"
-          - "DIMMs: {{ ipmctl_inventory.hardware.dimm_ids }}"
-          - "Detected sockets: {{ ipmctl_inventory.hardware.socket_ids }}"
-          - "Target sockets: {{ ipmctl_requested_sockets }}"
-          - "Manageable/healthy/security-safe: {{ ipmctl_inventory.hardware.manageable }}/{{ ipmctl_inventory.hardware.healthy }}/{{ ipmctl_inventory.hardware.security_safe_for_goal }}"
-          - "Platform configuration supported: {{ ipmctl_inventory.capabilities.platform_config_supported }}"
-          - "Supported modes: {{ ipmctl_inventory.capabilities.modes_supported }}"
-          - "Volatile PMem/App Direct/cache DDR bytes: {{ ipmctl_inventory.memory_resources.volatile_pmem_bytes }}/{{ ipmctl_inventory.memory_resources.app_direct_pmem_bytes }}/{{ ipmctl_inventory.memory_resources.cache_ddr_bytes }}"
-          - "Namespaces present: {{ ipmctl_inventory.ndctl.namespace_count }}"
-          - "Pending goal: {{ ipmctl_inventory.pending_goal.present }}"
-          - "Topology evidence: {{ ipmctl_inventory.commands.topology.log }}"
-          - "No-op: {{ ipmctl_goal_is_noop }}"
-          - "Proposed argv: {{ ipmctl_goal_argv }}"
-          - "A non-no-op goal can destroy App Direct data and requires reboot."
-      when: ipmctl_mode_effective in ['goal-plan', 'goal-apply']
-
-    - name: Return machine-readable PMem goal-plan disposition
-      ansible.builtin.copy:
-        dest: "{{ ipmctl_goal_plan_result_path }}"
-        owner: root
-        group: root
-        mode: '0644'
-        content: "no_op={{ ipmctl_goal_is_noop | bool | to_json }}\n"
-      when: ipmctl_mode_effective == 'goal-plan'
-
-    - name: Create the explicitly confirmed PMem goal
-      ansible.builtin.command:
-        argv: "{{ ipmctl_goal_argv }}"
-      register: ipmctl_goal_result
-      changed_when: ipmctl_goal_result.rc == 0
-      failed_when: false
-      when:
-        - ipmctl_mode_effective == 'goal-apply'
-        - not ipmctl_goal_is_noop | bool
-
-    - name: Record PMem goal command result
-      ansible.builtin.copy:
-        dest: "{{ ipmctl_run_log_dir }}/goal-apply.txt"
-        owner: root
-        group: root
-        mode: '0600'
-        content: |
-          argv={{ ipmctl_goal_argv | to_json }}
-          rc={{ ipmctl_goal_result.rc | default(0) }}
-          stdout:
-          {{ ipmctl_goal_result.stdout | default('no-op') }}
-          stderr:
-          {{ ipmctl_goal_result.stderr | default('') }}
-      when: ipmctl_mode_effective == 'goal-apply'
-
-    - name: Persist immutable PMem goal transaction record
-      ansible.builtin.copy:
-        dest: "{{ ipmctl_transaction_root }}/{{ ipmctl_run_id }}.goal.yml"
-        owner: root
-        group: root
-        mode: '0600'
-        content: |
-          schema_version: 1
-          generated_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
-          requested_goal: {{ ipmctl_goal | to_json }}
-          socket_target: {{ ipmctl_socket_target | to_json }}
-          no_op: {{ ipmctl_goal_is_noop | bool | to_json }}
-          argv: {{ ipmctl_goal_argv | to_json }}
-          command_rc: {{ ipmctl_goal_result.rc | default(0) | int }}
-          reboot_required: {{ (not (ipmctl_goal_is_noop | bool) and (ipmctl_goal_result.rc | default(1) | int == 0)) | to_json }}
-      when: ipmctl_mode_effective == 'goal-apply'
-
-    - name: Collect post-goal privileged inventory
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/python3
-          - "{{ ipmctl_inventory_helper_path }}"
-          - --log-dir
-          - "{{ ipmctl_run_log_dir }}/after"
-      register: ipmctl_post_goal_inventory_raw
-      changed_when: false
-      when: ipmctl_mode_effective == 'goal-apply'
-
-    - name: Select final ipmctl inventory
-      ansible.builtin.set_fact:
-        ipmctl_final_inventory: >-
-          {{
-            (ipmctl_post_goal_inventory_raw.stdout | from_json)
-            if ipmctl_mode_effective == 'goal-apply'
-            else ipmctl_inventory
+            and (ipmctl_current_software.results[1].rc | default(1) | int == 0)
+            and ('not found' not in (ipmctl_current_software.results[1].stdout | default('')))
           }}
 
-    - name: Persist schema-version-1 ipmctl facts
-      ansible.builtin.copy:
-        dest: "{{ ipmctl_facts_path }}"
-        owner: root
-        group: root
-        mode: '0644'
-        content: |
-          ipmctl:
-            schema_version: 1
-            generated_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
-            mode: {{ ipmctl_mode_effective | to_json }}
-            source:
-              profile: {{ ipmctl_profile | to_json }}
-              repository_url: {{ ipmctl_repository_url | to_json }}
-              release: {{ ipmctl_release | to_json }}
-              commit: {{ ipmctl_commit | to_json }}
-              edk2_repository_url: {{ ipmctl_edk2_repository_url | to_json }}
-              edk2_release: {{ ipmctl_edk2_release | to_json }}
-              edk2_commit: {{ ipmctl_edk2_commit | to_json }}
-              binary_version: {{ ipmctl_profile_policy.binary_version | to_json }}
-              os_patch_script: {{ ipmctl_profile_policy.os_patch_script | to_json }}
-              os_patch: {{ ipmctl_profile_policy.os_patch | to_json }}
-              build_type: {{ ipmctl_build_type_effective | to_json }}
-              install_prefix: "/usr/local"
-            inventory: {{ ipmctl_final_inventory | to_json }}
-            goal:
-              requested: {{ (ipmctl_goal if ipmctl_mode_effective == 'goal-apply' else '') | to_json }}
-              socket_target: {{ (ipmctl_socket_target if ipmctl_mode_effective == 'goal-apply' else '') | to_json }}
-              command_rc: {{ ipmctl_goal_result.rc | default(0) | int }}
-              no_op: {{ ipmctl_goal_is_noop | default(false) | bool | to_json }}
-              reboot_required: {{ (ipmctl_mode_effective == 'goal-apply' and not (ipmctl_goal_is_noop | default(false) | bool) and (ipmctl_goal_result.rc | default(1) | int == 0)) | to_json }}
-            evidence:
-              run_log: {{ ipmctl_run_log_dir | to_json }}
-            safety:
-              namespace_deleted: false
-              pcd_deleted: false
-              firmware_changed: false
-              security_changed: false
-              reboot_performed: false
-            readiness:
-              tool_ready: {{ ipmctl_final_inventory.readiness.tool_ready | bool | to_json }}
-              inventory_ready: {{ ipmctl_final_inventory.readiness.inventory_ready | bool | to_json }}
-              settled: {{ ipmctl_final_inventory.readiness.settled | bool | to_json }}
-              memory_mode_verified: {{ ipmctl_final_inventory.memory_resources.memory_mode_verified | bool | to_json }}
-      when: ipmctl_mode_effective != 'goal-plan'
-
-    - name: Update stable latest ipmctl log link
-      ansible.builtin.file:
-        src: "{{ ipmctl_run_log_dir }}"
-        dest: "{{ ipmctl_log_root }}/latest"
-        state: link
-        force: true
-      when: ipmctl_mode_effective != 'goal-plan'
-
-    - name: Enforce PMem goal command success after evidence persistence
-      ansible.builtin.assert:
-        that:
-          - ipmctl_goal_is_noop | bool or ipmctl_goal_result.rc | default(1) | int == 0
-          - ipmctl_goal_is_noop | bool or ipmctl_final_inventory.pending_goal.present | bool
-        fail_msg: >-
-          The PMem goal was not accepted or no pending goal is visible. Review
-          {{ ipmctl_run_log_dir }}. Do not retry destructively without review.
-      when: ipmctl_mode_effective == 'goal-apply'
-
-    - name: Report ipmctl checkpoint
+    - name: Report current installation
       ansible.builtin.debug:
-        msg:
-          - "ipmctl version: {{ ipmctl_final_inventory.binary.version }}"
-          - "PMem sockets/DIMMs: {{ ipmctl_final_inventory.hardware.socket_ids }}/{{ ipmctl_final_inventory.hardware.dimm_ids | length }}"
-          - "Current mode: {{ ipmctl_final_inventory.memory_resources.current_mode }}"
-          - "Pending goal: {{ ipmctl_final_inventory.pending_goal.present }}"
-          - "Managed facts: {{ ipmctl_facts_path }}"
-      when: ipmctl_mode_effective != 'goal-plan'
+        msg: >-
+          Matching receipt, binary checksum, version, and linkage found;
+          source fetch, compilation, and installation are skipped.
+      when: ipmctl_install_is_current | bool
+
+    - name: Build and install pinned ipmctl
+      when: not ipmctl_install_is_current | bool
+      block:
+        - name: Create fresh non-root build workspace
+          ansible.builtin.file:
+            path: "{{ ipmctl_run_root }}"
+            state: directory
+            mode: "0750"
+
+        - name: Initialize exact source repositories
+          ansible.builtin.command:
+            argv: [/usr/bin/git, init, "{{ item.path }}"]
+          loop:
+            - { path: "{{ ipmctl_source_dir }}" }
+            - { path: "{{ ipmctl_edk2_source_dir }}" }
+          environment:
+            HOME: "{{ ipmctl_build_home }}"
+
+        - name: Add credential-free HTTPS origins
+          ansible.builtin.command:
+            argv: [/usr/bin/git, -C, "{{ item.path }}", remote, add, origin, "{{ item.repository }}"]
+          loop:
+            - { path: "{{ ipmctl_source_dir }}", repository: "{{ ipmctl_repository }}" }
+            - { path: "{{ ipmctl_edk2_source_dir }}", repository: "{{ ipmctl_edk2_repository }}" }
+          environment:
+            HOME: "{{ ipmctl_build_home }}"
+
+        - name: Fetch only reviewed source tags
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/git
+              - -C
+              - "{{ item.path }}"
+              - fetch
+              - --depth=1
+              - origin
+              - "refs/tags/{{ item.tag }}:refs/tags/{{ item.tag }}"
+          loop:
+            - { path: "{{ ipmctl_source_dir }}", tag: "{{ ipmctl_tag }}" }
+            - { path: "{{ ipmctl_edk2_source_dir }}", tag: "{{ ipmctl_edk2_tag }}" }
+          environment:
+            HOME: "{{ ipmctl_build_home }}"
+
+        - name: Check out reviewed commits detached
+          ansible.builtin.command:
+            argv: [/usr/bin/git, -C, "{{ item.path }}", checkout, --detach, "{{ item.commit }}"]
+          loop:
+            - { path: "{{ ipmctl_source_dir }}", commit: "{{ ipmctl_commit }}" }
+            - { path: "{{ ipmctl_edk2_source_dir }}", commit: "{{ ipmctl_edk2_commit }}" }
+          environment:
+            HOME: "{{ ipmctl_build_home }}"
+
+        - name: Read checked-out and tag source identities
+          ansible.builtin.command:
+            argv: [/usr/bin/git, -C, "{{ item.path }}", rev-parse, "{{ item.revision }}"]
+          loop:
+            - { path: "{{ ipmctl_source_dir }}", revision: HEAD, expected: "{{ ipmctl_commit }}" }
+            - { path: "{{ ipmctl_source_dir }}", revision: "refs/tags/{{ ipmctl_tag }}^{commit}", expected: "{{ ipmctl_commit }}" }
+            - { path: "{{ ipmctl_edk2_source_dir }}", revision: HEAD, expected: "{{ ipmctl_edk2_commit }}" }
+            - { path: "{{ ipmctl_edk2_source_dir }}", revision: "refs/tags/{{ ipmctl_edk2_tag }}^{commit}", expected: "{{ ipmctl_edk2_commit }}" }
+          register: ipmctl_source_identity
+          changed_when: false
+          environment:
+            HOME: "{{ ipmctl_build_home }}"
+
+        - name: Require exact source identities
+          ansible.builtin.assert:
+            that:
+              - item.stdout | trim == item.item.expected
+            fail_msg: "Reviewed source tag or commit identity did not match."
+          loop: "{{ ipmctl_source_identity.results }}"
+
+        - name: Preserve EDK2 CRLF source as a binary Git diff
+          ansible.builtin.copy:
+            dest: "{{ ipmctl_edk2_source_dir }}/.git/info/attributes"
+            content: "MdePkg/Include/Base.h binary\n"
+            mode: "0600"
+
+        - name: Apply finite reviewed compatibility pack
+          ansible.builtin.include_tasks: "../files/ipmctl/apply-patch.yml"
+          loop: "{{ ipmctl_patches }}"
+          loop_control:
+            loop_var: ipmctl_patch
+            label: "{{ ipmctl_patch.id }}"
+
+        - name: Inspect EDK2 link destinations
+          ansible.builtin.stat:
+            path: "{{ ipmctl_source_dir }}/{{ item }}"
+            follow: false
+          loop: [BaseTools, MdeModulePkg, MdePkg, ShellPkg]
+          register: ipmctl_edk2_link_targets
+
+        - name: Require fresh EDK2 link destinations
+          ansible.builtin.assert:
+            that:
+              - not (item.stat.exists | default(false))
+            fail_msg: "Refusing to reuse an existing EDK2 component path."
+          loop: "{{ ipmctl_edk2_link_targets.results }}"
+
+        - name: Link reviewed EDK2 components explicitly
+          ansible.builtin.file:
+            src: "{{ ipmctl_edk2_source_dir }}/{{ item }}"
+            dest: "{{ ipmctl_source_dir }}/{{ item }}"
+            state: link
+            force: false
+          loop: [BaseTools, MdeModulePkg, MdePkg, ShellPkg]
+
+        - name: Configure reviewed Release build
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/cmake
+              - -S
+              - "{{ ipmctl_source_dir }}"
+              - -B
+              - "{{ ipmctl_build_dir }}"
+              - -DRELEASE=ON
+              - -DCMAKE_BUILD_TYPE=Release
+              - "-DBUILDNUM={{ ipmctl_expected_version }}"
+              - "-DCMAKE_INSTALL_PREFIX={{ ipmctl_install_prefix }}"
+          environment:
+            HOME: "{{ ipmctl_build_home }}"
+
+        - name: Compile reviewed Release build
+          ansible.builtin.command:
+            argv: [/usr/bin/cmake, --build, "{{ ipmctl_build_dir }}", --parallel, "2"]
+          environment:
+            HOME: "{{ ipmctl_build_home }}"
+
+        - name: Install reviewed Release build
+          ansible.builtin.command:
+            argv: [/usr/bin/cmake, --install, "{{ ipmctl_build_dir }}"]
+          become: true
+
+        - name: Refresh runtime linker cache
+          ansible.builtin.command:
+            argv: [/sbin/ldconfig]
+          become: true
+          changed_when: true
+
+        - name: Read installed version and linkage
+          ansible.builtin.command:
+            argv: "{{ item }}"
+          loop:
+            - ["{{ ipmctl_binary_path }}", version]
+            - [/usr/bin/ldd, "{{ ipmctl_binary_path }}"]
+          register: ipmctl_installed_software
+          changed_when: false
+
+        - name: Inspect installed binary and manifest
+          ansible.builtin.stat:
+            path: "{{ item }}"
+            follow: true
+            checksum_algorithm: sha256
+          loop:
+            - "{{ ipmctl_binary_path }}"
+            - "{{ ipmctl_build_dir }}/install_manifest.txt"
+          register: ipmctl_installed_stats
+
+        - name: Require installed software identity
+          ansible.builtin.assert:
+            that:
+              - >-
+                (
+                  ipmctl_installed_software.results[0].stdout
+                  | regex_search('[0-9]{2}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}')
+                  | default('')
+                ) == ipmctl_expected_version
+              - "'not found' not in ipmctl_installed_software.results[1].stdout"
+              - ipmctl_installed_stats.results[0].stat.isreg | default(false)
+              - ipmctl_installed_stats.results[1].stat.isreg | default(false)
+            fail_msg: "Installed ipmctl version, linkage, or manifest is invalid."
+
+        - name: Read toolchain versions for receipt
+          ansible.builtin.command:
+            argv: "{{ item }}"
+          loop:
+            - [/usr/bin/gcc, -dumpfullversion]
+            - [/usr/bin/g++, -dumpfullversion]
+            - [/usr/bin/cmake, --version]
+            - [/usr/bin/dpkg-query, -W, '-f=${Package}=${Version}\n', libndctl-dev, libndctl6]
+          register: ipmctl_toolchain_versions
+          changed_when: false
+
+        - name: Create managed receipt directory
+          ansible.builtin.file:
+            path: "{{ ipmctl_receipt_root }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          become: true
+
+        - name: Preserve CMake install manifest
+          ansible.builtin.copy:
+            src: "{{ ipmctl_build_dir }}/install_manifest.txt"
+            dest: "{{ ipmctl_install_manifest_path }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0644"
+          become: true
+
+        - name: Write atomic installation receipt
+          ansible.builtin.copy:
+            dest: "{{ ipmctl_receipt_path }}"
+            owner: root
+            group: root
+            mode: "0644"
+            content: >-
+              {{
+                {
+                  'schema_version': 1,
+                  'installed_at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ'),
+                  'platform': {'debian': '13', 'architecture': 'amd64'},
+                  'ipmctl': {'tag': ipmctl_tag, 'commit': ipmctl_commit, 'version': ipmctl_expected_version},
+                  'edk2': {'tag': ipmctl_edk2_tag, 'commit': ipmctl_edk2_commit},
+                  'patches': ipmctl_patch_receipt,
+                  'toolchain': {
+                    'gcc': ipmctl_toolchain_versions.results[0].stdout | trim,
+                    'g++': ipmctl_toolchain_versions.results[1].stdout | trim,
+                    'cmake': ipmctl_toolchain_versions.results[2].stdout_lines | first,
+                    'libndctl': ipmctl_toolchain_versions.results[3].stdout_lines
+                  },
+                  'install': {
+                    'prefix': ipmctl_install_prefix,
+                    'binary': ipmctl_binary_path,
+                    'binary_sha256': ipmctl_installed_stats.results[0].stat.checksum
+                  }
+                }
+                | to_nice_json
+              }}
+          become: true
+
+        - name: Report retained build workspace
+          ansible.builtin.debug:
+            msg: "Pinned source/build workspace retained at {{ ipmctl_run_root }}"

@@ -199,7 +199,8 @@ def positive_capacity(text: str) -> bool:
 
 def collect_memory_mode(source: Source) -> dict[str, Any]:
     ipmctl_rc, ipmctl_text = source.command(
-        ["ipmctl", "show", "-memoryresources"], "ipmctl-memoryresources"
+        ["/usr/local/bin/ipmctl", "show", "-memoryresources"],
+        "ipmctl-memoryresources",
     )
     dmidecode_rc, dmidecode_text = source.command(
         ["dmidecode", "--type", "memory"], "dmidecode-memory"

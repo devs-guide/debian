@@ -126,7 +126,7 @@ groups:
       - linux-cpupower
       - ndctl
   ipmctl_build:
-    description: Opt-in Debian 13 source build and PMem inventory dependencies for pinned ipmctl; never installed by baseline playbooks.
+    description: Opt-in Debian 13 build and read-only verification dependencies for pinned ipmctl; never installed by baseline playbooks.
     packages:
       - git
       - ca-certificates
