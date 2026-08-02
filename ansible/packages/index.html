@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Package catalog · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/ansible/">Ansible</a> / <a href="/debian/ansible/packages/">Packages</a>
+    </p>
+    <article>
+      <h1 id="package-catalog">Package catalog</h1>
+      <p><code>ansible/install.packages.yml</code> consumes package
+      groups defined in <code>ansible/packages.yml</code>.</p>
+      <p>Default groups cover the project’s baseline categories such as
+      base packages, time sync, security, storage, networking, hardware
+      information, developer tools, and power policy. Optional desktop,
+      Apple media, GPU-vendor, and firmware groups remain disabled
+      unless explicitly selected.</p>
+      <p>Example package-group override:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ansible-playbook</span> ansible/install.packages.yml <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-e</span> <span class="st">&#39;{&quot;package_group_overrides&quot;:{&quot;desktop_rdp_optional&quot;:true},&quot;exclude_packages&quot;:[&quot;mailutils&quot;]}&#39;</span></span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Extra variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>package_group_overrides</code></td>
+      <td>Enables or disables named groups from
+      <code>ansible/packages.yml</code>; the example enables the
+      optional desktop/RDP group.</td>
+      </tr>
+      <tr class="even">
+      <td><code>exclude_packages</code></td>
+      <td>Removes specifically named packages from the resolved package
+      list; the example excludes <code>mailutils</code>.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Run this from a configured Ansible checkout with the correct
+      inventory and privilege settings. The published runners carry
+      their own runtime support and are safer for a new host than
+      manually assembling a partial playbook command.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/ansible/packages.yml"><code>ansible/packages.yml</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

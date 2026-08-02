@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Publish Pages action · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/publish/">Publish</a>
+    </p>
+    <article>
+      <h1 id="publish-pages-action">Publish Pages action</h1>
+      <p>Regenerates the static GitHub Pages tree from the canonical
+      setup, Ansible, documentation, and repository README sources.</p>
+      <p><code>actions/publication.manifest</code> is the canonical
+      inventory for source files and trees. Both this publisher and
+      <code>actions/validate.pages.sh</code> consume it. Every setup
+      entrypoint in the manifest must retain its <code>.sh</code>
+      extension; extensionless executable aliases are rejected.</p>
+      <p>Manifest entries use three pipe-delimited fields:</p>
+      <pre class="text"><code>file|setup/cli/nvidia.sh|setup/cli/nvidia.sh
+tree|ansible|ansible</code></pre>
+      <p><code>file</code> publishes one non-empty regular file.
+      <code>tree</code> publishes and validates every regular file below
+      the declared directory. Unsafe, duplicate, overlapping, symlinked,
+      or missing entries fail before the output directory is
+      replaced.</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="va">PUBLISH_DIR</span><span class="op">=</span>static <span class="fu">bash</span> actions/www.pages.sh</span></code></pre></div>
+      <p>For an isolated review output, choose a specific temporary
+      directory:</p>
+      <div class="sourceCode" id="cb3"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="va">PUBLISH_DIR</span><span class="op">=</span>/tmp/debian-pages <span class="va">DOCS_SITE_ROOT</span><span class="op">=</span>/debian <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> actions/www.pages.sh</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>PUBLISH_DIR</code></td>
+      <td>Repository-relative or absolute generated output directory
+      under an existing parent. The action resolves it, rejects broad
+      system/home/repository roots, then removes and recreates this
+      exact directory.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DIR_PUBLISH</code></td>
+      <td>Legacy compatibility alias for <code>PUBLISH_DIR</code>. If
+      both are set, this legacy variable currently takes precedence; new
+      automation should use <code>PUBLISH_DIR</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DOCS_SITE_ROOT</code></td>
+      <td>Project path embedded in documentation links;
+      <code>/debian</code> is the production project-site path.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>The output directory is disposable generated content. Do not
+      hand-edit <code>static/</code>; change its source and rebuild
+      instead.</p>
+      <p>Pull requests run runtime validation and build this artifact
+      without deployment. Only a successful push to <code>main</code>
+      grants the deploy job write permission and publishes the
+      previously built artifact to the <code>www</code> branch.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/<a
+href="http://www.pages.sh">www.pages.sh</a>"><code>actions/<a
+href="http://www.pages.sh">www.pages.sh</a></code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

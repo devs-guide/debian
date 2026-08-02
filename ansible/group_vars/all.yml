@@ -1,0 +1,95 @@
+---
+# Shared locations and filenames for published Debian artifacts.
+repo_owner: "devs-guide"
+repo_name: "debian"
+pages_base_url: "https://{{ repo_owner }}.github.io/{{ repo_name }}"
+pages_ansible_dir: "ansible"
+playlist_filename: "install.playbooks.txt"
+package_catalog_filename: "packages.yml"
+package_catalog_url: "{{ pages_base_url }}/{{ pages_ansible_dir }}/{{ package_catalog_filename }}"
+
+# Apt cache policy.
+apt_cache_valid_time: 86400
+apt_skip_cache_refresh: false
+
+# Shared Python / Ansible bootstrap contract.
+# controller_python_version is the minimum controller Python version for this repo.
+# It is not an exact-version requirement on releases whose native Python is newer.
+controller_python_version: "3.12.3"
+controller_python_major_minor: "3.12"
+controller_python_min_version: "{{ controller_python_version }}"
+controller_python_policy: "auto"
+controller_python_system_path: "/usr/bin/python3"
+controller_python_provider: "auto"
+controller_python_rebuild_for_legacy: true
+controller_python_prefix: "/usr/local"
+controller_ansible_venv: "/opt/ansible-venv"
+controller_ansible_core_version: "2.20.5"
+controller_ansible_core_spec: "ansible-core=={{ controller_ansible_core_version }}"
+controller_ansible_core_min: "{{ controller_ansible_core_version }}"
+
+# Managed fallback Python used only when distro system Python is below controller_python_min_version.
+managed_target_python_version: "3.12.3"
+managed_target_python_major_minor: "3.12"
+managed_target_python_source_prefix: "/usr/local"
+managed_target_python_home: "/opt/ansible/py312"
+managed_target_python_path: "{{ managed_target_python_home }}/bin/python"
+managed_target_handoff_marker: "{{ managed_target_python_home }}/.handoff-ready"
+
+ansible_python_interpreter_system: "/usr/bin/python3"
+ansible_python_interpreter_managed: "{{ managed_target_python_path }}"
+
+# Bootstrap access policy.
+# These defaults are intentionally permissive for first-boot LAN access.
+# Harden them in downstream group_vars after initial bootstrap if required.
+bootstrap_default_user_update_password: "always"
+bootstrap_default_nonroot_sudo: true
+bootstrap_default_sudo_group: "sudo"
+bootstrap_passwordless_sudo: false
+bootstrap_managed_users_require_sudo: true
+
+# Shared account and network policy defaults.
+user_defs:
+  - name: root
+    password: root
+    update_password: "{{ bootstrap_default_user_update_password }}"
+    password_lock: false
+  - name: agent
+    password: agent
+    update_password: "{{ bootstrap_default_user_update_password }}"
+    password_lock: false
+    groups:
+      - sudo
+  - name: app
+    password: app
+    update_password: "{{ bootstrap_default_user_update_password }}"
+    password_lock: false
+    groups:
+      - sudo
+  - name: gpt
+    password: gpt
+    update_password: "{{ bootstrap_default_user_update_password }}"
+    password_lock: false
+    groups:
+      - sudo
+  - name: admin
+    password: admin
+    update_password: "{{ bootstrap_default_user_update_password }}"
+    password_lock: false
+    groups:
+      - sudo
+
+
+ssh_allowed_users: []
+ssh_default_include_dir: "/etc/ssh/sshd_config.d"
+ssh_default_include_path: "/etc/ssh/sshd_config.d/90-debian-baseline.conf"
+
+network_defaults:
+  allowed_users: []
+  allow_subnets:
+    - 10.0.0.0/24
+  allow_lan_tcp: true
+  allow_rdp: false
+  manage_ufw: true
+  ssh_port: 22
+  rdp_port: 3389

@@ -1,0 +1,228 @@
+---
+# Canonical Debian package groups for host bootstrap and hardening.
+groups:
+  base:
+    description: Essential base tooling and SSH.
+    packages:
+      - sudo
+      - ca-certificates
+      - gnupg
+      - curl
+      - wget
+      - lsb-release
+      - net-tools
+      - iproute2
+      - openssh-server
+  time_sync:
+    description: Reliable time sync.
+    packages:
+      - chrony
+  security:
+    description: Host-level hardening and updates.
+    packages:
+      - ufw
+      - apparmor
+      - apparmor-profiles
+      - apparmor-profiles-extra
+      - unattended-upgrades
+      - apt-listchanges
+      - needrestart
+      - fail2ban
+      - auditd
+      - audispd-plugins
+      - libpam-tmpdir
+      - libpam-passwdqc
+  storage:
+    description: Disk, RAID, and filesystem tooling.
+    packages:
+      - nvme-cli
+      - hdparm
+      - util-linux
+      - mdadm
+      - lvm2
+      - lsscsi
+      - smartmontools
+      - xattr
+  monitoring_benchmark:
+    description: Observability and benchmark tooling.
+    packages:
+      - htop
+      - sysstat
+      - atop
+      - nmon
+      - dstat
+      - iotop
+      - bmon
+      - lm-sensors
+      - fancontrol
+      - i2c-tools
+      - fio
+      - bonnie++
+  networking:
+    description: Network tests and small utilities.
+    packages:
+      - iperf3
+      - tree
+      - mailutils
+      - nftables
+      - iptables-persistent
+  hardware_info:
+    description: Hardware inventory and firmware data.
+    packages:
+      - lshw
+      - dmidecode
+      - inxi
+      - pciutils
+      - usbutils
+      - hwinfo
+      - ipmitool
+      - freeipmi-tools
+      - ipmiutil
+      - smartmontools
+      - nvme-cli
+      - hdparm
+      - openssh-client
+  gpu_vendor_optional:
+    description: Optional GPU vendor and telemetry helpers.
+    packages:
+      - intel-gpu-tools
+      - radeontop
+      - nvidia-detect
+      - firmware-amd-graphics
+  nvidia_runtime_support:
+    description: Opt-in NVIDIA driver/CUDA inventory and DKMS support; never installed by baseline playbooks.
+    packages:
+      - ca-certificates
+      - curl
+      - gnupg
+      - dkms
+      - kmod
+      - mokutil
+      - pciutils
+      - jq
+      - hwloc
+      - numactl
+      - nvtop
+  nvlink_validation_support:
+    description: Build toolchain for the opt-in directed CUDA P2P helper; never installed by baseline playbooks.
+    packages:
+      - build-essential
+  llm_host_support:
+    description: Opt-in host inventory and capacity tools for LLM feature runners; never installed by baseline playbooks.
+    packages:
+      - numactl
+      - libnuma-dev
+      - hwloc
+      - libhwloc-dev
+      - jq
+      - pciutils
+      - dmidecode
+      - linux-perf
+      - sysstat
+      - vmtouch
+      - nvme-cli
+      - htop
+      - iotop-c
+      - linux-cpupower
+      - ndctl
+  ipmctl_build:
+    description: Opt-in Debian 13 build and read-only verification dependencies for pinned ipmctl; never installed by baseline playbooks.
+    packages:
+      - git
+      - ca-certificates
+      - build-essential
+      - cmake
+      - pkgconf
+      - python3
+      - ndctl
+      - daxctl
+      - libndctl6
+      - libndctl-dev
+      - asciidoctor
+  llamacpp_build:
+    description: Opt-in native CPU and CUDA build toolchain for the reviewed llama.cpp feature; never installed by baseline playbooks.
+    packages:
+      - build-essential
+      - cmake
+      - ninja-build
+      - git
+      - pkg-config
+      - ccache
+      - libnuma-dev
+      - libssl-dev
+      - jq
+  ktransformers_build:
+    description: Opt-in Python, KT-Kernel, and SGLang-KT source build toolchain; never installed by baseline playbooks.
+    packages:
+      - build-essential
+      - cmake
+      - ninja-build
+      - git
+      - pkg-config
+      - ccache
+      - patchelf
+      - numactl
+      - libnuma-dev
+      - libhwloc-dev
+      - hwloc
+      - libtbb-dev
+      - libssl-dev
+      - zlib1g-dev
+      - libbz2-dev
+      - libgdbm-dev
+      - libgdbm-compat-dev
+      - libreadline-dev
+      - libsqlite3-dev
+      - libffi-dev
+      - liblzma-dev
+      - libncurses-dev
+      - libnss3-dev
+      - libexpat1-dev
+      - uuid-dev
+      - tk-dev
+      - xz-utils
+      - jq
+  dev_tools:
+    description: Developer and shell utilities.
+    packages:
+      - git
+      - python3
+      - ksh
+  archive_iso_tools:
+    description: Archive, compression, and disk image utilities.
+    packages:
+      - p7zip-full
+      - unrar-free
+      - libarchive-tools
+      - genisoimage
+      - xorriso
+      - udftools
+      - dmg2img
+      - file
+      - apt-file
+      - sleuthkit
+  apple_media_optional:
+    description: Optional macOS/APFS/HFS utilities.
+    packages:
+      - hfsprogs
+      - hfsplus
+      - libfsapfs-utils
+      - xar
+  desktop_rdp_optional:
+    description: Optional lightweight GUI and RDP stack.
+    packages:
+      - xrdp
+      - xfce4
+      - xfce4-goodies
+      - xorg
+      - dbus-x11
+      - x11-xserver-utils
+      - task-lxde-desktop
+  performance_power:
+    description: CPU power management.
+    packages:
+      - linux-cpupower
+  firmware:
+    description: Optional firmware helpers.
+    packages:
+      - firmware-realtek

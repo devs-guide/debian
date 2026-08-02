@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Shared GPU inventory runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/gpu/">GPU</a>
+    </p>
+    <article>
+      <h1 id="shared-gpu-inventory-runner">Shared GPU inventory
+      runner</h1>
+      <p>Creates the canonical hardware and runtime snapshot used by
+      GPU-aware features. It is vendor-neutral at the interface: v1
+      records PCI display/accelerator devices for NVIDIA, AMD, and
+      Intel, while NVIDIA gets additional <code>nvidia-smi</code>
+      runtime details such as UUID, compute capability, and the labels
+      from <code>nvidia-smi topo -m</code>.</p>
+      <p>It never installs a driver, CUDA, packages, kernel modules,
+      repositories, or boot configuration. Use <a
+      href="/debian/cli/nvidia/">NVIDIA</a> for the NVIDIA/CUDA
+      installation policy, then use this runner or <a
+      href="/debian/cli/nvlink/">NVLink</a> to refresh and consume the
+      current snapshot.</p>
+      <h2 id="modes">Modes</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Mode</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>preflight</code></td>
+      <td>Default read-only PCI, NVIDIA runtime, and topology report. No
+      sudo and no facts are written.</td>
+      </tr>
+      <tr class="even">
+      <td><code>apply</code></td>
+      <td>Refreshes <code>/etc/ansible/debian/facts/gpu.yml</code>. It
+      requires the managed Ansible controller to already exist.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>validate</code></td>
+      <td>Refreshes the same fact. It also requires the managed
+      controller to already exist.</td>
+      </tr>
+      </tbody>
+      </table>
+      <h2 id="examples">Examples</h2>
+      <p>Read the current inventory without changing the host:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/gpu.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> preflight <span class="at">--vendor</span><span class="op">=</span>auto</span></code></pre></div>
+      <p>Persist the shared snapshot after NVIDIA is installed and
+      live:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/gpu.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> apply <span class="at">--vendor</span><span class="op">=</span>auto</span></code></pre></div>
+      <p>For managed modes, the runner requests sudo once through
+      <code>/dev/tty</code> when no cached or passwordless credential
+      exists. It stages all files before delegated root commands and
+      does not fetch a second copy inside sudo. This remains a supported
+      compatibility form when a caller intentionally starts the entire
+      runner as root:</p>
+      <div class="sourceCode" id="cb3"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/gpu.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sudo</span> bash <span class="at">-s</span> <span class="at">--</span> validate <span class="at">--vendor</span><span class="op">=</span>nvidia</span></code></pre></div>
+      <h2 id="flag-reference">Flag reference</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Flag</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>--vendor=auto|nvidia</code></td>
+      <td><code>auto</code> records every detected PCI
+      display/accelerator device and adds NVIDIA runtime enrichment when
+      available. <code>nvidia</code> limits the persisted device list to
+      NVIDIA devices.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--help</code></td>
+      <td>Prints runner usage without staging or changing the host.</td>
+      </tr>
+      </tbody>
+      </table>
+      <h2 id="identity-contract">Identity contract</h2>
+      <p>The fact at <code>/etc/ansible/debian/facts/gpu.yml</code> is
+      the owner-independent, current-hardware snapshot. It sorts records
+      by canonical PCI address and records accepted PCI aliases
+      alongside the canonical form.</p>
+      <p>For NVIDIA devices, three identifiers have different roles:</p>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Identifier</th>
+      <th>Correct use</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td>CUDA UUID</td>
+      <td>Stable runtime selection for CUDA visibility and UUID-targeted
+      feature diagnostics.</td>
+      </tr>
+      <tr class="even">
+      <td>PCI address</td>
+      <td>Physical-device identity, audit evidence, deterministic
+      ordering, and a selector accepted by feature runners.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>GPU0</code> / <code>GPU1</code> topology label</td>
+      <td>The local label used only to index the matrix in the same
+      <code>nvidia-smi topo -m</code> capture. It is not a stable CUDA
+      ordinal.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>NVLink resolves a requested UUID or PCI selector against this
+      snapshot and uses the selected records' current topology labels to
+      read the shared matrix directly. This avoids treating a
+      selected-list position or CUDA index as a topology-table
+      identity.</p>
+      <p>The snapshot records a <code>label_mapping</code> result beside
+      the raw topology matrix. NVLink proceeds only when every NVIDIA
+      runtime row maps to a current <code>GPU#</code> header and
+      route-row label from that same capture. When a working NVIDIA
+      runtime produces an incomplete mapping, the GPU runner fails
+      before replacing an existing
+      <code>/etc/ansible/debian/facts/gpu.yml</code>. Repeating the same
+      command cannot repair deterministic malformed input or parser
+      behavior.</p>
+      <p>Inspect the raw topology without losing invisible
+      characters:</p>
+      <div class="sourceCode" id="cb4"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">nvidia-smi</span> topo <span class="at">-m</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="at">-n</span> <span class="st">&#39;l&#39;</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">nvidia-smi</span> topo <span class="at">-m</span> <span class="kw">|</span> <span class="fu">od</span> <span class="at">-An</span> <span class="at">-tx1c</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> sed <span class="at">-n</span> <span class="st">&#39;/nvidia_smi:/,/runtime:/p&#39;</span> /etc/ansible/debian/facts/gpu.yml</span></code></pre></div>
+      <p>Do not substitute UUIDs, PCI addresses, CUDA indices, or
+      selected-list positions for topology labels.</p>
+      <p>AMD and Intel support in v1 is PCI discovery only. This runner
+      does not claim vendor runtime readiness, topology capability, or
+      compute validation for them.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/gpu.sh"><code>setup/cli/gpu.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/gpu.sh">https://devs-guide.github.io/debian/setup/cli/gpu.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/gpu.sh">https://devs-guide.github.io/debian/setup/cli/gpu.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

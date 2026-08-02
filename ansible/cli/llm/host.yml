@@ -1,0 +1,642 @@
+---
+- name: "[debian]: shared LLM host readiness"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed }}"
+    llm_host_mode: apply
+    llm_host_profile: generic
+    llm_host_owner: ""
+    llm_host_group: ""
+    llm_host_reserve_gib: 96
+    llm_host_allow_low_reserve: false
+    llm_host_gpu_reserve_mib: 4096
+    llm_host_require_physical_cores: 0
+    llm_host_require_memory_mode: false
+    llm_host_require_ipmctl: false
+    llm_host_require_nvidia: false
+    llm_host_require_nvlink: false
+    llm_host_require_p2p: false
+    llm_host_install_support_packages: false
+    llm_host_inventory_helper_path: "{{ playbook_dir }}/../../files/llm/host-inventory.py"
+    llm_host_facts_path: /etc/ansible/debian/facts/llm-host.yml
+    llm_host_env_path: /etc/ansible/debian/env/llm-host.sh
+    llm_host_gpu_facts_path: /etc/ansible/debian/facts/gpu.yml
+    llm_host_nvidia_facts_path: /etc/ansible/debian/facts/nvidia.yml
+    llm_host_nvlink_facts_path: /etc/ansible/debian/facts/nvlink.yml
+    llm_host_ipmctl_binary_path: /usr/local/bin/ipmctl
+    llm_host_ipmctl_expected_version: 03.00.00.0538
+    llm_host_managed_directories:
+      - /opt/src
+      - /opt/venvs
+      - /opt/llm
+      - /opt/llm/bin
+      - /opt/llm/profiles
+      - /models
+      - /models/hf
+      - /models/gguf
+      - /models/converted
+      - /models/manifests
+      - /models/logs
+
+  pre_tasks:
+    - name: Normalize shared LLM host policy
+      ansible.builtin.set_fact:
+        llm_host_mode_effective: "{{ llm_host_mode | lower }}"
+        llm_host_profile_effective: "{{ llm_host_profile | lower }}"
+        llm_host_reserve_gib_effective: "{{ llm_host_reserve_gib | int }}"
+        llm_host_gpu_reserve_mib_effective: "{{ llm_host_gpu_reserve_mib | int }}"
+        llm_host_require_physical_cores_effective: "{{ llm_host_require_physical_cores | int }}"
+        llm_host_require_memory_mode_effective: >-
+          {{
+            (llm_host_require_memory_mode | bool)
+            or (llm_host_profile | lower == 'icelake-pmem-dual-3090')
+          }}
+        llm_host_require_ipmctl_effective: >-
+          {{
+            (llm_host_require_ipmctl | bool)
+            or (llm_host_require_memory_mode | bool)
+            or (llm_host_profile | lower == 'icelake-pmem-dual-3090')
+          }}
+        llm_host_require_nvidia_effective: >-
+          {{
+            (llm_host_require_nvidia | bool)
+            or (llm_host_profile | lower == 'icelake-pmem-dual-3090')
+          }}
+        llm_host_require_nvlink_effective: >-
+          {{
+            (llm_host_require_nvlink | bool)
+            or (llm_host_profile | lower == 'icelake-pmem-dual-3090')
+          }}
+        llm_host_require_p2p_effective: >-
+          {{
+            (llm_host_require_p2p | bool)
+            or (llm_host_profile | lower == 'icelake-pmem-dual-3090')
+          }}
+
+    - name: Validate shared LLM host policy
+      ansible.builtin.assert:
+        that:
+          - llm_host_mode_effective in ['apply', 'validate']
+          - llm_host_profile_effective in ['generic', 'icelake-pmem-dual-3090']
+          - llm_host_owner | length > 0
+          - llm_host_owner != 'root'
+          - llm_host_group | length > 0
+          - llm_host_reserve_gib_effective | int > 0
+          - llm_host_gpu_reserve_mib_effective | int >= 0
+          - llm_host_require_physical_cores_effective | int >= 0
+          - not (llm_host_require_p2p_effective | bool) or (llm_host_require_nvlink_effective | bool)
+          - not (llm_host_require_nvlink_effective | bool) or (llm_host_require_nvidia_effective | bool)
+          - llm_host_facts_path == '/etc/ansible/debian/facts/llm-host.yml'
+          - llm_host_env_path == '/etc/ansible/debian/env/llm-host.sh'
+        fail_msg: >-
+          The LLM host runner accepts apply or validate with an explicit
+          non-root owner. P2P requires NVLink, and NVLink requires NVIDIA.
+
+    - name: Require the managed LLM host owner
+      ansible.builtin.command:
+        argv:
+          - getent
+          - passwd
+          - "{{ llm_host_owner }}"
+      changed_when: false
+
+    - name: Require the managed LLM host group
+      ansible.builtin.command:
+        argv:
+          - getent
+          - group
+          - "{{ llm_host_group }}"
+      changed_when: false
+
+  tasks:
+    - name: Collect the shared LLM host hardware snapshot
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ llm_host_inventory_helper_path }}"
+      register: llm_host_inventory_raw
+      changed_when: false
+
+    - name: Decode the shared LLM host hardware snapshot
+      ansible.builtin.set_fact:
+        llm_host_inventory: "{{ llm_host_inventory_raw.stdout | from_json }}"
+
+    - name: Validate the shared LLM host hardware snapshot
+      ansible.builtin.assert:
+        that:
+          - llm_host_inventory.schema_version | default(0) | int == 1
+          - llm_host_inventory.generated_at | default('') | length > 0
+          - llm_host_inventory.cpu is mapping
+          - llm_host_inventory.cpu.physical_core_count | default(0) | int > 0
+          - llm_host_inventory.cpu.selected_logical_cpus | default([]) | length > 0
+          - llm_host_inventory.memory is mapping
+          - llm_host_inventory.memory.total_kib | default(0) | int > 0
+          - llm_host_inventory.numa is mapping
+          - llm_host_inventory.memory_mode.classification | default('') in ['verified', 'consistent', 'unknown']
+        fail_msg: >-
+          The host inventory helper did not produce a complete schema-version-1
+          CPU, NUMA, memory, and memory-mode snapshot.
+
+    - name: Enforce requested physical-core capacity
+      ansible.builtin.assert:
+        that:
+          - >-
+            (llm_host_require_physical_cores_effective | int == 0)
+            or
+            (
+              llm_host_inventory.cpu.physical_core_count | int
+              >= llm_host_require_physical_cores_effective | int
+            )
+        fail_msg: >-
+          Host has {{ llm_host_inventory.cpu.physical_core_count }} physical
+          cores; policy requires at least {{
+          llm_host_require_physical_cores_effective }}.
+
+    - name: Enforce requested Memory Mode evidence
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (llm_host_require_memory_mode_effective | bool)
+            or
+            llm_host_inventory.memory_mode.classification == 'verified'
+        fail_msg: >-
+          Memory Mode evidence is {{
+          llm_host_inventory.memory_mode.classification }}. Required Memory
+          Mode requires positive live MemoryCapacity from the reviewed ipmctl.
+
+    - name: Verify live reviewed ipmctl version
+      ansible.builtin.command:
+        argv:
+          - "{{ llm_host_ipmctl_binary_path }}"
+          - version
+      register: llm_host_live_ipmctl_version
+      changed_when: false
+      when: llm_host_require_ipmctl_effective | bool
+
+    - name: Verify live ipmctl memory resources
+      ansible.builtin.command:
+        argv:
+          - "{{ llm_host_ipmctl_binary_path }}"
+          - show
+          - -memoryresources
+      register: llm_host_live_ipmctl_memoryresources
+      changed_when: false
+      when: llm_host_require_ipmctl_effective | bool
+
+    - name: Collect live ipmctl current or pending goal diagnostic
+      ansible.builtin.command:
+        argv:
+          - "{{ llm_host_ipmctl_binary_path }}"
+          - show
+          - -a
+          - -goal
+      register: llm_host_live_ipmctl_goal
+      changed_when: false
+      failed_when: false
+      when: llm_host_require_ipmctl_effective | bool
+
+    - name: Report live ipmctl goal diagnostic
+      ansible.builtin.debug:
+        msg:
+          command: "{{ llm_host_ipmctl_binary_path }} show -a -goal"
+          rc: "{{ llm_host_live_ipmctl_goal.rc }}"
+          stdout: "{{ llm_host_live_ipmctl_goal.stdout }}"
+          stderr: "{{ llm_host_live_ipmctl_goal.stderr }}"
+      when: llm_host_require_ipmctl_effective | bool
+
+    - name: Require live ipmctl identity and memory resources
+      ansible.builtin.assert:
+        that:
+          - llm_host_live_ipmctl_version.rc | int == 0
+          - >-
+            (
+              llm_host_live_ipmctl_version.stdout
+              | regex_search('[0-9]{2}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}')
+              | default('')
+            ) == llm_host_ipmctl_expected_version
+          - llm_host_live_ipmctl_memoryresources.rc | int == 0
+        fail_msg: >-
+          Live /usr/local ipmctl has the wrong version or cannot report memory
+          resources. Goal output is diagnostic and requires human review.
+      when: llm_host_require_ipmctl_effective | bool
+
+    - name: Enforce host memory reserve
+      ansible.builtin.assert:
+        that:
+          - >-
+            (llm_host_allow_low_reserve | bool)
+            or
+            (
+              llm_host_inventory.memory.available_kib | int
+              >= (llm_host_reserve_gib_effective | int * 1024 * 1024)
+            )
+        fail_msg: >-
+          Current MemAvailable is {{
+          (llm_host_inventory.memory.available_kib | int / 1024 / 1024) |
+          round(2) }} GiB, below the requested {{
+          llm_host_reserve_gib_effective }} GiB host reserve. Reduce the
+          reserve only after human review, then pass --allow-low-host-reserve.
+
+    - name: Check producer-owned GPU fact files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ llm_host_gpu_facts_path }}"
+        - "{{ llm_host_nvidia_facts_path }}"
+        - "{{ llm_host_nvlink_facts_path }}"
+      register: llm_host_producer_fact_stats
+
+    - name: Require producer facts selected by host policy
+      ansible.builtin.assert:
+        that:
+          - not (llm_host_require_nvidia_effective | bool) or llm_host_producer_fact_stats.results[0].stat.exists
+          - not (llm_host_require_nvidia_effective | bool) or llm_host_producer_fact_stats.results[1].stat.exists
+          - not (llm_host_require_nvlink_effective | bool) or llm_host_producer_fact_stats.results[2].stat.exists
+        fail_msg: >-
+          Required GPU producer facts are missing. Run gpu.sh and nvidia.sh
+          successfully before requiring NVIDIA; run nvlink.sh successfully
+          before requiring NVLink or P2P.
+
+    - name: Initialize optional producer fact documents
+      ansible.builtin.set_fact:
+        llm_host_gpu_facts: {}
+        llm_host_nvidia_facts: {}
+        llm_host_nvlink_facts: {}
+
+    - name: Read available producer-owned GPU fact files
+      ansible.builtin.slurp:
+        src: "{{ item.item }}"
+      loop: "{{ llm_host_producer_fact_stats.results }}"
+      when: item.stat.exists
+      register: llm_host_producer_fact_contents
+
+    - name: Decode shared GPU facts
+      ansible.builtin.set_fact:
+        llm_host_gpu_facts: "{{ item.content | b64decode | from_yaml }}"
+      loop: "{{ llm_host_producer_fact_contents.results }}"
+      when:
+        - not (item.skipped | default(false))
+        - item.item.item == llm_host_gpu_facts_path
+
+    - name: Decode NVIDIA facts
+      ansible.builtin.set_fact:
+        llm_host_nvidia_facts: "{{ item.content | b64decode | from_yaml }}"
+      loop: "{{ llm_host_producer_fact_contents.results }}"
+      when:
+        - not (item.skipped | default(false))
+        - item.item.item == llm_host_nvidia_facts_path
+
+    - name: Decode NVLink facts
+      ansible.builtin.set_fact:
+        llm_host_nvlink_facts: "{{ item.content | b64decode | from_yaml }}"
+      loop: "{{ llm_host_producer_fact_contents.results }}"
+      when:
+        - not (item.skipped | default(false))
+        - item.item.item == llm_host_nvlink_facts_path
+
+    - name: Initialize normalized NVIDIA device records
+      ansible.builtin.set_fact:
+        llm_host_nvidia_devices: []
+
+    - name: Normalize NVIDIA device records from shared GPU facts
+      ansible.builtin.set_fact:
+        llm_host_nvidia_devices: >-
+          {{
+            llm_host_nvidia_devices
+            + [
+                {
+                  'uuid': item.nvidia.uuid | default(''),
+                  'pci_bus_id': item.pci_bus_id | default(''),
+                  'compute_capability': item.nvidia.compute_capability | default(''),
+                  'memory_total': item.nvidia.memory_total | default('')
+                }
+              ]
+          }}
+      loop: "{{ llm_host_gpu_facts.gpu.devices | default([]) }}"
+      when:
+        - item.vendor | default('') == 'nvidia'
+        - item.nvidia is defined
+
+    - name: Validate required NVIDIA producer contracts
+      ansible.builtin.assert:
+        that:
+          - llm_host_gpu_facts.gpu.schema_version | default(0) | int == 1
+          - llm_host_nvidia_facts.nvidia.schema_version | default(0) | int == 1
+          - llm_host_nvidia_devices | length > 0
+          - llm_host_nvidia_facts.nvidia.platform.kernel_headers_ready | default(false) | bool
+          - llm_host_nvidia_facts.nvidia.driver.installed_driver_version | default('') | length > 0
+          - llm_host_nvidia_facts.nvidia.driver.kernel_module_ready | default(false) | bool
+          - llm_host_nvidia_facts.nvidia.driver.nvidia_smi_ready | default(false) | bool
+          - llm_host_nvidia_facts.nvidia.cuda.nvcc_ready | default(false) | bool
+          - llm_host_nvidia_facts.nvidia.cuda.runtime_header_ready | default(false) | bool
+        fail_msg: >-
+          NVIDIA host readiness requires current schema-version-1 GPU and
+          NVIDIA facts, a loaded driver, nvidia-smi, nvcc, and the CUDA runtime
+          header. A high-level placeholder readiness field is not sufficient.
+      when: llm_host_require_nvidia_effective | bool
+
+    - name: Query live NVIDIA UUIDs
+      ansible.builtin.command:
+        argv:
+          - nvidia-smi
+          - --query-gpu=uuid
+          - --format=csv,noheader
+      register: llm_host_live_nvidia_uuids_raw
+      changed_when: false
+      when: llm_host_require_nvidia_effective | bool
+
+    - name: Normalize producer and live NVIDIA UUIDs
+      ansible.builtin.set_fact:
+        llm_host_gpu_fact_uuids: "{{ llm_host_nvidia_devices | map(attribute='uuid') | reject('equalto', '') | list | sort }}"
+        llm_host_live_nvidia_uuids: "{{ llm_host_live_nvidia_uuids_raw.stdout_lines | default([]) | map('trim') | reject('equalto', '') | list | sort }}"
+      when: llm_host_require_nvidia_effective | bool
+
+    - name: Require live NVIDIA identity to match shared GPU facts
+      ansible.builtin.assert:
+        that:
+          - llm_host_live_nvidia_uuids | length > 0
+          - llm_host_live_nvidia_uuids == llm_host_gpu_fact_uuids
+        fail_msg: >-
+          Live NVIDIA UUIDs do not match the producer-owned GPU snapshot.
+          Refresh gpu.sh and nvidia.sh after driver, device, or boot changes.
+      when: llm_host_require_nvidia_effective | bool
+
+    - name: Read live NVIDIA PCI NUMA affinity
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/cat
+          - "/sys/bus/pci/devices/{{ item.pci_bus_id }}/numa_node"
+      loop: "{{ llm_host_nvidia_devices }}"
+      register: llm_host_gpu_numa_queries
+      changed_when: false
+      failed_when: false
+      when: llm_host_require_nvidia_effective | bool
+
+    - name: Require live NVIDIA PCI NUMA affinity records
+      ansible.builtin.assert:
+        that:
+          - item.rc | default(1) | int == 0
+          - item.stdout | default('') | trim is match('^-?[0-9]+$')
+        fail_msg: >-
+          Unable to read PCI NUMA affinity for {{ item.item.uuid | default('unknown') }}
+          at {{ item.item.pci_bus_id | default('unknown') }}.
+      loop: "{{ llm_host_gpu_numa_queries.results | default([]) }}"
+      when:
+        - llm_host_require_nvidia_effective | bool
+        - not (item.skipped | default(false))
+
+    - name: Initialize normalized NVIDIA PCI NUMA affinity
+      ansible.builtin.set_fact:
+        llm_host_gpu_numa_affinity: []
+
+    - name: Normalize NVIDIA PCI NUMA affinity
+      ansible.builtin.set_fact:
+        llm_host_gpu_numa_affinity: >-
+          {{
+            llm_host_gpu_numa_affinity
+            + [
+                {
+                  'uuid': item.item.uuid,
+                  'pci_bus_id': item.item.pci_bus_id,
+                  'numa_node': item.stdout | trim | int
+                }
+              ]
+          }}
+      loop: "{{ llm_host_gpu_numa_queries.results | default([]) }}"
+      when:
+        - llm_host_require_nvidia_effective | bool
+        - not (item.skipped | default(false))
+        - item.rc | default(1) | int == 0
+
+    - name: Validate required NVLink producer contract
+      ansible.builtin.assert:
+        that:
+          - llm_host_nvlink_facts.nvlink.schema_version | default(0) | int == 2
+          - llm_host_nvlink_facts.nvlink.selection.uuids | default([]) | length == 2
+          - >-
+            (
+              llm_host_nvlink_facts.nvlink.selection.uuids | default([])
+              | difference(llm_host_gpu_fact_uuids | default([]))
+              | length
+            ) == 0
+          - llm_host_nvlink_facts.nvlink.topology.route_is_nvlink | default(false) | bool
+          - llm_host_nvlink_facts.nvlink.link_status.all_commands_succeeded | default(false) | bool
+          - llm_host_nvlink_facts.nvlink.link_status.all_selected_active | default(false) | bool
+          - llm_host_nvlink_facts.nvlink.readiness.nvlink_ready | default(false) | bool
+        fail_msg: >-
+          Required schema-version-2 NVLink facts are stale, incomplete, or do
+          not select a current physical NVIDIA pair with positive link
+          evidence.
+      when: llm_host_require_nvlink_effective | bool
+
+    - name: Validate required directed P2P evidence
+      ansible.builtin.assert:
+        that:
+          - llm_host_nvlink_facts.nvlink.p2p.tested | default(false) == true
+          - llm_host_nvlink_facts.nvlink.p2p.passed | default(false) == true
+          - llm_host_nvlink_facts.nvlink.readiness.p2p_ready | default(false) == true
+        fail_msg: >-
+          Directed CUDA P2P was required but the current NVLink fact does not
+          contain a completed passing test.
+      when: llm_host_require_p2p_effective | bool
+
+    - name: Validate the Ice Lake PMem dual-3090 profile
+      ansible.builtin.assert:
+        that:
+          - "'8351N' in llm_host_inventory.cpu.model_name"
+          - llm_host_inventory.cpu.physical_core_count | int >= 36
+          - >-
+            ['avx2', 'avx512f', 'fma']
+            | difference(llm_host_inventory.cpu.flags | default([]))
+            | length == 0
+          - llm_host_nvidia_devices | length == 2
+          - >-
+            llm_host_nvidia_devices
+            | map(attribute='compute_capability')
+            | unique
+            | list == ['8.6']
+          - llm_host_nvidia_facts.nvidia.cuda.requested_minor | default('') == '13.1'
+          - llm_host_nvlink_facts.nvlink.topology.route | default('') == 'NV4'
+        fail_msg: >-
+          The icelake-pmem-dual-3090 profile requires Xeon 8351N-class CPU
+          evidence, at least 36 physical cores, AVX2/AVX-512/FMA, two compute
+          capability 8.6 GPUs, CUDA 13.1 policy, and an NV4 route.
+      when: llm_host_profile_effective == 'icelake-pmem-dual-3090'
+
+    - name: Inspect managed LLM directories without changing them
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop: "{{ llm_host_managed_directories }}"
+      register: llm_host_managed_directory_stats
+
+    - name: Reject unsafe existing managed LLM paths
+      ansible.builtin.assert:
+        that:
+          - not item.stat.exists or item.stat.isdir
+          - not item.stat.exists or not item.stat.islnk
+        fail_msg: >-
+          Existing managed path {{ item.item }} must be a real directory, not a
+          file or symbolic link. No existing path was changed.
+      loop: "{{ llm_host_managed_directory_stats.results }}"
+
+    - name: Create only missing managed LLM directories
+      ansible.builtin.file:
+        path: "{{ item.item }}"
+        state: directory
+        owner: "{{ llm_host_owner }}"
+        group: "{{ llm_host_group }}"
+        mode: '0755'
+      loop: "{{ llm_host_managed_directory_stats.results }}"
+      when: not item.stat.exists
+
+    - name: Verify the managed owner can write every LLM directory
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - -u
+          - "{{ llm_host_owner }}"
+          - --
+          - test
+          - -w
+          - "{{ item }}"
+      loop: "{{ llm_host_managed_directories }}"
+      changed_when: false
+
+    - name: Create managed LLM fact and environment directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - "{{ llm_host_facts_path | dirname }}"
+        - "{{ llm_host_env_path | dirname }}"
+
+    - name: Persist the shared LLM host readiness contract
+      ansible.builtin.copy:
+        dest: "{{ llm_host_facts_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          llm_host:
+            schema_version: 1
+            generated_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+            mode: {{ llm_host_mode_effective | to_json }}
+            profile: {{ llm_host_profile_effective | to_json }}
+            ownership:
+              user: {{ llm_host_owner | to_json }}
+              group: {{ llm_host_group | to_json }}
+            cpu: {{ llm_host_inventory.cpu | to_json }}
+            memory: {{ llm_host_inventory.memory | to_json }}
+            numa: {{ llm_host_inventory.numa | to_json }}
+            memory_mode: {{ llm_host_inventory.memory_mode | to_json }}
+            reserves:
+              host_gib: {{ llm_host_reserve_gib_effective | int }}
+              gpu_mib_per_device: {{ llm_host_gpu_reserve_mib_effective | int }}
+              low_host_reserve_allowed: {{ llm_host_allow_low_reserve | bool | to_json }}
+            producers:
+              ipmctl:
+                required: {{ llm_host_require_ipmctl_effective | bool | to_json }}
+                binary: {{ llm_host_ipmctl_binary_path | to_json }}
+                expected_version: {{ llm_host_ipmctl_expected_version | to_json }}
+                memory_resources_available: {{ (llm_host_live_ipmctl_memoryresources.rc | default(1) | int == 0) | to_json }}
+              gpu:
+                required: {{ llm_host_require_nvidia_effective | bool | to_json }}
+                path: {{ llm_host_gpu_facts_path | to_json }}
+                schema_version: {{ llm_host_gpu_facts.gpu.schema_version | default(0) | int }}
+                uuids: {{ llm_host_gpu_fact_uuids | default([]) | to_json }}
+                numa_affinity: {{ llm_host_gpu_numa_affinity | default([]) | to_json }}
+              nvidia:
+                required: {{ llm_host_require_nvidia_effective | bool | to_json }}
+                path: {{ llm_host_nvidia_facts_path | to_json }}
+                schema_version: {{ llm_host_nvidia_facts.nvidia.schema_version | default(0) | int }}
+                cuda_minor: {{ llm_host_nvidia_facts.nvidia.cuda.requested_minor | default('') | to_json }}
+              nvlink:
+                required: {{ llm_host_require_nvlink_effective | bool | to_json }}
+                path: {{ llm_host_nvlink_facts_path | to_json }}
+                schema_version: {{ llm_host_nvlink_facts.nvlink.schema_version | default(0) | int }}
+                selected_uuids: {{ llm_host_nvlink_facts.nvlink.selection.uuids | default([]) | to_json }}
+                route: {{ llm_host_nvlink_facts.nvlink.topology.route | default('') | to_json }}
+                p2p_required: {{ llm_host_require_p2p_effective | bool | to_json }}
+            managed_directories: {{ llm_host_managed_directories | to_json }}
+            safety:
+              existing_directory_metadata_preserved: true
+              recursive_ownership_changes: false
+              kernel_policy_changed: false
+              swap_policy_changed: false
+              model_downloaded: false
+              runtime_installed: false
+            readiness:
+              host_ready: true
+
+    - name: Persist the shared LLM host shell environment
+      ansible.builtin.copy:
+        dest: "{{ llm_host_env_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by setup/cli/llm/host.sh.
+          export LLM_HOST_PROFILE={{ llm_host_profile_effective | quote }}
+          export LLM_HOST_OWNER={{ llm_host_owner | quote }}
+          export LLM_HOST_GROUP={{ llm_host_group | quote }}
+          export LLM_HOST_RESERVE_GIB={{ llm_host_reserve_gib_effective | quote }}
+          export LLM_HOST_GPU_RESERVE_MIB={{ llm_host_gpu_reserve_mib_effective | quote }}
+          export LLM_HOST_PHYSICAL_CPU_LIST={{ llm_host_inventory.cpu.selected_cpu_list | quote }}
+          export LLM_HOST_PHYSICAL_CPU_MASK={{ llm_host_inventory.cpu.selected_cpu_mask | quote }}
+          export LLM_HOST_FACTS={{ llm_host_facts_path | quote }}
+
+    - name: Install managed LLM host inspection helpers
+      ansible.builtin.copy:
+        dest: "/opt/llm/bin/{{ item.name }}"
+        owner: "{{ llm_host_owner }}"
+        group: "{{ llm_host_group }}"
+        mode: '0755'
+        content: "{{ item.content }}"
+      loop:
+        - name: llm-host-status
+          content: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+            sed -n '1,260p' /etc/ansible/debian/facts/llm-host.yml
+        - name: llm-host-capacity
+          content: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+            . /etc/ansible/debian/env/llm-host.sh
+            free -h
+            printf 'reserved host GiB: %s\n' "${LLM_HOST_RESERVE_GIB}"
+            printf 'reserved GPU MiB/device: %s\n' "${LLM_HOST_GPU_RESERVE_MIB}"
+        - name: llm-host-numa
+          content: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+            lscpu --extended=CPU,NODE,SOCKET,CORE,ONLINE
+            if command -v numactl >/dev/null 2>&1; then
+              numactl --hardware
+            fi
+        - name: llm-host-env
+          content: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+            . /etc/ansible/debian/env/llm-host.sh
+            env | grep '^LLM_HOST_' | sort
+
+    - name: Report shared LLM host checkpoint
+      ansible.builtin.debug:
+        msg:
+          - "Host profile: {{ llm_host_profile_effective }}"
+          - "Physical cores/logical CPUs: {{ llm_host_inventory.cpu.physical_core_count }}/{{ llm_host_inventory.cpu.logical_count }}"
+          - "Physical-core CPU list: {{ llm_host_inventory.cpu.selected_cpu_list }}"
+          - "Memory Mode evidence: {{ llm_host_inventory.memory_mode.classification }}"
+          - "ipmctl required: {{ llm_host_require_ipmctl_effective }}"
+          - "Host reserve: {{ llm_host_reserve_gib_effective }} GiB"
+          - "NVIDIA/NVLink/P2P required: {{ llm_host_require_nvidia_effective }}/{{ llm_host_require_nvlink_effective }}/{{ llm_host_require_p2p_effective }}"
+          - "Shared LLM host readiness: READY"

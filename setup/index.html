@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Baseline and host-level Debian setup
+entrypoints.">
+  <title>Setup runners · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/setup/">Setup</a>
+    </p>
+    <article>
+      <h1 id="setup-runners">Setup runners</h1>
+      <p>These entrypoints establish the baseline host or provide shared
+      support to opt-in features. Published executable URLs always end
+      in <code>.sh</code>.</p>
+      <h2 id="start-with-the-baseline">Start with the baseline</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/bootstrap.sh <span class="kw">|</span> <span class="fu">bash</span></span></code></pre></div>
+      <p>Choose an opt-in runner below only after reviewing its full
+      policy example; the baseline does not implicitly install every
+      feature.</p>
+      <ul>
+      <li><a href="/debian/setup/bootstrap/">Bootstrap</a> — baseline
+      Ansible bootstrap.</li>
+      <li><a href="/debian/setup/debian/">Debian compatibility
+      entrypoint</a> — compatibility alias for the baseline bootstrap
+      flow.</li>
+      <li><a href="/debian/setup/metal/">Metal compatibility
+      entrypoint</a> — compatibility alias for the baseline bootstrap
+      flow.</li>
+      <li><a href="/debian/setup/hardware/">Hardware</a> — opt-in
+      source-neutral host baseline.</li>
+      <li><a href="/debian/setup/autologin/">Autologin</a> — console
+      autologin only.</li>
+      <li><a href="/debian/setup/release-common/">Release helper</a> —
+      shared runner support.</li>
+      <li><a href="/debian/setup/runner-common/">Shared setup runner</a>
+      — delegated-root and dependency-manifest scaffolding, including
+      the legacy migration inventory.</li>
+      <li><a href="/debian/setup/essential-packages/">Essential
+      packages</a> — manual baseline reference, not an automation
+      entrypoint.</li>
+      <li><a href="/debian/setup/prerequisites/">Prerequisites</a> —
+      manual first-host reference.</li>
+      </ul>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup"><code>setup</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

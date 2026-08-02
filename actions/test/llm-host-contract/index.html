@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>LLM host contract test action · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/test/">Test</a> / <a href="/debian/actions/test/llm-host-contract/">LLM
+host contract</a>
+    </p>
+    <article>
+      <h1 id="llm-host-contract-test-action">LLM host contract test
+      action</h1>
+      <p>Runs focused safety, runner-staging, playbook, documentation,
+      and fixture checks for the shared LLM host-readiness layer:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.llm-host-contract.sh</span></code></pre></div>
+      <p>The fixture verifies deterministic one-thread-per-physical-core
+      selection, the resulting CPU list and mask, NUMA memory and
+      distance parsing, available memory, and positive Memory Mode
+      classification.</p>
+      <p>For a source-only review that defers Python fixture
+      execution:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.llm-host-contract.sh <span class="at">--shell-only</span></span></code></pre></div>
+      <p>The action also rejects model/runtime installation and kernel,
+      swap, sysctl, governor, bootloader, or recursive-ownership
+      mutations from Phase 1.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/test.llm-host-contract.sh"><code>actions/test.llm-host-contract.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

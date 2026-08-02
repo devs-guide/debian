@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Operator documentation for the
+published Debian setup runners.">
+  <title>Debian setup documentation · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a>
+    </p>
+    <article>
+      <h1 id="debian-setup-documentation">Debian setup
+      documentation</h1>
+      <p>This site documents the published Debian setup runners and the
+      Ansible content they stage. The documentation URL and the
+      automation URL are deliberately different: documentation uses
+      extensionless paths, while all executable published runners end in
+      <code>.sh</code>.</p>
+      <h2 id="start-here">Start here</h2>
+      <p>The baseline bootstrap entrypoint is:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/bootstrap.sh <span class="kw">|</span> <span class="fu">bash</span></span></code></pre></div>
+      <p>This is the complete default baseline command: it has no
+      required feature flags. On a local checkout, use
+      <code>bash setup/bootstrap.sh</code> instead. Optional hardware,
+      CLI, GPU, and kiosk configuration is deliberately separate; follow
+      the linked feature page and copy its explicit policy command
+      rather than assuming bootstrap installs it.</p>
+      <p>The compatibility entrypoints are <code>/setup/debian.sh</code>
+      and <code>/setup/metal.sh</code>. They remain source files, not
+      documentation routes.</p>
+      <h2 id="documentation-sections">Documentation sections</h2>
+      <ul>
+      <li><a href="/debian/setup/">Setup runners</a> covers bootstrap,
+      host baseline, autologin, and the shared release helper.</li>
+      <li><a href="/debian/cli/">CLI runners</a> covers opt-in
+      developer, kiosk, shared GPU, NVIDIA, NVLink, Intel Optane ipmctl,
+      and LLM features.</li>
+      <li><a href="/debian/ansible/">Ansible</a> explains the package
+      and user policy sources.</li>
+      <li><a href="/debian/actions/">Actions</a> explains publication
+      and validation tooling.</li>
+      <li><a href="/debian/kiosk/">Kiosk</a> groups the supported kiosk
+      workflow and retained reference material.</li>
+      </ul>
+      <h2 id="safety-model">Safety model</h2>
+      <p>Read a feature page before using its runner.
+      <code>preflight</code> or <code>validate</code> is preferred when
+      a runner offers it. NVIDIA and NVLink use <code>wget | bash</code>
+      as their primary streamed form. Managed modes request sudo once
+      through <code>/dev/tty</code> when needed, then delegate only
+      privileged commands with the cached credential; they never fetch a
+      second runner copy from inside sudo. <code>wget | sudo bash</code>
+      remains a documented compatibility form.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/readme.md"><code>readme.md</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

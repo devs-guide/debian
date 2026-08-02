@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>User policy · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/ansible/">Ansible</a> / <a href="/debian/ansible/users/">Users</a>
+    </p>
+    <article>
+      <h1 id="user-policy">User policy</h1>
+      <p>Managed user definitions come from <code>user_defs</code> in
+      <code>ansible/group_vars/all.yml</code>;
+      <code>ansible/users.yml</code> applies them.</p>
+      <p>Review that source before running a baseline bootstrap on a
+      real host. Account membership, password-update behavior, and SSH
+      access controls are host security decisions and should be changed
+      deliberately through versioned configuration.</p>
+      <h2 id="review-before-applying">Review before applying</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sed</span> <span class="at">-n</span> <span class="st">&#39;/^user_defs:/,/^[^[:space:]]/p&#39;</span> ansible/group_vars/all.yml</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ansible-playbook</span> ansible/users.yml <span class="at">--check</span></span></code></pre></div>
+      <p><code>--check</code> is an Ansible dry-run, not a replacement
+      for reviewing the actual managed accounts. Supply the correct
+      inventory and become policy for the host; the bootstrap runner
+      does that as part of its complete baseline flow.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/ansible/users.yml"><code>ansible/users.yml</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

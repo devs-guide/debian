@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Pages validation action · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/validate/">Validate</a> / <a href="/debian/actions/validate/pages/">Pages</a>
+    </p>
+    <article>
+      <h1 id="pages-validation-action">Pages validation action</h1>
+      <p>Fetches the published Pages artifacts and compares them with
+      the local source or locally rendered output.</p>
+      <p>Source paths come from
+      <code>actions/publication.manifest</code>. Documentation routes
+      are discovered from the complete local render, so adding a
+      canonical <code>docs/**/readme.md</code> page does not require
+      another hard-coded validation list.</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/validate.pages.sh</span></code></pre></div>
+      <p>The default target is
+      <code>https://devs-guide.github.io/debian</code>. Override it with
+      <code>BASE_URL</code> after a deployment to another project site.
+      This action requires network access, <code>curl</code>, and Pandoc
+      because it renders the canonical local documentation before
+      comparing public routes.</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="va">BASE_URL</span><span class="op">=</span>https://example.invalid/debian <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> actions/validate.pages.sh</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>BASE_URL</code></td>
+      <td>Published project URL to fetch and compare. It must include
+      the project path, such as <code>/debian</code>.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Downloads and the local documentation render are kept in an
+      isolated per-invocation temporary directory and removed by the
+      action’s exit trap.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/validate.pages.sh"><code>actions/validate.pages.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

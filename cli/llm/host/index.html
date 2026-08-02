@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Shared LLM host-readiness runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/llm/">LLM</a> / <a href="/debian/cli/llm/host/">Host</a>
+    </p>
+    <article>
+      <h1 id="shared-llm-host-readiness-runner">Shared LLM
+      host-readiness runner</h1>
+      <p><code>host.sh</code> creates the machine-level contract
+      consumed by later LLM features. It inventories CPU topology,
+      chooses one logical CPU per physical core, records NUMA and memory
+      capacity, classifies available persistent-memory evidence, and
+      checks producer-owned GPU facts when requested.</p>
+      <p>This is scaffolding, not an inference runtime. It does not
+      install KTransformers, download a model, disable swap, modify
+      <code>sysctl</code>, select a CPU governor, alter the kernel or
+      bootloader, or rewrite NVIDIA policy.</p>
+      <h2 id="modes">Modes</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Mode</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>preflight</code></td>
+      <td>Default read-only report. It reads current host observations
+      and GPU facts without sudo or persistent changes.</td>
+      </tr>
+      <tr class="even">
+      <td><code>apply</code></td>
+      <td>Validates policy, optionally installs the explicit support
+      package group, creates only missing managed directories, and
+      writes the host contract.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>validate</code></td>
+      <td>Revalidates and refreshes the contract without bootstrapping
+      Ansible or installing packages.</td>
+      </tr>
+      </tbody>
+      </table>
+      <h2 id="safe-first-run">Safe first run</h2>
+      <p>Review the current host and producer facts:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/host.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> preflight <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>generic <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--owner</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span><span class="op">=</span>gpt</span></code></pre></div>
+      <p>Create a generic host contract without installing support
+      packages:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/host.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> apply <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>generic <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--owner</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--host-reserve-gib</span><span class="op">=</span>96 <span class="dt">\</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu-reserve-mib</span><span class="op">=</span>4096 <span class="dt">\</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-physical-cores</span><span class="op">=</span>4 <span class="dt">\</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--no-install-support-packages</span></span></code></pre></div>
+      <p>The reviewed Ice Lake PMem, dual RTX 3090, CUDA 13.1, NV4, and
+      directed-P2P profile is stricter:</p>
+      <div class="sourceCode" id="cb3"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/host.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> apply <span class="dt">\</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>icelake-pmem-dual-3090 <span class="dt">\</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--owner</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--host-reserve-gib</span><span class="op">=</span>96 <span class="dt">\</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu-reserve-mib</span><span class="op">=</span>4096 <span class="dt">\</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-physical-cores</span><span class="op">=</span>36 <span class="dt">\</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-memory-mode</span> <span class="dt">\</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-ipmctl</span> <span class="dt">\</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-nvidia</span> <span class="dt">\</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-nvlink</span> <span class="dt">\</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-p2p</span> <span class="dt">\</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-support-packages</span></span></code></pre></div>
+      <p>The runner requests sudo once through <code>/dev/tty</code> for
+      managed modes. It stages the runner dependencies before
+      delegated-root execution. An explicit whole-runner root invocation
+      remains supported:</p>
+      <div class="sourceCode" id="cb4"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/host.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sudo</span> bash <span class="at">-s</span> <span class="at">--</span> validate <span class="dt">\</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>generic <span class="dt">\</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--owner</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--no-install-support-packages</span></span></code></pre></div>
+      <p>For a checked-out repository, use the same modes and flags
+      directly:</p>
+      <div class="sourceCode" id="cb5"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">./setup/cli/llm/host.sh</span> preflight <span class="dt">\</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--profile</span><span class="op">=</span>generic <span class="dt">\</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--owner</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="fu">id</span> <span class="at">-un</span><span class="va">)</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--group</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="fu">id</span> <span class="at">-gn</span><span class="va">)</span><span class="st">&quot;</span></span></code></pre></div>
+      <h2 id="flag-reference">Flag reference</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Flag</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>--profile=generic|icelake-pmem-dual-3090</code></td>
+      <td>Selects the generic policy or the reviewed exact-host
+      profile.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--owner=USER</code></td>
+      <td>Non-root account that must be able to write the managed LLM
+      paths. Defaults to the invoking account or
+      <code>SUDO_USER</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--group=GROUP</code></td>
+      <td>Managed group. Defaults to the owner's primary group.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--host-reserve-gib=N</code></td>
+      <td>RAM that later capacity planners must leave for the OS and
+      non-model work. Default: 96 GiB.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--allow-low-host-reserve</code></td>
+      <td>Permits validation while current <code>MemAvailable</code> is
+      below the requested reserve. Use only after reviewing active
+      workloads.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--gpu-reserve-mib=N</code></td>
+      <td>Per-device VRAM reservation exported for later runtimes. It
+      does not allocate or test VRAM. Default: 4096 MiB.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--require-physical-cores=N</code></td>
+      <td>Requires at least N physical cores and records one logical CPU
+      from each core.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--require-memory-mode</code></td>
+      <td>Requires live <code>/usr/local/bin/ipmctl</code> evidence with
+      positive Memory Mode capacity. DMI-only <code>consistent</code>
+      evidence is informational and fails this hard requirement. Also
+      enables <code>--require-ipmctl</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--require-ipmctl</code></td>
+      <td>Requires live <code>/usr/local/bin/ipmctl</code> version
+      <code>03.00.00.0538</code> and readable memory resources.
+      Current/pending goal output is printed for human review but is not
+      interpreted as a second inventory database.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--require-nvidia</code></td>
+      <td>Requires schema-1 GPU/NVIDIA facts and matching live UUIDs,
+      loaded driver, <code>nvidia-smi</code>, <code>nvcc</code>, and
+      CUDA runtime headers.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--require-nvlink</code></td>
+      <td>Also requires a current schema-2 NVLink fact with a physical
+      pair, NVLink route, and positive link evidence. Requires
+      <code>--require-nvidia</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--require-p2p</code></td>
+      <td>Also requires a completed passing directed CUDA P2P result.
+      Requires <code>--require-nvlink</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--install-support-packages</code></td>
+      <td>On <code>apply</code>, installs only the opt-in
+      <code>llm_host_support</code> package group.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--no-install-support-packages</code></td>
+      <td>Skips the optional package transaction. This is the
+      default.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--help</code></td>
+      <td>Prints usage without staging or changing the host.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Flag dependencies fail before staging or sudo:</p>
+      <ul>
+      <li><code>--require-p2p</code> requires
+      <code>--require-nvlink</code>.</li>
+      <li><code>--require-nvlink</code> requires
+      <code>--require-nvidia</code>.</li>
+      <li><code>--profile=icelake-pmem-dual-3090</code> enables the
+      Memory Mode, ipmctl, NVIDIA, NVLink, P2P, and 36-physical-core
+      requirements even when the equivalent flags are omitted.</li>
+      </ul>
+      <h2 id="recommended-remote-acceptance-sequence">Recommended remote
+      acceptance sequence</h2>
+      <p>After publishing the runner, execute these steps on the target
+      host in order. Keep the policy values identical across all managed
+      runs.</p>
+      <ol type="1">
+      <li>Capture a read-only report:</li>
+      </ol>
+      <div class="sourceCode" id="cb6"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/host.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> preflight <span class="dt">\</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>icelake-pmem-dual-3090 <span class="dt">\</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--owner</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--host-reserve-gib</span><span class="op">=</span>96 <span class="dt">\</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu-reserve-mib</span><span class="op">=</span>4096 <span class="dt">\</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-physical-cores</span><span class="op">=</span>36 <span class="dt">\</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-memory-mode</span> <span class="dt">\</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-ipmctl</span> <span class="dt">\</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-nvidia</span> <span class="dt">\</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-nvlink</span> <span class="dt">\</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-p2p</span> <span class="dt">\</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--no-install-support-packages</span></span></code></pre></div>
+      <ol start="2" type="1">
+      <li>Apply the contract and install only the optional host support
+      group:</li>
+      </ol>
+      <div class="sourceCode" id="cb7"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/host.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> apply <span class="dt">\</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>icelake-pmem-dual-3090 <span class="dt">\</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--owner</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--host-reserve-gib</span><span class="op">=</span>96 <span class="dt">\</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu-reserve-mib</span><span class="op">=</span>4096 <span class="dt">\</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-physical-cores</span><span class="op">=</span>36 <span class="dt">\</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-memory-mode</span> <span class="dt">\</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-ipmctl</span> <span class="dt">\</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-nvidia</span> <span class="dt">\</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-nvlink</span> <span class="dt">\</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-p2p</span> <span class="dt">\</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-support-packages</span></span></code></pre></div>
+      <ol start="3" type="1">
+      <li><p>Run the same <code>apply</code> command again. The second
+      run is the idempotency check: no existing directory ownership or
+      modes should be rewritten, and already-installed packages should
+      remain unchanged.</p></li>
+      <li><p>Validate without allowing a package transaction:</p></li>
+      </ol>
+      <div class="sourceCode" id="cb8"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/host.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> validate <span class="dt">\</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>icelake-pmem-dual-3090 <span class="dt">\</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--owner</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--group</span><span class="op">=</span>gpt <span class="dt">\</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--host-reserve-gib</span><span class="op">=</span>96 <span class="dt">\</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu-reserve-mib</span><span class="op">=</span>4096 <span class="dt">\</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-physical-cores</span><span class="op">=</span>36 <span class="dt">\</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-memory-mode</span> <span class="dt">\</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-ipmctl</span> <span class="dt">\</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-nvidia</span> <span class="dt">\</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-nvlink</span> <span class="dt">\</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-p2p</span> <span class="dt">\</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--no-install-support-packages</span></span></code></pre></div>
+      <ol start="5" type="1">
+      <li>Review the persisted result and managed inspection
+      helpers:</li>
+      </ol>
+      <div class="sourceCode" id="cb9"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> sed <span class="at">-n</span> <span class="st">&#39;1,320p&#39;</span> /etc/ansible/debian/facts/llm-host.yml</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">/opt/llm/bin/llm-host-status</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ex">/opt/llm/bin/llm-host-capacity</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="ex">/opt/llm/bin/llm-host-numa</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="ex">/opt/llm/bin/llm-host-env</span></span></code></pre></div>
+      <p>Acceptance requires <code>readiness.host_ready: true</code>,
+      matching current GPU UUIDs, the expected CPU/NUMA and Memory Mode
+      evidence, and no unexpected ownership or mode changes under
+      <code>/opt/llm</code> or <code>/models</code>.</p>
+      <h2 id="facts-and-ownership">Facts and ownership</h2>
+      <p>The runner writes:</p>
+      <ul>
+      <li><code>/etc/ansible/debian/facts/llm-host.yml</code> —
+      schema-version-1 host contract.</li>
+      <li><code>/etc/ansible/debian/env/llm-host.sh</code> —
+      source-neutral environment values.</li>
+      <li><code>/opt/llm/bin/llm-host-status</code></li>
+      <li><code>/opt/llm/bin/llm-host-capacity</code></li>
+      <li><code>/opt/llm/bin/llm-host-numa</code></li>
+      <li><code>/opt/llm/bin/llm-host-env</code></li>
+      </ul>
+      <p>It checks <code>/usr/local/bin/ipmctl</code> directly when
+      ipmctl is required. It consumes but never owns these GPU producer
+      facts:</p>
+      <ul>
+      <li><code>/etc/ansible/debian/facts/gpu.yml</code></li>
+      <li><code>/etc/ansible/debian/facts/nvidia.yml</code></li>
+      <li><code>/etc/ansible/debian/facts/nvlink.yml</code></li>
+      </ul>
+      <p>If a PMem goal, driver, CUDA toolkit, kernel, GPU, NVLink
+      bridge, or GPU ordering changes, refresh those producers before
+      rerunning host validation. After a PMem goal and maintenance
+      reboot, run <code>ipmctl.sh verify</code> first. The host gate
+      independently rejects an unexpected version or unreadable memory
+      resources and prints current/pending goal output for human
+      review.</p>
+      <p>Managed paths include <code>/opt/src</code>,
+      <code>/opt/venvs</code>, <code>/opt/llm</code>, and the
+      <code>/models</code> subtree. Missing directories are created for
+      the selected owner. Existing directories retain their owner and
+      mode; they must already be real, non-symlink directories writable
+      by that owner. There is no recursive ownership repair.</p>
+      <h2 id="memory-mode-classification">Memory Mode
+      classification</h2>
+      <p><code>verified</code> means live
+      <code>/usr/local/bin/ipmctl</code> inventory reported positive
+      Memory Mode capacity. <code>consistent</code> means DMI records
+      provide persistent-memory evidence but the stronger query is
+      unavailable. <code>unknown</code> makes no claim. The generic
+      profile can record either weaker classification;
+      <code>--require-memory-mode</code> rejects both. The exact Ice
+      Lake profile also requires the reviewed live ipmctl version and
+      readable memory resources. Goal output remains a diagnostic
+      reviewed during remote acceptance.</p>
+      <p>PCIe or NVLink bandwidth is not hard-coded here. Link-rate
+      evidence remains owned by the NVLink producer and is treated as
+      positive/active evidence rather than a fixed throughput
+      threshold.</p>
+      <h2 id="next-implementation">Next implementation</h2>
+      <p>After remote preflight, first apply, idempotent second apply,
+      and validate are accepted, run
+      <code>setup/cli/llm/llamacpp.sh</code> with one reviewed
+      repository/tag/full commit tuple. Accept its model-free build and
+      one local-GGUF smoke before running
+      <code>setup/cli/llm/ktransformers.sh</code>. KTransformers remains
+      independently owned and does not consume the llama.cpp runtime.
+      Model acquisition and the first 80 GB MoE smoke remain later
+      acceptance gates.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/llm/host.sh"><code>setup/cli/llm/host.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/llm/host.sh">https://devs-guide.github.io/debian/setup/cli/llm/host.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/llm/host.sh">https://devs-guide.github.io/debian/setup/cli/llm/host.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

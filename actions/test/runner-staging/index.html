@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Shell-only regression coverage for
+shared setup dependency staging.">
+  <title>Runner staging contract test · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/test/">Test</a> / <a href="/debian/actions/test/runner-staging/">Runner
+staging</a>
+    </p>
+    <article>
+      <h1 id="runner-staging-contract-test">Runner staging contract
+      test</h1>
+      <p>Run the shell-only shared staging regression from the
+      repository root:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.runner-staging.sh</span></code></pre></div>
+      <p>The action uses isolated temporary directories and mocked
+      downloads. It checks local and published manifests, nested
+      group-variable/playbook/runtime/ template paths, required manifest
+      declarations, incomplete local checkouts without a published
+      fallback, missing and empty dependencies, unsafe paths, duplicate
+      entries, cleanup of partial downloads, and release-helper
+      namespace isolation.</p>
+      <p>It does not access the network, call sudo, run Python or
+      Ansible, install software, or modify generated publication
+      files.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/test.runner-staging.sh"><code>actions/test.runner-staging.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

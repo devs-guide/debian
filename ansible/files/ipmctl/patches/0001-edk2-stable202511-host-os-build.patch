@@ -1,0 +1,22 @@
+Subject: [PATCH] [PATCH]: ignore static asserts and null define for os and ut
+ builds
+Upstream-Status: Backport
+Signed-off-by: Teoh Suh Haw <suh.haw.teoh@intel.com>
+---
+ MdePkg/Include/Base.h | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/MdePkg/Include/Base.h b/MdePkg/Include/Base.h
+index 0ce635c3b94bef63765dc4c9c807ab22333eff68..1a61fe3b91b31528503ad413332880d27e0f3da8 100644
+GIT binary patch
+delta 241
+zcmbRAjOpHUrVS_MEi=;;6jM^uGV@YX6g2#U<DEi1eOxpZ)YOoKL;XBM;zL}6L*heS
+z-8`X6CLfbm+x$d+m5Y@!`DPTRN^V}7@`r~_IW;dOGi~$yLOUi3&7165#yfdkDbHr!
+R5<lk2mtzGtr<AX=1^}L#Po@9>
+
+delta 81
+zcmccjoN3ZCrVS_MC$lOjZ#Ga^<TCkls`zHr)IU6%HH&PRK)lJjOF1X!l?hC~QW`i}
+fKLf)5RV*;6oOSYzQeTkJ=G~<!Oq<m!wp#-Luh}CR
+
+-- 
+2.47.0

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Delegated-root, runtime staging, and
+dependency-manifest scaffolding for setup entrypoints.">
+  <title>Shared setup runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/setup/">Setup</a> / <a href="/debian/setup/runner-common/">Shared
+runner</a>
+    </p>
+    <article>
+      <h1 id="shared-setup-runner">Shared setup runner</h1>
+      <p><code>setup/runner.common.sh</code> is implementation
+      scaffolding for managed setup entrypoints. It is not a standalone
+      feature and must not be piped directly into a shell.</p>
+      <p>The helper provides:</p>
+      <ul>
+      <li>one-time sudo authentication through
+      <code>/dev/tty</code>;</li>
+      <li>exact operator confirmations through <code>/dev/tty</code> for
+      an explicitly selected, high-impact feature action;</li>
+      <li>noninteractive delegated-root commands using
+      <code>sudo -n</code>;</li>
+      <li>unique per-invocation runtime directories;</li>
+      <li>an optional <code>devs-guide</code> or <code>ansible</code>
+      runtime namespace selected explicitly by the owning feature, with
+      the existing namespace retained by default;</li>
+      <li>path-constrained cleanup;</li>
+      <li>one unprivileged HTTP(S) implementation for managed
+      runner-source files;</li>
+      <li>local-copy or published-source manifest staging;</li>
+      <li>verification that every declared dependency is regular,
+      readable, and non-empty before a privileged command consumes
+      it;</li>
+      <li>release-helper staging and syntax validation;</li>
+      <li>Ansible feature preparation, clean controller bootstrap,
+      explicit playbook execution, and preflight report helpers shared
+      by migrated CLI runners.</li>
+      </ul>
+      <h2 id="delegated-root-flow">Delegated-root flow</h2>
+      <p>For migrated runners, <code>wget | bash</code> is the primary
+      streamed form:</p>
+      <ol type="1">
+      <li>The unprivileged shell downloads the feature and its small
+      shared-runner bootstrap.</li>
+      <li>Read-only preflight continues without sudo.</li>
+      <li>A managed mode accepts an existing root, cached, or
+      passwordless session. Otherwise it runs <code>sudo -v</code>
+      exactly once with input from <code>/dev/tty</code>. A feature can
+      also require an exact typed acknowledgement through that same TTY
+      before it permits an explicitly requested high-impact action;
+      there is no environment-variable or noninteractive bypass.</li>
+      <li>The original process stages and verifies release helpers,
+      Ansible files, and support files.</li>
+      <li>Privileged package and Ansible commands run through
+      noninteractive <code>sudo -n</code> with a clean explicit
+      environment.</li>
+      </ol>
+      <p>No runner source or managed dependency is downloaded a second
+      time from inside sudo. <code>wget | sudo bash</code> remains
+      supported when a caller deliberately starts the whole runner as
+      root. <code>sudo wget | bash</code> is not equivalent because it
+      leaves the shell unprivileged.</p>
+      <p>Without root, cached/passwordless sudo, or a usable
+      <code>/dev/tty</code>, managed modes fail before privileged
+      activity. Noninteractive callers should allocate a TTY with
+      <code>ssh -t</code>, establish a credential first, or use narrowly
+      scoped passwordless sudo. Interactive feature inputs such as
+      NVLink <code>--select-gpus</code> independently require
+      <code>/dev/tty</code>.</p>
+      <h2 id="feature-manifest-contract">Feature manifest contract</h2>
+      <p>Migrated CLI features declare four source-neutral arrays:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="va">GROUP_VARS_FILES</span><span class="op">=</span><span class="va">(</span><span class="st">&quot;all.yml&quot;</span> <span class="st">&quot;debian.yml&quot;</span><span class="va">)</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="va">FEATURE_PLAYBOOKS</span><span class="op">=</span><span class="va">(</span><span class="st">&quot;cli/example.yml&quot;</span><span class="va">)</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="va">RUNTIME_SUPPORT_REFS</span><span class="op">=</span><span class="va">(</span><span class="st">&quot;packages.yml&quot;</span> <span class="st">&quot;files/example/helper&quot;</span><span class="va">)</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="va">FEATURE_TEMPLATE_REFS</span><span class="op">=</span><span class="va">(</span><span class="st">&quot;templates/example.conf.j2&quot;</span><span class="va">)</span></span></code></pre></div>
+      <p><code>runner.stage.ansible.feature</code> combines these arrays
+      into one verified manifest. All four arrays are required, even
+      when a category is empty. A repository checkout copies every
+      dependency into the isolated runtime directory. A streamed runner
+      downloads the same relative paths from the published
+      <code>ansible/</code> tree. If a local manifest is incomplete, the
+      runner fails instead of silently mixing local and published
+      revisions.</p>
+      <p>The initial <code>runner.common.sh</code> download is
+      necessarily a small unprivileged bootstrap performed by the
+      streamed entrypoint. Once loaded, all release helper, playbook,
+      task, file, and template staging goes through the shared
+      implementation. Those managed source-file downloads are never
+      performed inside sudo.</p>
+      <p>After the bootstrap trust boundary is established, migrated
+      features use:</p>
+      <ul>
+      <li><code>runner.source.release.common</code> to stage,
+      syntax-check, and source the release helper;</li>
+      <li><code>runner.prepare.ansible.feature</code> to stage the
+      declared manifest and build group-variable and playbook path
+      arrays;</li>
+      <li><code>runner.ensure.local.ansible</code> to invoke the
+      existing controller bootstrap through a clean delegated-root
+      environment;</li>
+      <li><code>runner.run.ansible.playbooks</code> to run explicit
+      playbook paths with one verified extra-vars file;</li>
+      <li><code>runner.report.command</code> and
+      <code>runner.report.text</code> to append read-only preflight
+      evidence.</li>
+      </ul>
+      <p>Feature-specific argument parsing, policy checks, extra-vars
+      rendering, preflight contents, and managed-mode decisions remain
+      in each CLI runner. The optional third argument to
+      <code>runner.create.runtime</code> and
+      <code>runner.adopt.runtime</code> selects the allow-listed runtime
+      namespace. ipmctl uses <code>ansible</code>, while existing
+      callers that omit it retain their current behavior.</p>
+      <h2 id="migration-status">Migration status</h2>
+      <p>The GPU, ipmctl, NVIDIA, NVLink, LLM-host, llama.cpp, and
+      KTransformers runners use the shared privilege and staging
+      contracts:</p>
+      <ul>
+      <li><code>setup/cli/gpu.sh</code></li>
+      <li><code>setup/cli/ipmctl.sh</code></li>
+      <li><code>setup/cli/llm/host.sh</code></li>
+      <li><code>setup/cli/llm/llamacpp.sh</code></li>
+      <li><code>setup/cli/llm/ktransformers.sh</code></li>
+      <li><code>setup/cli/nvidia.sh</code></li>
+      <li><code>setup/cli/nvlink.sh</code></li>
+      </ul>
+      <p>The following legacy runners still contain privileged
+      self-reentry and a second fetch when started unprivileged from a
+      stream:</p>
+      <ul>
+      <li><code>setup/bootstrap.sh</code></li>
+      <li><code>setup/hardware.sh</code></li>
+      <li><code>setup/autologin.sh</code></li>
+      <li><code>setup/cli/node.sh</code></li>
+      <li><code>setup/cli/codex.sh</code></li>
+      <li><code>setup/cli/kiosk.app.sh</code></li>
+      <li><code>setup/cli/x11.sh</code></li>
+      <li><code>setup/cli/openbox.sh</code></li>
+      <li><code>setup/cli/touchscreen.sh</code></li>
+      <li><code>setup/cli/startx.sh</code></li>
+      <li><code>setup/cli/tauri.sh</code></li>
+      </ul>
+      <p>They remain unchanged until each runner has equivalent
+      privilege, argument, fetch, and staging regression coverage. New
+      managed features should use the shared API rather than copy a
+      legacy self-reentry implementation.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/runner.common.sh"><code>setup/runner.common.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

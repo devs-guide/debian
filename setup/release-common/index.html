@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Release common helper · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/setup/">Setup</a> / <a href="/debian/setup/release-common/">Release
+helper</a>
+    </p>
+    <article>
+      <h1 id="release-common-helper">Release common helper</h1>
+      <p><code>setup/release.common.sh</code> is shared implementation
+      support for the setup runners. It resolves Debian release policy,
+      controller Python capability, and runtime Ansible support
+      files.</p>
+      <p>It is not a standalone operator entrypoint. Use a documented
+      bootstrap or CLI runner instead. Its public source URL is fetched
+      by those runners as needed; do not pipe this helper directly into
+      a shell because it has no feature mode or operator-facing policy
+      contract.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/release.common.sh"><code>setup/release.common.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

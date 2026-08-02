@@ -1,0 +1,850 @@
+---
+- name: "[debian]: pinned KTransformers heterogeneous runtime"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed }}"
+    ktransformers_mode: validate
+    ktransformers_matrix_profile: v0.6.3-icelake-sm86-source
+    ktransformers_repository_url: https://github.com/kvcache-ai/ktransformers.git
+    ktransformers_release: v0.6.3
+    ktransformers_commit: ce7c3ddbe93f7ac1f992375eed54058bbc512646
+    ktransformers_sglang_repository_url: https://github.com/kvcache-ai/sglang.git
+    ktransformers_sglang_commit: 8b636f9008dbad58c0a8e481b03e794739e6c146
+    ktransformers_install_profile: source
+    ktransformers_python_version: 3.12.3
+    ktransformers_wheelhouse: ""
+    ktransformers_allow_online_dependencies: false
+    ktransformers_cuda_architectures: "86"
+    ktransformers_cpu_profile: icelake-avx512-vnni
+    ktransformers_source_dir_override: ""
+    ktransformers_build_dir_override: ""
+    ktransformers_install_dir_override: ""
+    ktransformers_clean_build: false
+    ktransformers_install_build_tools: false
+    ktransformers_staged_source_path: ""
+    ktransformers_staged_python_archive: ""
+    ktransformers_matrix_path: "{{ playbook_dir }}/../../files/llm/ktransformers/compatibility-matrix.yml"
+    ktransformers_host_facts_path: /etc/ansible/debian/facts/llm-host.yml
+    ktransformers_nvidia_facts_path: /etc/ansible/debian/facts/nvidia.yml
+    ktransformers_facts_path: /etc/ansible/debian/facts/ktransformers.yml
+    ktransformers_env_path: /etc/ansible/debian/env/ktransformers.sh
+
+  pre_tasks:
+    - name: Load reviewed KTransformers compatibility matrix
+      ansible.builtin.set_fact:
+        ktransformers_matrix: "{{ lookup('file', ktransformers_matrix_path) | from_json }}"
+
+    - name: Select reviewed KTransformers profile
+      ansible.builtin.set_fact:
+        ktransformers_profile_matches: >-
+          {{
+            ktransformers_matrix.profiles
+            | selectattr('feature', 'equalto', 'ktransformers')
+            | selectattr('id', 'equalto', ktransformers_matrix_profile)
+            | list
+          }}
+
+    - name: Require one reviewed KTransformers profile
+      ansible.builtin.assert:
+        that:
+          - ktransformers_matrix.schema_version | int == 1
+          - ktransformers_profile_matches | length == 1
+        fail_msg: "The requested KTransformers matrix profile is not uniquely reviewed."
+
+    - name: Normalize reviewed KTransformers policy
+      ansible.builtin.set_fact:
+        ktransformers_profile: "{{ ktransformers_profile_matches[0] }}"
+        ktransformers_mode_effective: "{{ ktransformers_mode | lower }}"
+
+    - name: Resolve managed KTransformers paths
+      ansible.builtin.set_fact:
+        ktransformers_source_dir: >-
+          {{
+            ktransformers_source_dir_override
+            if (ktransformers_source_dir_override | length > 0)
+            else '/opt/src/ktransformers/' + ktransformers_matrix_profile
+          }}
+        ktransformers_build_dir: >-
+          {{
+            ktransformers_build_dir_override
+            if (ktransformers_build_dir_override | length > 0)
+            else '/opt/build/ktransformers/' + ktransformers_matrix_profile
+          }}
+        ktransformers_install_dir: >-
+          {{
+            ktransformers_install_dir_override
+            if (ktransformers_install_dir_override | length > 0)
+            else '/opt/venvs/ktransformers-' + ktransformers_matrix_profile
+          }}
+        ktransformers_python_prefix: "/opt/python/{{ ktransformers_python_version }}"
+        ktransformers_python_source_dir: "/opt/src/python/{{ ktransformers_python_version }}"
+        ktransformers_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+
+    - name: Validate exact KTransformers source and toolchain policy
+      ansible.builtin.assert:
+        that:
+          - ktransformers_mode_effective in ['apply', 'validate', 'upgrade']
+          - ktransformers_profile.repository_url == ktransformers_repository_url
+          - ktransformers_profile.release == ktransformers_release
+          - ktransformers_profile.commit == ktransformers_commit
+          - ktransformers_profile.sglang_repository_url == ktransformers_sglang_repository_url
+          - ktransformers_profile.sglang_commit == ktransformers_sglang_commit
+          - ktransformers_profile.install_profile == ktransformers_install_profile
+          - ktransformers_profile.python_version == ktransformers_python_version
+          - ktransformers_profile.cuda_architectures == ktransformers_cuda_architectures
+          - ktransformers_profile.cpu_profile == ktransformers_cpu_profile
+          - ktransformers_commit is match('^[0-9a-f]{40}$')
+          - ktransformers_sglang_commit is match('^[0-9a-f]{40}$')
+          - ktransformers_source_dir is match('^/opt/src/ktransformers/.+')
+          - ktransformers_build_dir is match('^/opt/build/ktransformers/.+')
+          - ktransformers_install_dir is match('^/opt/venvs/ktransformers-.+')
+          - ktransformers_facts_path == '/etc/ansible/debian/facts/ktransformers.yml'
+        fail_msg: >-
+          KTransformers and SGLang URLs/commits, Python, CPU, CUDA, and managed
+          paths must exactly match the selected reviewed profile.
+
+    - name: Check required host and NVIDIA facts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ ktransformers_host_facts_path }}"
+        - "{{ ktransformers_nvidia_facts_path }}"
+      register: ktransformers_producer_fact_stats
+
+    - name: Require host and NVIDIA producer facts
+      ansible.builtin.assert:
+        that:
+          - ktransformers_producer_fact_stats.results | map(attribute='stat.exists') | min
+        fail_msg: "Run llm/host.sh and nvidia.sh successfully before KTransformers."
+
+    - name: Read host and NVIDIA producer facts
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ ktransformers_host_facts_path }}"
+        - "{{ ktransformers_nvidia_facts_path }}"
+      register: ktransformers_producer_fact_contents
+
+    - name: Decode host and NVIDIA producer facts
+      ansible.builtin.set_fact:
+        ktransformers_host_facts: "{{ ktransformers_producer_fact_contents.results[0].content | b64decode | from_yaml }}"
+        ktransformers_nvidia_facts: "{{ ktransformers_producer_fact_contents.results[1].content | b64decode | from_yaml }}"
+
+    - name: Validate KTransformers host prerequisites
+      ansible.builtin.assert:
+        that:
+          - ktransformers_host_facts.llm_host.schema_version | default(0) | int == 1
+          - ktransformers_host_facts.llm_host.readiness.host_ready | default(false) | bool
+          - ktransformers_nvidia_facts.nvidia.schema_version | default(0) | int == 1
+          - ktransformers_nvidia_facts.nvidia.driver.kernel_module_ready | default(false) | bool
+          - ktransformers_nvidia_facts.nvidia.driver.nvidia_smi_ready | default(false) | bool
+          - ktransformers_nvidia_facts.nvidia.cuda.nvcc_ready | default(false) | bool
+          - ktransformers_nvidia_facts.nvidia.cuda.runtime_header_ready | default(false) | bool
+          - "'avx512f' in ktransformers_host_facts.llm_host.cpu.flags"
+          - "'avx512_vnni' in ktransformers_host_facts.llm_host.cpu.flags or 'avx512vnni' in ktransformers_host_facts.llm_host.cpu.flags"
+        fail_msg: >-
+          The initial KTransformers profile requires accepted host/NVIDIA
+          facts, AVX-512/VNNI, and a live CUDA compiler/runtime.
+
+  tasks:
+    - name: Normalize KTransformers owner and GPU selection
+      ansible.builtin.set_fact:
+        ktransformers_owner: "{{ ktransformers_host_facts.llm_host.ownership.user }}"
+        ktransformers_group: "{{ ktransformers_host_facts.llm_host.ownership.group }}"
+        ktransformers_selected_uuids: "{{ ktransformers_host_facts.llm_host.producers.gpu.uuids | default([]) }}"
+        ktransformers_build_marker: "{{ ktransformers_build_dir }}/source-install.complete"
+        ktransformers_worktree_dir: "{{ ktransformers_build_dir }}/source"
+        ktransformers_python_archive_path: "/opt/src/python/Python-{{ ktransformers_python_version }}.tar.xz"
+        ktransformers_previous_dependency_source: installed-environment
+
+    - name: Inspect previous KTransformers facts
+      ansible.builtin.stat:
+        path: "{{ ktransformers_facts_path }}"
+      register: ktransformers_previous_fact_stat
+
+    - name: Read previous KTransformers facts
+      ansible.builtin.slurp:
+        src: "{{ ktransformers_facts_path }}"
+      register: ktransformers_previous_fact_raw
+      when: ktransformers_previous_fact_stat.stat.exists
+
+    - name: Decode previous KTransformers facts
+      ansible.builtin.set_fact:
+        ktransformers_previous_facts: "{{ ktransformers_previous_fact_raw.content | b64decode | from_yaml }}"
+      when: ktransformers_previous_fact_stat.stat.exists
+
+    - name: Preserve dependency source for the same KTransformers source profile
+      ansible.builtin.set_fact:
+        ktransformers_previous_dependency_source: >-
+          {{
+            ktransformers_previous_facts.ktransformers.toolchain.dependency_source
+            | default('installed-environment')
+          }}
+      when:
+        - ktransformers_previous_fact_stat.stat.exists
+        - ktransformers_previous_facts.ktransformers.source.matrix_profile | default('') == ktransformers_matrix_profile
+        - ktransformers_previous_facts.ktransformers.source.commit | default('') == ktransformers_commit
+
+    - name: Check optional local wheelhouse
+      ansible.builtin.stat:
+        path: "{{ ktransformers_wheelhouse }}"
+      register: ktransformers_wheelhouse_stat
+      when: ktransformers_wheelhouse | length > 0
+
+    - name: Validate KTransformers dependency source
+      ansible.builtin.assert:
+        that:
+          - >-
+            (ktransformers_wheelhouse | length > 0
+              and ktransformers_wheelhouse_stat.stat.isdir | default(false))
+            or
+            (ktransformers_allow_online_dependencies | bool)
+        fail_msg: >-
+          apply/upgrade requires a real local wheelhouse or the explicit
+          --allow-online-dependencies acknowledgement.
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Resolve recorded KTransformers dependency source
+      ansible.builtin.set_fact:
+        ktransformers_dependency_source_effective: >-
+          {{
+            (
+              'wheelhouse'
+              if (ktransformers_wheelhouse | length > 0)
+              else 'online-explicit'
+            )
+            if ktransformers_mode_effective in ['apply', 'upgrade']
+            else ktransformers_previous_dependency_source
+          }}
+
+    - name: Check staged KTransformers and Python source
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ ktransformers_staged_source_path }}"
+        - "{{ ktransformers_staged_python_archive }}"
+      register: ktransformers_staged_source_stats
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Require pre-sudo staged exact sources
+      ansible.builtin.assert:
+        that:
+          - ktransformers_staged_source_stats.results[0].stat.isdir | default(false)
+          - ktransformers_staged_source_stats.results[1].stat.isreg | default(false)
+        fail_msg: >-
+          apply/upgrade requires exact KTransformers and Python source staged
+          and verified by the invoking user before sudo.
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Inspect promoted KTransformers environment
+      ansible.builtin.stat:
+        path: /opt/venvs/ktransformers-current
+        follow: false
+      register: ktransformers_current_environment
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - ktransformers_clean_build | bool
+
+    - name: Resolve promoted KTransformers environment
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - --canonicalize-existing
+          - /opt/venvs/ktransformers-current
+      register: ktransformers_current_environment_realpath
+      changed_when: false
+      failed_when: false
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - ktransformers_clean_build | bool
+        - ktransformers_current_environment.stat.exists | default(false)
+
+    - name: Protect the promoted KTransformers environment from clean-build
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (ktransformers_current_environment.stat.exists | default(false))
+            or
+            (ktransformers_current_environment_realpath.stdout | default('') | trim != ktransformers_install_dir)
+        fail_msg: >-
+          --clean-build refuses to remove the currently promoted environment.
+          Select a new matrix/install profile or change promotion through a
+          separately reviewed rollback/upgrade.
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - ktransformers_clean_build | bool
+
+    - name: Remove requested KTransformers build and environment
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ ktransformers_build_dir }}"
+        - "{{ ktransformers_install_dir }}"
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - ktransformers_clean_build | bool
+
+    - name: Create KTransformers managed parents
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ktransformers_owner }}"
+        group: "{{ ktransformers_group }}"
+        mode: '0755'
+      loop:
+        - "{{ ktransformers_source_dir | dirname }}"
+        - "{{ ktransformers_build_dir }}"
+        - "{{ ktransformers_install_dir | dirname }}"
+        - "{{ ktransformers_python_prefix | dirname }}"
+        - "{{ ktransformers_python_source_dir }}"
+        - /opt/llm/manifests
+        - /var/log/llm/ktransformers
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Inspect KTransformers source destination
+      ansible.builtin.stat:
+        path: "{{ ktransformers_source_dir }}"
+        follow: false
+      register: ktransformers_source_destination
+
+    - name: Reject unsafe KTransformers source destination
+      ansible.builtin.assert:
+        that:
+          - not ktransformers_source_destination.stat.exists or ktransformers_source_destination.stat.isdir
+          - not ktransformers_source_destination.stat.exists or not ktransformers_source_destination.stat.islnk
+        fail_msg: "The managed KTransformers source path must be a real directory."
+
+    - name: Copy pre-sudo staged KTransformers source
+      ansible.builtin.command:
+        argv:
+          - cp
+          - -a
+          - "{{ ktransformers_staged_source_path }}"
+          - "{{ ktransformers_source_dir }}"
+        creates: "{{ ktransformers_source_dir }}/.git"
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - not ktransformers_source_destination.stat.exists
+
+    - name: Assign newly managed KTransformers source to build owner
+      ansible.builtin.file:
+        path: "{{ ktransformers_source_dir }}"
+        owner: "{{ ktransformers_owner }}"
+        group: "{{ ktransformers_group }}"
+        recurse: true
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - not ktransformers_source_destination.stat.exists
+
+    - name: Verify exact KTransformers source commit
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ ktransformers_source_dir }}"
+          - rev-parse
+          - HEAD
+      register: ktransformers_source_head
+      changed_when: false
+
+    - name: Verify exact KTransformers source origin
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ ktransformers_source_dir }}"
+          - remote
+          - get-url
+          - origin
+      register: ktransformers_source_origin
+      changed_when: false
+
+    - name: Verify exact SGLang source commit
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ ktransformers_source_dir }}/third_party/sglang"
+          - rev-parse
+          - HEAD
+      register: ktransformers_sglang_head
+      changed_when: false
+
+    - name: Verify exact SGLang source origin
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ ktransformers_source_dir }}/third_party/sglang"
+          - remote
+          - get-url
+          - origin
+      register: ktransformers_sglang_origin
+      changed_when: false
+
+    - name: Verify KTransformers source is detached
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ ktransformers_source_dir }}"
+          - symbolic-ref
+          - -q
+          - --short
+          - HEAD
+      register: ktransformers_source_symbolic_ref
+      changed_when: false
+      failed_when: false
+
+    - name: Verify KTransformers source cleanliness
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ ktransformers_source_dir }}"
+          - status
+          - --porcelain
+      register: ktransformers_source_status
+      changed_when: false
+
+    - name: Require exact clean KTransformers source tree
+      ansible.builtin.assert:
+        that:
+          - ktransformers_source_head.stdout | trim == ktransformers_commit
+          - ktransformers_source_origin.stdout | trim == ktransformers_repository_url
+          - ktransformers_sglang_head.stdout | trim == ktransformers_sglang_commit
+          - (ktransformers_sglang_origin.stdout | trim | regex_replace('[.]git$', '')) == (ktransformers_sglang_repository_url | regex_replace('[.]git$', ''))
+          - ktransformers_source_symbolic_ref.rc | int != 0
+          - ktransformers_source_status.stdout | trim | length == 0
+        fail_msg: "Managed KTransformers/SGLang source is dirty or at an unreviewed commit."
+
+    - name: Copy reviewed Python archive into managed source storage
+      ansible.builtin.copy:
+        src: "{{ ktransformers_staged_python_archive }}"
+        dest: "{{ ktransformers_python_archive_path }}"
+        remote_src: true
+        owner: "{{ ktransformers_owner }}"
+        group: "{{ ktransformers_group }}"
+        mode: '0644'
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Calculate managed Python source archive checksum
+      ansible.builtin.stat:
+        path: "{{ ktransformers_python_archive_path }}"
+        checksum_algorithm: sha256
+      register: ktransformers_python_archive_stat
+
+    - name: Require reviewed Python source archive
+      ansible.builtin.assert:
+        that:
+          - ktransformers_python_archive_stat.stat.exists
+          - ktransformers_python_archive_stat.stat.isreg
+          - ktransformers_python_archive_stat.stat.checksum == ktransformers_profile.python_source_sha256
+        fail_msg: "The managed Python source archive is missing or does not match the reviewed SHA-256."
+
+    - name: Inspect isolated Python runtime
+      ansible.builtin.stat:
+        path: "{{ ktransformers_python_prefix }}/bin/python3.12"
+      register: ktransformers_python_runtime
+
+    - name: Extract reviewed Python source
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.unarchive:
+        src: "{{ ktransformers_python_archive_path }}"
+        dest: "{{ ktransformers_python_source_dir }}"
+        remote_src: true
+        extra_opts:
+          - --strip-components=1
+        creates: "{{ ktransformers_python_source_dir }}/configure"
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - not ktransformers_python_runtime.stat.exists
+
+    - name: Configure isolated Python runtime
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_python_source_dir }}/configure"
+          - "--prefix={{ ktransformers_python_prefix }}"
+          - --with-ensurepip=install
+          - --enable-optimizations
+        chdir: "{{ ktransformers_python_source_dir }}"
+        creates: "{{ ktransformers_python_source_dir }}/Makefile"
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - not ktransformers_python_runtime.stat.exists
+
+    - name: Build isolated Python runtime
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - make
+          - "-j{{ ktransformers_host_facts.llm_host.cpu.physical_core_count }}"
+        chdir: "{{ ktransformers_python_source_dir }}"
+        creates: "{{ ktransformers_python_source_dir }}/python"
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - not ktransformers_python_runtime.stat.exists
+
+    - name: Install isolated Python runtime
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - make
+          - altinstall
+        chdir: "{{ ktransformers_python_source_dir }}"
+        creates: "{{ ktransformers_python_prefix }}/bin/python3.12"
+      when:
+        - ktransformers_mode_effective in ['apply', 'upgrade']
+        - not ktransformers_python_runtime.stat.exists
+
+    - name: Create isolated KTransformers virtual environment
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_python_prefix }}/bin/python3.12"
+          - -m
+          - venv
+          - "{{ ktransformers_install_dir }}"
+        creates: "{{ ktransformers_install_dir }}/bin/python"
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Copy pristine KTransformers source into mutable build worktree
+      ansible.builtin.command:
+        argv:
+          - cp
+          - -a
+          - "{{ ktransformers_source_dir }}"
+          - "{{ ktransformers_worktree_dir }}"
+        creates: "{{ ktransformers_worktree_dir }}/.git"
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Verify KTransformers build worktree commit
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ ktransformers_worktree_dir }}"
+          - rev-parse
+          - HEAD
+      register: ktransformers_worktree_head
+      changed_when: false
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Verify SGLang build worktree commit
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ ktransformers_worktree_dir }}/third_party/sglang"
+          - rev-parse
+          - HEAD
+      register: ktransformers_worktree_sglang_head
+      changed_when: false
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Require exact KTransformers build worktree
+      ansible.builtin.assert:
+        that:
+          - ktransformers_worktree_head.stdout | trim == ktransformers_commit
+          - ktransformers_worktree_sglang_head.stdout | trim == ktransformers_sglang_commit
+        fail_msg: "The mutable build worktree does not match the reviewed source tuple."
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Install exact KT-Kernel source into isolated environment
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - bash
+          - ./install.sh
+        chdir: "{{ ktransformers_worktree_dir }}/kt-kernel"
+        creates: "{{ ktransformers_build_marker }}"
+      environment:
+        PATH: "{{ ktransformers_install_dir }}/bin:/usr/local/cuda/bin:/usr/bin:/bin"
+        VIRTUAL_ENV: "{{ ktransformers_install_dir }}"
+        PYTHONNOUSERSITE: "1"
+        PIP_DISABLE_PIP_VERSION_CHECK: "1"
+        PIP_NO_INDEX: "{{ '1' if (ktransformers_wheelhouse | length > 0) else '0' }}"
+        PIP_FIND_LINKS: "{{ ktransformers_wheelhouse }}"
+        CUDA_HOME: /usr/local/cuda
+        TORCH_CUDA_ARCH_LIST: "8.6"
+        CPUINFER_CPU_INSTRUCT: "{{ ktransformers_profile.cpu_environment.CPUINFER_CPU_INSTRUCT }}"
+        CPUINFER_ENABLE_AMX: "{{ ktransformers_profile.cpu_environment.CPUINFER_ENABLE_AMX }}"
+        CPUINFER_ENABLE_AVX512_VNNI: "{{ ktransformers_profile.cpu_environment.CPUINFER_ENABLE_AVX512_VNNI }}"
+        CPUINFER_ENABLE_AVX512_BF16: "{{ ktransformers_profile.cpu_environment.CPUINFER_ENABLE_AVX512_BF16 }}"
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Install exact SGLang-KT integration into isolated environment
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - bash
+          - ./install.sh
+        chdir: "{{ ktransformers_worktree_dir }}"
+        creates: "{{ ktransformers_build_marker }}"
+      environment:
+        PATH: "{{ ktransformers_install_dir }}/bin:/usr/local/cuda/bin:/usr/bin:/bin"
+        VIRTUAL_ENV: "{{ ktransformers_install_dir }}"
+        PYTHONNOUSERSITE: "1"
+        PIP_DISABLE_PIP_VERSION_CHECK: "1"
+        PIP_NO_INDEX: "{{ '1' if (ktransformers_wheelhouse | length > 0) else '0' }}"
+        PIP_FIND_LINKS: "{{ ktransformers_wheelhouse }}"
+        CUDA_HOME: /usr/local/cuda
+        TORCH_CUDA_ARCH_LIST: "8.6"
+        CPUINFER_CPU_INSTRUCT: "{{ ktransformers_profile.cpu_environment.CPUINFER_CPU_INSTRUCT }}"
+        CPUINFER_ENABLE_AMX: "{{ ktransformers_profile.cpu_environment.CPUINFER_ENABLE_AMX }}"
+        CPUINFER_ENABLE_AVX512_VNNI: "{{ ktransformers_profile.cpu_environment.CPUINFER_ENABLE_AVX512_VNNI }}"
+        CPUINFER_ENABLE_AVX512_BF16: "{{ ktransformers_profile.cpu_environment.CPUINFER_ENABLE_AVX512_BF16 }}"
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Record completed exact-source KTransformers build
+      ansible.builtin.copy:
+        dest: "{{ ktransformers_build_marker }}"
+        owner: "{{ ktransformers_owner }}"
+        group: "{{ ktransformers_group }}"
+        mode: '0644'
+        content: |
+          profile={{ ktransformers_matrix_profile }}
+          repository={{ ktransformers_repository_url }}
+          commit={{ ktransformers_commit }}
+          sglang_repository={{ ktransformers_sglang_repository_url }}
+          sglang_commit={{ ktransformers_sglang_commit }}
+          python={{ ktransformers_python_version }}
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Inspect installed KTransformers Python
+      ansible.builtin.stat:
+        path: "{{ ktransformers_install_dir }}/bin/python"
+      register: ktransformers_installed_python
+
+    - name: Require installed KTransformers environment
+      ansible.builtin.assert:
+        that:
+          - ktransformers_installed_python.stat.exists
+          - ktransformers_installed_python.stat.executable
+        fail_msg: "The selected KTransformers environment is not installed."
+
+    - name: Capture KTransformers CLI help
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_install_dir }}/bin/kt"
+          - --help
+      register: ktransformers_help_output
+      changed_when: false
+      environment:
+        PYTHONNOUSERSITE: "1"
+
+    - name: Capture KTransformers version
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_install_dir }}/bin/kt"
+          - version
+      register: ktransformers_version_output
+      changed_when: false
+      environment:
+        PYTHONNOUSERSITE: "1"
+
+    - name: Run KTransformers doctor
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_install_dir }}/bin/kt"
+          - doctor
+      register: ktransformers_doctor_output
+      changed_when: false
+      environment:
+        PYTHONNOUSERSITE: "1"
+        CUDA_VISIBLE_DEVICES: "{{ ktransformers_selected_uuids | join(',') }}"
+
+    - name: Validate KT-Kernel and SGLang-KT imports
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_install_dir }}/bin/python"
+          - -c
+          - >-
+            import importlib;
+            kt = importlib.import_module('kt_kernel');
+            sg = importlib.import_module('sglang');
+            print(getattr(kt, '__version__', 'unknown'));
+            print(getattr(kt, '__cpu_variant__', 'unknown'));
+            print(getattr(sg, '__version__', 'unknown'))
+      register: ktransformers_import_output
+      changed_when: false
+      environment:
+        PYTHONNOUSERSITE: "1"
+        CUDA_VISIBLE_DEVICES: "{{ ktransformers_selected_uuids | join(',') }}"
+
+    - name: Validate CUDA runtime from isolated KTransformers environment
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_install_dir }}/bin/python"
+          - -c
+          - >-
+            import torch;
+            assert torch.cuda.is_available();
+            assert torch.cuda.device_count() == {{ ktransformers_selected_uuids | length }};
+            print(torch.__version__);
+            print(torch.version.cuda);
+            print([torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())])
+      register: ktransformers_cuda_output
+      changed_when: false
+      environment:
+        PYTHONNOUSERSITE: "1"
+        CUDA_VISIBLE_DEVICES: "{{ ktransformers_selected_uuids | join(',') }}"
+
+    - name: Capture SGLang-KT launch capabilities
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_install_dir }}/bin/python"
+          - -m
+          - sglang.launch_server
+          - --help
+      register: ktransformers_sglang_help_output
+      changed_when: false
+      environment:
+        PYTHONNOUSERSITE: "1"
+        CUDA_VISIBLE_DEVICES: "{{ ktransformers_selected_uuids | join(',') }}"
+
+    - name: Require heterogeneous runtime launch capabilities
+      ansible.builtin.assert:
+        that:
+          - "'--kt-method' in ktransformers_sglang_help_output.stdout"
+          - "'--kt-weight-path' in ktransformers_sglang_help_output.stdout"
+          - "'--kt-num-gpu-experts' in ktransformers_sglang_help_output.stdout"
+          - "'--kt-cpuinfer' in ktransformers_sglang_help_output.stdout"
+          - "'--tensor-parallel-size' in ktransformers_sglang_help_output.stdout"
+          - "'--mem-fraction-static' in ktransformers_sglang_help_output.stdout"
+        fail_msg: >-
+          The installed source does not expose the heterogeneous KT/SGLang
+          capabilities required by later model profiles.
+
+    - name: Capture isolated dependency inventory
+      become_user: "{{ ktransformers_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ ktransformers_install_dir }}/bin/python"
+          - -m
+          - pip
+          - freeze
+          - --all
+      register: ktransformers_dependency_output
+      changed_when: false
+      environment:
+        PYTHONNOUSERSITE: "1"
+
+    - name: Create KTransformers fact and environment directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - "{{ ktransformers_facts_path | dirname }}"
+        - "{{ ktransformers_env_path | dirname }}"
+
+    - name: Persist KTransformers runtime facts
+      ansible.builtin.copy:
+        dest: "{{ ktransformers_facts_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          ktransformers:
+            schema_version: 1
+            generated_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+            mode: {{ ktransformers_mode_effective | to_json }}
+            source:
+              matrix_profile: {{ ktransformers_matrix_profile | to_json }}
+              repository_url: {{ ktransformers_repository_url | to_json }}
+              release: {{ ktransformers_release | to_json }}
+              commit: {{ ktransformers_commit | to_json }}
+              sglang_repository_url: {{ ktransformers_sglang_repository_url | to_json }}
+              sglang_commit: {{ ktransformers_sglang_commit | to_json }}
+              clean: {{ (ktransformers_source_status.stdout | trim | length == 0) | to_json }}
+              python_source_url: {{ ktransformers_profile.python_source_url | to_json }}
+              python_source_sha256: {{ ktransformers_profile.python_source_sha256 | to_json }}
+            toolchain:
+              install_profile: {{ ktransformers_install_profile | to_json }}
+              python_version: {{ ktransformers_python_version | to_json }}
+              dependency_source: {{ ktransformers_dependency_source_effective | to_json }}
+              dependency_inventory: {{ ktransformers_dependency_output.stdout_lines | to_json }}
+              cpu_profile: {{ ktransformers_cpu_profile | to_json }}
+              cpu_environment: {{ ktransformers_profile.cpu_environment | to_json }}
+              cuda_architectures: {{ ktransformers_cuda_architectures | to_json }}
+            paths:
+              source: {{ ktransformers_source_dir | to_json }}
+              build: {{ ktransformers_build_dir | to_json }}
+              build_worktree: {{ ktransformers_worktree_dir | to_json }}
+              python_source_archive: {{ ktransformers_python_archive_path | to_json }}
+              environment: {{ ktransformers_install_dir | to_json }}
+            runtime:
+              selected_gpu_uuids: {{ ktransformers_selected_uuids | to_json }}
+              version_output: {{ ktransformers_version_output.stdout | to_json }}
+              doctor_output: {{ ktransformers_doctor_output.stdout | to_json }}
+              import_output: {{ ktransformers_import_output.stdout | to_json }}
+              cuda_output: {{ ktransformers_cuda_output.stdout | to_json }}
+              cli_help: {{ ktransformers_help_output.stdout | to_json }}
+              sglang_launch_help: {{ ktransformers_sglang_help_output.stdout | to_json }}
+            ownership:
+              llamacpp_required: false
+              model_downloaded: false
+              model_loaded: false
+              persistent_server_started: false
+              nvidia_policy_changed: false
+              host_memory_semantics: "CPU-visible host memory; DDR cache behavior is hardware managed"
+            readiness:
+              toolchain_ready: true
+              model_ready: false
+
+    - name: Persist KTransformers shell environment
+      ansible.builtin.copy:
+        dest: "{{ ktransformers_env_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by setup/cli/llm/ktransformers.sh.
+          export KTRANSFORMERS_PROFILE={{ ktransformers_matrix_profile | quote }}
+          export KTRANSFORMERS_HOME={{ ktransformers_install_dir | quote }}
+          export KTRANSFORMERS_PYTHON={{ (ktransformers_install_dir + '/bin/python') | quote }}
+          export KTRANSFORMERS_FACTS={{ ktransformers_facts_path | quote }}
+          export PYTHONNOUSERSITE=1
+
+    - name: Promote validated KTransformers environment atomically
+      ansible.builtin.file:
+        src: "{{ ktransformers_install_dir }}"
+        dest: /opt/venvs/ktransformers-current
+        state: link
+        force: true
+        owner: "{{ ktransformers_owner }}"
+        group: "{{ ktransformers_group }}"
+      when: ktransformers_mode_effective in ['apply', 'upgrade']
+
+    - name: Report KTransformers checkpoint
+      ansible.builtin.debug:
+        msg:
+          - "Reviewed KTransformers: {{ ktransformers_repository_url }}@{{ ktransformers_commit }}"
+          - "Reviewed SGLang-KT: {{ ktransformers_sglang_repository_url }}@{{ ktransformers_sglang_commit }}"
+          - "Python/CPU/SM: {{ ktransformers_python_version }}/{{ ktransformers_cpu_profile }}/{{ ktransformers_cuda_architectures }}"
+          - "Selected GPUs: {{ ktransformers_selected_uuids | join(', ') }}"
+          - "llama.cpp technical dependency: NONE"
+          - "Model-free KTransformers toolchain: READY"

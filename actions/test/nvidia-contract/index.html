@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Focused validation of the NVIDIA
+runner, playbook, fact schema, and skipped-register regression.">
+  <title>NVIDIA contract test · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/test/">Test</a> / <a href="/debian/actions/test/nvidia-contract/">NVIDIA
+contract</a>
+    </p>
+    <article>
+      <h1 id="nvidia-contract-test">NVIDIA contract test</h1>
+      <p>Run the complete NVIDIA repository contract in the CI
+      validation environment:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.nvidia-contract.sh</span></code></pre></div>
+      <p>The action checks stable runner variables, manifest
+      relationships, Ansible task ordering, CUDA environment policy,
+      fact fields, and the prohibited skipped-register dereference. It
+      also executes <code>actions/test.nvidia-facts.sh</code>, which
+      requires the pinned Ansible and PyYAML versions from
+      <code>actions/requirements.validation.txt</code>.</p>
+      <p>It does not install NVIDIA packages or access GPU hardware.</p>
+      <p>For local review without Python or Ansible execution, run only
+      the portable shell assertions:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.nvidia-contract.sh <span class="at">--shell-only</span></span></code></pre></div>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/test.nvidia-contract.sh"><code>actions/test.nvidia-contract.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

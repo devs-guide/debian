@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Opt-in Debian feature runners
+published as shell source files.">
+  <title>CLI runners · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a>
+    </p>
+    <article>
+      <h1 id="cli-runners">CLI runners</h1>
+      <p>Each path below is documentation. The matching executable is
+      the <code>.sh</code> URL shown on that page. Do not substitute an
+      extensionless documentation path into a shell pipeline.</p>
+      <h2 id="feature-runners">Feature runners</h2>
+      <ul>
+      <li><a href="/debian/cli/codex/">Codex</a> — Node and Codex CLI
+      setup.</li>
+      <li><a href="/debian/cli/gpu/">GPU</a> — shared PCI/runtime
+      inventory for GPU-aware features.</li>
+      <li><a href="/debian/cli/ipmctl/">ipmctl</a> — pinned Intel Optane
+      PMem inventory and guarded memory-allocation goals.</li>
+      <li><a href="/debian/cli/llm/host/">LLM host</a> — shared CPU,
+      NUMA, memory, and GPU-producer readiness contract.</li>
+      <li><a href="/debian/cli/llm/llamacpp/">llama.cpp</a> — reviewed
+      exact-source CPU/CUDA runtime.</li>
+      <li><a href="/debian/cli/llm/ktransformers/">KTransformers</a> —
+      reviewed heterogeneous KT-Kernel/SGLang-KT runtime.</li>
+      <li><a href="/debian/cli/kiosk.app/">Kiosk app</a> — kiosk feature
+      orchestration.</li>
+      <li><a href="/debian/cli/node/">Node</a> — Node LTS setup.</li>
+      <li><a href="/debian/cli/nvidia/">NVIDIA</a> — opt-in NVIDIA
+      driver and CUDA readiness.</li>
+      <li><a href="/debian/cli/nvlink/">NVLink</a> — opt-in CUDA/NVLink
+      validation after NVIDIA.</li>
+      <li><a href="/debian/cli/openbox/">Openbox</a> — Openbox session
+      configuration.</li>
+      <li><a href="/debian/cli/startx/">STARTX</a> — local console X
+      startup wiring.</li>
+      <li><a href="/debian/cli/tauri/">Tauri</a> — Tauri runtime/build
+      dependencies.</li>
+      <li><a href="/debian/cli/touchscreen/">Touchscreen</a> —
+      touchscreen configuration.</li>
+      <li><a href="/debian/cli/x11/">X11</a> — minimal X11
+      prerequisites.</li>
+      </ul>
+      <p>Most runners support a local file invocation as well as the
+      published source URL. Use the local form when iterating on a
+      checkout.</p>
+      <p>There is intentionally no single copy-paste command for this
+      index: each CLI feature has a different mutation scope and policy.
+      Open the selected runner page and use its complete example instead
+      of running every feature by default.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli"><code>setup/cli</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

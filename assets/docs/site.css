@@ -1,0 +1,31 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #10151f;
+  color: #e8edf6;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; line-height: 1.55; }
+
+a { color: #8bc6ff; }
+a:hover { color: #c5e3ff; }
+
+.site-header { background: #182130; border-bottom: 1px solid #2b3a50; }
+.site-header__inner, .page-shell { max-width: 72rem; margin: 0 auto; padding: 1rem 1.25rem; }
+.site-header__inner { display: flex; gap: 1.5rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.site-brand { color: #fff; font-weight: 700; text-decoration: none; }
+nav { display: flex; gap: .85rem; flex-wrap: wrap; }
+nav a { text-decoration: none; }
+
+.breadcrumb { color: #a8b4c7; font-size: .9rem; }
+article { max-width: 68rem; }
+h1, h2, h3 { color: #fff; line-height: 1.2; margin-top: 2rem; }
+pre { overflow-x: auto; padding: 1rem; background: #070b12; border: 1px solid #2b3a50; border-radius: .35rem; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+footer { border-top: 1px solid #2b3a50; color: #a8b4c7; font-size: .9rem; margin-top: 3rem; padding-top: 1rem; }
+
+@media (max-width: 42rem) {
+  .site-header__inner { align-items: flex-start; flex-direction: column; }
+}

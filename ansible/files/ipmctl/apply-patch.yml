@@ -1,0 +1,96 @@
+---
+- name: "Inspect patch {{ ipmctl_patch.id }}"
+  ansible.builtin.stat:
+    path: "{{ ipmctl_patch_root }}/{{ ipmctl_patch.filename }}"
+    follow: false
+    checksum_algorithm: sha256
+  register: ipmctl_patch_file_stat
+
+- name: "Require patch checksum {{ ipmctl_patch.id }}"
+  ansible.builtin.assert:
+    that:
+      - ipmctl_patch_file_stat.stat.isreg | default(false)
+      - ipmctl_patch_file_stat.stat.checksum | default('') == ipmctl_patch.sha256
+    fail_msg: "Compatibility patch checksum is invalid: {{ ipmctl_patch.filename }}"
+
+- name: "Resolve patch root {{ ipmctl_patch.id }}"
+  ansible.builtin.set_fact:
+    ipmctl_patch_apply_root: >-
+      {{ ipmctl_edk2_source_dir if ipmctl_patch.repository == 'edk2' else ipmctl_source_dir }}
+
+- name: "Hash patch preimage {{ ipmctl_patch.id }}"
+  ansible.builtin.command:
+    argv: [/usr/bin/sha256sum, "{{ ipmctl_patch_apply_root }}/{{ ipmctl_patch.target }}"]
+  register: ipmctl_patch_preimage
+  changed_when: false
+
+- name: "Inspect patch target {{ ipmctl_patch.id }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/git
+      - -C
+      - "{{ ipmctl_patch_apply_root }}"
+      - apply
+      - --numstat
+      - "{{ ipmctl_patch_root }}/{{ ipmctl_patch.filename }}"
+  register: ipmctl_patch_numstat
+  changed_when: false
+
+- name: "Require exact patch preimage and target {{ ipmctl_patch.id }}"
+  ansible.builtin.assert:
+    that:
+      - ipmctl_patch_preimage.stdout.split(' ') | first == ipmctl_patch.preimage_sha256
+      - ipmctl_patch_numstat.stdout_lines | length == 1
+      - ipmctl_patch_numstat.stdout_lines[0].split('\t')[2] == ipmctl_patch.target
+    fail_msg: "Compatibility patch preimage or target drifted: {{ ipmctl_patch.id }}"
+
+- name: "Preflight patch {{ ipmctl_patch.id }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/git
+      - -C
+      - "{{ ipmctl_patch_apply_root }}"
+      - apply
+      - --check
+      - --whitespace=error-all
+      - "{{ ipmctl_patch_root }}/{{ ipmctl_patch.filename }}"
+  changed_when: false
+
+- name: "Apply patch {{ ipmctl_patch.id }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/git
+      - -C
+      - "{{ ipmctl_patch_apply_root }}"
+      - apply
+      - --whitespace=error-all
+      - "{{ ipmctl_patch_root }}/{{ ipmctl_patch.filename }}"
+
+- name: "Verify reverse applicability {{ ipmctl_patch.id }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/git
+      - -C
+      - "{{ ipmctl_patch_apply_root }}"
+      - apply
+      - --reverse
+      - --check
+      - "{{ ipmctl_patch_root }}/{{ ipmctl_patch.filename }}"
+  changed_when: false
+
+- name: "Hash patch postimage {{ ipmctl_patch.id }}"
+  ansible.builtin.command:
+    argv: [/usr/bin/sha256sum, "{{ ipmctl_patch_apply_root }}/{{ ipmctl_patch.target }}"]
+  register: ipmctl_patch_postimage
+  changed_when: false
+
+- name: "Check patched worktree {{ ipmctl_patch.id }}"
+  ansible.builtin.command:
+    argv: [/usr/bin/git, -C, "{{ ipmctl_patch_apply_root }}", diff, --check]
+  changed_when: false
+
+- name: "Require exact patch postimage {{ ipmctl_patch.id }}"
+  ansible.builtin.assert:
+    that:
+      - ipmctl_patch_postimage.stdout.split(' ') | first == ipmctl_patch.postimage_sha256
+    fail_msg: "Compatibility patch postimage drifted: {{ ipmctl_patch.id }}"

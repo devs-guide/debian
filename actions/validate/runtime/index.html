@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Runtime validation action · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/validate/">Validate</a> / <a href="/debian/actions/validate/runtime/">Runtime</a>
+    </p>
+    <article>
+      <h1 id="runtime-validation-action">Runtime validation action</h1>
+      <p>Checks repository-local runtime contracts before
+      publication.</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/validate.runtime.sh</span></code></pre></div>
+      <p>It remains the public orchestrator for focused documentation,
+      publication, shared-runner, GPU, ipmctl, LLM-host, NVIDIA, and
+      NVLink contract actions, followed by the legacy runtime checks
+      that have not yet been extracted.</p>
+      <p>This action has no supported flags. CI provides pinned Ansible
+      and PyYAML dependencies for real YAML parsing and the
+      fixture-backed fact contracts. Locally, use the focused
+      <code>--shell-only</code> actions listed on the <a
+      href="/debian/actions/">Actions index</a> when Python and Ansible
+      execution is not appropriate. The ipmctl contract checks exact
+      pins, vendored patch hashes, targets, runner safety, and YAML
+      without cloning or compiling upstream source.</p>
+      <p>The orchestrator does not install host packages, execute host
+      playbooks, compile CUDA code, reconfigure PMem, or access GPU/PMem
+      hardware.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/validate.runtime.sh"><code>actions/validate.runtime.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Shared host contracts and opt-in LLM
+runtime features.">
+  <title>LLM feature runners · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/llm/">LLM</a>
+    </p>
+    <article>
+      <h1 id="llm-feature-runners">LLM feature runners</h1>
+      <p>LLM runners share the
+      <code>setup/cli/llm/&lt;feature&gt;.sh</code> namespace. Each
+      feature owns its own facts and managed artifacts while consuming
+      earlier contracts.</p>
+      <ul>
+      <li><a href="/debian/cli/llm/host/">Host readiness</a> — CPU,
+      NUMA, memory, reserve, and GPU-producer prerequisites.</li>
+      <li><a href="/debian/cli/llm/llamacpp/">llama.cpp</a> —
+      exact-source CPU/CUDA build and opt-in local-GGUF smoke.</li>
+      <li><a href="/debian/cli/llm/ktransformers/">KTransformers</a> —
+      exact-source KT-Kernel and SGLang-KT model-free toolchain.</li>
+      </ul>
+      <p>The accepted order is host readiness, standalone llama.cpp
+      build/smoke, KTransformers toolchain, model catalog/acquisition,
+      then the bounded 80 GB MoE smoke. llama.cpp and KTransformers
+      accept exact reviewed repository URLs and full commits so future
+      builds can be added through compatibility-matrix updates without
+      following floating upstream branches.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/llm"><code>setup/cli/llm</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

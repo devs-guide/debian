@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Repository actions · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a>
+    </p>
+    <article>
+      <h1 id="repository-actions">Repository actions</h1>
+      <p>Run action scripts from the repository root. The documentation
+      build is part of the Pages publication contract; it never installs
+      its renderer.</p>
+      <h2 id="full-ci-contract">Full CI contract</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/validate.runtime.sh</span></code></pre></div>
+      <p>The full orchestrator expects the pinned validation environment
+      and executes the Ansible NVIDIA fact fixture. For a shell-only
+      local review, run:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.documentation-contract.sh</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.publication-manifest.sh</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.runner-contract.sh</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.gpu-contract.sh <span class="at">--shell-only</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.ipmctl-contract.sh <span class="at">--shell-only</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.llm-host-contract.sh <span class="at">--shell-only</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.nvidia-contract.sh <span class="at">--shell-only</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.nvlink-contract.sh <span class="at">--shell-only</span></span></code></pre></div>
+      <p>These checks have no install or deployment side effect.
+      Rendering/publishing commands are documented separately because
+      they intentionally write a selected output directory. The LLM
+      reviewed-source contract is intentionally left to GitHub Actions;
+      CUDA compilation and runtime acceptance are performed only on the
+      remote GPU host.</p>
+      <ul>
+      <li><a href="/debian/actions/build-docs/">Build
+      documentation</a></li>
+      <li><a href="/debian/actions/publish/">Publish Pages tree</a></li>
+      <li><a href="/debian/actions/validate/runtime/">Validate
+      runtime</a></li>
+      <li><a href="/debian/actions/validate/pages/">Validate
+      Pages</a></li>
+      <li><a href="/debian/actions/library/">Action validation
+      libraries</a></li>
+      <li><a href="/debian/actions/test/documentation-contract/">Test
+      documentation contract</a></li>
+      <li><a href="/debian/actions/test/publication-manifest/">Test
+      publication manifest</a></li>
+      <li><a href="/debian/actions/test/runner-contract/">Test shared
+      runner contract</a></li>
+      <li><a href="/debian/actions/test/sudo-access/">Test sudo access
+      policy</a></li>
+      <li><a href="/debian/actions/test/runner-staging/">Test runner
+      staging</a></li>
+      <li><a href="/debian/actions/test/gpu-contract/">Test GPU
+      contract</a></li>
+      <li><a href="/debian/actions/test/ipmctl-contract/">Test ipmctl
+      contract</a></li>
+      <li><a href="/debian/actions/test/llm-host-contract/">Test LLM
+      host contract</a></li>
+      <li><a href="/debian/actions/test/llm-source-contract/">Test LLM
+      reviewed-source contract</a></li>
+      <li><a href="/debian/actions/test/nvidia-contract/">Test NVIDIA
+      contract</a></li>
+      <li><a href="/debian/actions/test/nvidia-facts/">Test NVIDIA
+      facts</a></li>
+      <li><a href="/debian/actions/test/nvlink-contract/">Test NVLink
+      contract</a></li>
+      </ul>
+      <p><code>www.pages.sh</code> replaces its selected publish
+      directory. Contract validation only reads project content, aside
+      from temporary fixture locations. The ipmctl contract validates
+      the vendored patch pack and exact pins statically; source
+      compilation and hardware acceptance occur only on the target
+      host.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions"><code>actions</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

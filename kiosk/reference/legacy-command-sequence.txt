@@ -1,0 +1,3 @@
+Historical reference only. The original command sequence is retained in
+docs/kiosk.txt in the repository. Its extensionless published runner paths are
+obsolete; use the current .sh URLs documented at /debian/cli/ and /debian/setup/.

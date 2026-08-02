@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "feature": "llamacpp",
+      "id": "b10075-icelake-sm86",
+      "repository_url": "https://github.com/ggml-org/llama.cpp.git",
+      "release": "b10075",
+      "commit": "76f46ad29d61fd8c1401e8221842934bf62a6064",
+      "build_profile": "icelake-sm86",
+      "cuda_architectures": "86",
+      "cmake_options": [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DBUILD_SHARED_LIBS=OFF",
+        "-DGGML_CUDA=ON",
+        "-DGGML_NATIVE=ON",
+        "-DLLAMA_CURL=OFF",
+        "-DCMAKE_CUDA_ARCHITECTURES=86"
+      ]
+    }
+  ]
+}

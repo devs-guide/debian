@@ -1,0 +1,99 @@
+---
+- name: Normalize registered NVIDIA observation shapes
+  ansible.builtin.set_fact:
+    nvidia_fact_driver_candidate_package_version: >-
+      {{
+        (nvidia_driver_candidate | default({})).get(
+          'stdout',
+          (nvidia_refresh_driver | default({})).get(
+            'candidate_package_version',
+            ''
+          )
+        )
+        | string
+        | trim
+      }}
+    nvidia_fact_driver_candidate_package_version_origin: >-
+      {{
+        'resolved-this-run'
+        if (
+          (nvidia_driver_candidate | default({})).get('stdout', '')
+          | string
+          | trim
+          | length
+        ) > 0
+        else (
+          'persisted'
+          if (
+            (nvidia_refresh_driver | default({})).get(
+              'candidate_package_version',
+              ''
+            )
+            | string
+            | trim
+            | length
+          ) > 0
+          else 'unavailable'
+        )
+      }}
+    nvidia_fact_installed_driver_version: >-
+      {{
+        (
+          (nvidia_installed_driver_version | default({})).get(
+            'stdout_lines',
+            []
+          )
+          | first
+          | default('')
+        )
+        | string
+        | trim
+      }}
+    nvidia_fact_cuda_package_name: >-
+      {{
+        nvidia_cuda_package_resolved
+        | default(
+            (nvidia_refresh_cuda | default({})).get('package_name', ''),
+            true
+          )
+        | string
+      }}
+    nvidia_fact_smi_rc: >-
+      {{ (nvidia_smi_inventory | default({})).get('rc', 1) | int }}
+    nvidia_fact_smi_stdout: >-
+      {{
+        (nvidia_smi_inventory | default({})).get('stdout', '')
+        | string
+        | trim
+      }}
+    nvidia_fact_nvcc_rc: >-
+      {{ (nvidia_nvcc_version | default({})).get('rc', 1) | int }}
+    nvidia_fact_nvcc_stdout: >-
+      {{
+        (nvidia_nvcc_version | default({})).get('stdout', '')
+        | string
+        | trim
+      }}
+    nvidia_fact_runtime_header_ready: >-
+      {{ nvidia_cuda_runtime_header_ready | default(false) | bool }}
+    nvidia_fact_running_kernel: >-
+      {{ nvidia_running_kernel | default('') | string }}
+    nvidia_fact_kernel_headers_ready: >-
+      {{
+        (nvidia_running_kernel_build | default({})).get('stat', {}).get(
+          'exists',
+          false
+        ) | bool
+      }}
+    nvidia_fact_kernel_module_ready: >-
+      {{
+        (nvidia_kernel_module_metadata | default({})).get('rc', 1) | int == 0
+      }}
+    nvidia_fact_kernel_module_rc: >-
+      {{ (nvidia_kernel_module_metadata | default({})).get('rc', 1) | int }}
+    nvidia_fact_dkms_status: >-
+      {{
+        (nvidia_dkms_status | default({})).get('stdout', '')
+        | string
+        | trim
+      }}

@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Versioned llama.cpp runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/llm/">LLM</a> / <a href="/debian/cli/llm/llamacpp/">llamacpp</a>
+    </p>
+    <article>
+      <h1 id="versioned-llamacpp-runner">Versioned llama.cpp runner</h1>
+      <p><code>llamacpp.sh</code> builds one exact reviewed llama.cpp
+      source tuple for the accepted LLM host, records the compiled
+      command capabilities, and optionally runs one bounded prompt
+      against an existing local GGUF file.</p>
+      <p>llama.cpp is an independently owned feature and a process gate
+      before the KTransformers toolchain. KTransformers does not import,
+      execute, or require this installation.</p>
+      <h2 id="modes">Modes</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Mode</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>preflight</code></td>
+      <td>Validates the requested compatibility-matrix tuple and reports
+      producer facts and the remote tag without cloning source.</td>
+      </tr>
+      <tr class="even">
+      <td><code>apply</code></td>
+      <td>Stages the exact source as the invoking user, optionally
+      installs build tools, builds SM86 binaries, validates them, and
+      promotes the profile.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>validate</code></td>
+      <td>Rechecks the existing source, binaries, devices, hashes, and
+      capabilities without a package transaction or source fetch.</td>
+      </tr>
+      <tr class="even">
+      <td><code>smoke</code></td>
+      <td>Runs one deterministic bounded <code>llama-cli</code> query
+      against an existing canonical local GGUF.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>upgrade</code></td>
+      <td>Builds another reviewed compatibility profile side-by-side and
+      promotes it only after validation.</td>
+      </tr>
+      </tbody>
+      </table>
+      <h2 id="reviewed-source-and-future-builds">Reviewed source and
+      future builds</h2>
+      <p>The initial profile is:</p>
+      <pre class="text"><code>profile: b10075-icelake-sm86
+repository: https://github.com/ggml-org/llama.cpp.git
+release: b10075
+commit: 76f46ad29d61fd8c1401e8221842934bf62a6064</code></pre>
+      <p>Repository URL, release, and full commit are explicit inputs. A
+      future build does not require new clone logic: add its exact tuple
+      to the reviewed compatibility matrix, contract-test it in GitHub
+      Actions, publish it, and pass the new values to the runner.
+      Floating branches, shortened commits, repository credentials, and
+      unreviewed URL/commit combinations fail before sudo.</p>
+      <h2 id="remote-sequence">Remote sequence</h2>
+      <p>Read-only preflight:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/llamacpp.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> preflight <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--matrix-profile</span><span class="op">=</span>b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--repository-url</span><span class="op">=</span>https://github.com/ggml-org/llama.cpp.git <span class="dt">\</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--release</span><span class="op">=</span>b10075 <span class="dt">\</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--commit</span><span class="op">=</span>76f46ad29d61fd8c1401e8221842934bf62a6064 <span class="dt">\</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-profile</span><span class="op">=</span>icelake-sm86 <span class="dt">\</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-architectures</span><span class="op">=</span>86</span></code></pre></div>
+      <p>Build the reviewed source:</p>
+      <div class="sourceCode" id="cb3"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/llamacpp.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> apply <span class="dt">\</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--matrix-profile</span><span class="op">=</span>b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--repository-url</span><span class="op">=</span>https://github.com/ggml-org/llama.cpp.git <span class="dt">\</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--release</span><span class="op">=</span>b10075 <span class="dt">\</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--commit</span><span class="op">=</span>76f46ad29d61fd8c1401e8221842934bf62a6064 <span class="dt">\</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-profile</span><span class="op">=</span>icelake-sm86 <span class="dt">\</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-architectures</span><span class="op">=</span>86 <span class="dt">\</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--source-dir</span><span class="op">=</span>/opt/src/llamacpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-dir</span><span class="op">=</span>/opt/build/llamacpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-dir</span><span class="op">=</span>/opt/llama.cpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-build-tools</span></span></code></pre></div>
+      <p>Validate with no package or source transaction:</p>
+      <div class="sourceCode" id="cb4"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/llamacpp.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sudo</span> bash <span class="at">-s</span> <span class="at">--</span> validate <span class="dt">\</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--matrix-profile</span><span class="op">=</span>b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--repository-url</span><span class="op">=</span>https://github.com/ggml-org/llama.cpp.git <span class="dt">\</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--release</span><span class="op">=</span>b10075 <span class="dt">\</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--commit</span><span class="op">=</span>76f46ad29d61fd8c1401e8221842934bf62a6064 <span class="dt">\</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-profile</span><span class="op">=</span>icelake-sm86 <span class="dt">\</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-architectures</span><span class="op">=</span>86 <span class="dt">\</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--source-dir</span><span class="op">=</span>/opt/src/llamacpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-dir</span><span class="op">=</span>/opt/build/llamacpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-dir</span><span class="op">=</span>/opt/llama.cpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--no-install-build-tools</span></span></code></pre></div>
+      <p>Run the human-acceptance smoke after placing a small GGUF
+      locally:</p>
+      <div class="sourceCode" id="cb5"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/llamacpp.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> smoke <span class="dt">\</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--matrix-profile</span><span class="op">=</span>b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--repository-url</span><span class="op">=</span>https://github.com/ggml-org/llama.cpp.git <span class="dt">\</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--release</span><span class="op">=</span>b10075 <span class="dt">\</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--commit</span><span class="op">=</span>76f46ad29d61fd8c1401e8221842934bf62a6064 <span class="dt">\</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-profile</span><span class="op">=</span>icelake-sm86 <span class="dt">\</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-architectures</span><span class="op">=</span>86 <span class="dt">\</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--source-dir</span><span class="op">=</span>/opt/src/llamacpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-dir</span><span class="op">=</span>/opt/build/llamacpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-dir</span><span class="op">=</span>/opt/llama.cpp/b10075-icelake-sm86 <span class="dt">\</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--model</span><span class="op">=</span>/models/gguf/smoke/model.gguf <span class="dt">\</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--prompt</span><span class="op">=</span><span class="st">&quot;Reply with exactly: llama.cpp smoke passed&quot;</span> <span class="dt">\</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--max-tokens</span><span class="op">=</span>32 <span class="dt">\</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">--ctx-size</span><span class="op">=</span>2048 <span class="dt">\</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">--threads</span><span class="op">=</span>36 <span class="dt">\</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">--threads-batch</span><span class="op">=</span>36 <span class="dt">\</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu-layers</span><span class="op">=</span>auto <span class="dt">\</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">--split-mode</span><span class="op">=</span>layer <span class="dt">\</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">--tensor-split</span><span class="op">=</span>1,1 <span class="dt">\</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>    <span class="at">--offline</span> <span class="dt">\</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>    <span class="at">--check-tensors</span> <span class="dt">\</span></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>    <span class="at">--smoke-timeout-seconds</span><span class="op">=</span>900 <span class="dt">\</span></span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a>    <span class="at">--seed</span><span class="op">=</span>1</span></code></pre></div>
+      <p>The runner requests sudo once through <code>/dev/tty</code> for
+      managed modes. Source is downloaded and verified as the invoking
+      user first; delegated-root execution does not repeat the upstream
+      download. The runner never downloads a model.</p>
+      <h2 id="flag-reference">Flag reference</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Flag</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>--matrix-profile=PROFILE</code></td>
+      <td>Selects one reviewed compatibility record.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--repository-url=HTTPS_GIT_URL</code></td>
+      <td>Exact credential-free source repository ending in
+      <code>.git</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--release=TAG</code></td>
+      <td>Exact reviewed tag.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--commit=FULL_40_CHARACTER_SHA</code></td>
+      <td>Exact lowercase source commit.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--build-profile=PROFILE</code></td>
+      <td>Reviewed CPU/CUDA build policy name.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--cuda-architectures=LIST</code></td>
+      <td>Reviewed CUDA architecture list; initial value is
+      <code>86</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--source-dir=/opt/src/llamacpp/PATH</code></td>
+      <td>Optional constrained source destination.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--build-dir=/opt/build/llamacpp/PATH</code></td>
+      <td>Optional constrained build destination.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--install-dir=/opt/llama.cpp/PATH</code></td>
+      <td>Optional constrained versioned installation.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--clean-build</code></td>
+      <td>Removes only the selected managed build directory before
+      rebuilding.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--install-build-tools</code></td>
+      <td>Installs the opt-in <code>llamacpp_build</code> package group
+      during apply/upgrade.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--no-install-build-tools</code></td>
+      <td>Forbids a package transaction.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--model=/absolute/local/model.gguf</code></td>
+      <td>Existing canonical, non-symlink local model for
+      <code>smoke</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--prompt=TEXT</code></td>
+      <td>Bounded smoke prompt.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--max-tokens=N</code></td>
+      <td>Maximum generated smoke tokens.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--ctx-size=N</code></td>
+      <td>Smoke context allocation.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--threads=N</code></td>
+      <td>Decode CPU threads.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--threads-batch=N</code></td>
+      <td>Batch CPU threads.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--gpu-layers=auto|all|N</code></td>
+      <td>Managed mapping to <code>--n-gpu-layers</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--split-mode=none|layer|row|tensor</code></td>
+      <td>Multi-GPU split mode.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--tensor-split=RATIOS</code></td>
+      <td>Comma-separated GPU split ratios.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--fit-target=MIB_LIST</code></td>
+      <td>Optional per-device fit target accepted only when the pinned
+      binary advertises it.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--offline</code></td>
+      <td>Requires local-only model behavior.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--check-tensors</code></td>
+      <td>Enables tensor-data validation during model load.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--seed=N</code></td>
+      <td>Deterministic smoke seed.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--cpu-moe</code></td>
+      <td>Moves all MoE expert weights to CPU when supported.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--n-cpu-moe=N</code></td>
+      <td>Moves the first N MoE layers to CPU; mutually exclusive with
+      <code>--cpu-moe</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--smoke-timeout-seconds=N</code></td>
+      <td>Remote-host wall-clock limit for one model smoke; default is
+      900 seconds.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--help</code></td>
+      <td>Prints usage without staging.</td>
+      </tr>
+      </tbody>
+      </table>
+      <h2 id="flag-interaction-notes">Flag interaction notes</h2>
+      <ul>
+      <li>The matrix profile, repository URL, release, full commit,
+      build profile, and CUDA architecture form one reviewed tuple.
+      Supplying a valid value from a different tuple is rejected.</li>
+      <li>Path flags select versioned managed locations; they do not
+      permit arbitrary filesystem destinations or relax source
+      verification.</li>
+      <li><code>--install-build-tools</code> is relevant only to
+      <code>apply</code> and <code>upgrade</code>. <code>validate</code>
+      and <code>smoke</code> should use the already-installed
+      runtime.</li>
+      <li><code>--clean-build</code> removes only the selected build
+      directory. It does not remove the reviewed source, installed
+      profile, facts, or model files.</li>
+      <li><code>--cpu-moe</code> and <code>--n-cpu-moe</code> are
+      mutually exclusive and are accepted only when the pinned binary
+      advertises the corresponding option.</li>
+      <li><code>--fit-target</code> is optional and fails closed when
+      the installed binary does not expose that capability.</li>
+      <li>“Local GGUF” means local to the remote GPU server. The runner
+      never downloads or discovers a model on the development
+      workstation.</li>
+      </ul>
+      <h2 id="facts-and-verification">Facts and verification</h2>
+      <p>The runner owns:</p>
+      <pre class="text"><code>/etc/ansible/debian/facts/llamacpp.yml
+/etc/ansible/debian/env/llamacpp.sh
+/opt/llama.cpp/current</code></pre>
+      <p>GitHub Actions verifies matrix structure, source identities,
+      runner staging, and published paths. Compilation, CUDA-device
+      checks, and local-model smoke acceptance run on the remote Ice
+      Lake/NVIDIA host rather than a development workstation.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/llm/llamacpp.sh"><code>setup/cli/llm/llamacpp.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/llm/llamacpp.sh">https://devs-guide.github.io/debian/setup/cli/llm/llamacpp.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/llm/llamacpp.sh">https://devs-guide.github.io/debian/setup/cli/llm/llamacpp.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Autologin runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/setup/">Setup</a> / <a href="/debian/setup/autologin/">Autologin</a>
+    </p>
+    <article>
+      <h1 id="autologin-runner">Autologin runner</h1>
+      <p>Manages console autologin only. It does not install X11,
+      Openbox, STARTX, or touchscreen software. Modes are
+      <code>preflight</code>, <code>apply</code>, and
+      <code>disable</code>.</p>
+      <h2 id="tty-command-profile">TTY command profile</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/autologin.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_AUTOLOGIN_MODE=apply <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOLOGIN_ENABLE=1 <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOLOGIN_USER=app <span class="dt">\</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOLOGIN_TTY=tty1 <span class="dt">\</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOLOGIN_ACTION=command <span class="dt">\</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOLOGIN_COMMAND=<span class="st">&#39;/bin/bash&#39;</span> <span class="dt">\</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOLOGIN_VALIDATION_BANNER=1 <span class="dt">\</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>DEBIAN_AUTOLOGIN_MODE</code></td>
+      <td>Uses <code>preflight</code>, <code>apply</code>, or
+      <code>disable</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_AUTOLOGIN_ENABLE</code></td>
+      <td>Explicitly enables or disables the TTY autologin
+      behavior.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_AUTOLOGIN_USER</code> /
+      <code>DEBIAN_AUTOLOGIN_TTY</code></td>
+      <td>Identifies the managed account and console.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_AUTOLOGIN_ACTION</code> /
+      <code>DEBIAN_AUTOLOGIN_COMMAND</code></td>
+      <td>Selects the post-login action and command. Use a reviewed
+      local executable, not an unquoted ad-hoc shell fragment.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_AUTOLOGIN_VALIDATION_BANNER</code></td>
+      <td>Keeps the managed validation banner visible in this
+      example.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>To remove the configuration, use the same user and TTY with
+      <code>DEBIAN_AUTOLOGIN_MODE=disable DEBIAN_AUTOLOGIN_ENABLE=0</code>.</p>
+      <p>For a composed desktop/kiosk workflow, use the <a
+      href="/debian/cli/kiosk.app/">kiosk app runner</a> instead of
+      manually assuming its feature ordering.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/autologin.sh"><code>setup/autologin.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/autologin.sh">https://devs-guide.github.io/debian/setup/autologin.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/autologin.sh">https://devs-guide.github.io/debian/setup/autologin.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

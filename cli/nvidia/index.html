@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>NVIDIA driver and CUDA runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/nvidia/">NVIDIA</a>
+    </p>
+    <article>
+      <h1 id="nvidia-driver-and-cuda-runner">NVIDIA driver and CUDA
+      runner</h1>
+      <p>Configures an explicit NVIDIA driver/CUDA policy. It supports
+      <code>preflight</code>, <code>apply</code>, <code>validate</code>,
+      and <code>upgrade</code>. GPU installation is opt-in and remains
+      outside the baseline hardware runner.</p>
+      <h2 id="modes">Modes</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Mode</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>preflight</code></td>
+      <td>Default read-only inventory and policy report. It does not
+      request sudo or change the host.</td>
+      </tr>
+      <tr class="even">
+      <td><code>apply</code></td>
+      <td>Configures the explicitly selected repository, driver, CUDA,
+      and readiness policy.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>validate</code></td>
+      <td>Rechecks an installed policy and refreshes NVIDIA-owned facts
+      without changing package sources or packages. The managed Ansible
+      controller must already exist.</td>
+      </tr>
+      <tr class="even">
+      <td><code>upgrade</code></td>
+      <td>Updates only the explicitly selected, already configured
+      NVIDIA package policy.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>The mode is a positional argument after
+      <code>bash -s --</code>; it is not a <code>--mode</code> flag.</p>
+      <h2 id="privilege-and-download-model">Privilege and download
+      model</h2>
+      <p>The primary streamed form is <code>wget | bash</code>.
+      <code>preflight</code> remains unprivileged:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/nvidia.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> preflight</span></code></pre></div>
+      <p>For <code>apply</code>, <code>validate</code>, or
+      <code>upgrade</code>, the downloaded runner obtains its shared
+      helper and then checks the current privilege session. If root is
+      needed and no cached or passwordless credential exists, it
+      requests sudo exactly once through <code>/dev/tty</code>; password
+      input is not echoed. Every privileged command afterward uses the
+      cached credential with noninteractive <code>sudo -n</code>.</p>
+      <p>The runner does not re-execute itself, preserve the ambient
+      environment, or download a second privileged copy. Release
+      helpers, playbooks, tasks, and support files are staged by the
+      original process and are never fetched from inside a delegated
+      sudo command.</p>
+      <p>The compatibility form remains supported for callers that
+      intentionally start the complete runner as root:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/nvidia.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sudo</span> bash <span class="at">-s</span> <span class="at">--</span> apply <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>llm <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-source</span><span class="op">=</span>nvidia <span class="dt">\</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-source</span><span class="op">=</span>nvidia <span class="dt">\</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-branch</span><span class="op">=</span>595 <span class="dt">\</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-version</span><span class="op">=</span>595.71.05 <span class="dt">\</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-version</span><span class="op">=</span>13.1 <span class="dt">\</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--module-flavor</span><span class="op">=</span>open <span class="dt">\</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu</span><span class="op">=</span>all <span class="dt">\</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-gpu-count</span><span class="op">=</span>2 <span class="dt">\</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-compute-capability</span><span class="op">=</span>8.6 <span class="dt">\</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-source-migration</span></span></code></pre></div>
+      <p>Do not use <code>sudo wget ... | bash</code>: that elevates
+      only <code>wget</code>, not the shell on the right side. In a
+      noninteractive session, managed modes work only with an existing
+      cached credential or passwordless sudo. Without either one and
+      without a usable <code>/dev/tty</code>, the runner fails before
+      package or Ansible activity. Allocate a terminal with
+      <code>ssh -t</code>, authenticate first with <code>sudo -v</code>,
+      configure narrowly scoped passwordless sudo, or use the
+      compatibility form above.</p>
+      <h2 id="complete-llm-host-example">Complete LLM-host example</h2>
+      <p>The following is a concrete policy for Debian 13 (Trixie), two
+      RTX 3090 GPUs (SM 8.6), and a headless LLM host. Review it before
+      use: it permits migration from Debian’s driver packages and
+      changes the GPU software stack.</p>
+      <div class="sourceCode" id="cb3"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/nvidia.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> apply <span class="dt">\</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>llm <span class="dt">\</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-source</span><span class="op">=</span>nvidia <span class="dt">\</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-source</span><span class="op">=</span>nvidia <span class="dt">\</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-channel</span><span class="op">=</span>production <span class="dt">\</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-branch</span><span class="op">=</span>595 <span class="dt">\</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-version</span><span class="op">=</span>595.71.05 <span class="dt">\</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-version</span><span class="op">=</span>13.1 <span class="dt">\</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--module-flavor</span><span class="op">=</span>open <span class="dt">\</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu</span><span class="op">=</span>all <span class="dt">\</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-gpu-count</span><span class="op">=</span>2 <span class="dt">\</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-compute-capability</span><span class="op">=</span>8.6 <span class="dt">\</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--persistence</span><span class="op">=</span>auto <span class="dt">\</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">--nccl</span><span class="op">=</span>auto <span class="dt">\</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-source-migration</span></span></code></pre></div>
+      <h2 id="flag-reference">Flag reference</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Flag</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>--profile=driver|cuda|llm</code></td>
+      <td>Selects driver-only, CUDA build/runtime, or approved
+      LLM-prerequisite policy. The example uses <code>llm</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--driver-source=auto|debian|nvidia</code></td>
+      <td>Selects the driver package source. Mutating CUDA/LLM requests
+      must resolve to an explicit supported source.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--cuda-source=none|auto|debian|nvidia</code></td>
+      <td>Selects the toolkit source. <code>none</code> is valid only
+      for the driver profile.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--driver-channel=production|new-feature</code></td>
+      <td>Selects the driver channel. <code>new-feature</code> requires
+      an explicit branch.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--driver-branch=&lt;branch&gt;</code></td>
+      <td>Restricts driver resolution to a numeric branch such as
+      <code>595</code>. Production currently defaults to branch
+      595.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--driver-version=&lt;exact-version&gt;</code></td>
+      <td>Pins an exact driver package version, such as
+      <code>595.71.05</code>; it cannot be combined with
+      <code>--latest-in-branch</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--cuda-version=&lt;major.minor&gt;</code></td>
+      <td>Selects an exact approved toolkit minor such as
+      <code>13.1</code>; CUDA/LLM apply requires it.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--module-flavor=auto|open|proprietary</code></td>
+      <td>Selects the kernel-module policy. The example explicitly uses
+      the open Ampere-supported flavor.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--gpu=all|&lt;UUID-or-PCI-list&gt;</code></td>
+      <td>Selects all GPUs or a comma-separated stable UUID/PCI list.
+      UUIDs are preferred over mutable indices.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--require-gpu-count=&lt;count&gt;</code></td>
+      <td>Requires at least this many selected GPUs. Exact count and
+      topology gates belong to NVLink validation.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--require-compute-capability=&lt;list&gt;</code></td>
+      <td>Requires every selected GPU to match one of the
+      comma-separated <code>major.minor</code> values.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--persistence=auto|on|off</code></td>
+      <td>Records the requested persistence policy.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--nccl=auto|on|off</code></td>
+      <td>Records the requested NCCL prerequisite policy; it does not
+      prove application-level distributed correctness.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--run-p2p-test</code></td>
+      <td>Parsed as a compatibility policy input; this installation
+      runner does not execute or claim the standalone P2P diagnostic.
+      Use the NVLink runner instead.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--allow-source-migration</code></td>
+      <td>Explicitly permits replacement of an existing Debian/NVIDIA
+      package-source policy.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--allow-no-gpu</code></td>
+      <td>Records a no-GPU policy input; it does not make CUDA/LLM live
+      validation pass without required hardware.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--allow-cuda-minor-compat</code></td>
+      <td>Records minor-compatibility policy while retaining the
+      repository’s tested matrix and driver-floor gates.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--maintain-kernel-headers</code></td>
+      <td>Opts into Debian generic-kernel header maintenance. In
+      <code>apply</code> or <code>upgrade</code> only, it installs
+      <code>linux-headers-amd64</code> in addition to the exact
+      running-kernel headers and requires an exact interactive
+      confirmation. It does not install a kernel image or reboot the
+      host.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--skip-live-validate</code></td>
+      <td>Apply/upgrade-only escape hatch. It cannot be used with
+      <code>validate</code> and cannot produce a fresh live-ready
+      validation result.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--check-upstream</code></td>
+      <td>Parsed as a reserved upstream-check policy input. The current
+      playbook still resolves only configured APT metadata and does not
+      authorize an unpinned transaction.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--latest-in-branch</code></td>
+      <td>Selects the highest APT candidate inside the resolved pinned
+      branch; it cannot be combined with an exact driver version.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--help</code></td>
+      <td>Prints runner usage without staging or changing the host.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>CUDA 13.1 requires a compatible driver floor; the pinned
+      595.71.05 target is above that floor. The repository CUDA/LLM
+      compatibility matrix must mark CUDA 13.1 as tested or the feature
+      fails closed instead of claiming LLM readiness.</p>
+      <h2 id="verify-the-installed-policy">Verify the installed
+      policy</h2>
+      <p>Run the same selected policy in <code>validate</code> mode
+      after installation. Keeping the requirements in the command
+      detects configuration drift rather than merely checking whether
+      <code>nvidia-smi</code> happens to start.</p>
+      <div class="sourceCode" id="cb4"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/nvidia.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> validate <span class="dt">\</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--profile</span><span class="op">=</span>llm <span class="dt">\</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-source</span><span class="op">=</span>nvidia <span class="dt">\</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-source</span><span class="op">=</span>nvidia <span class="dt">\</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-channel</span><span class="op">=</span>production <span class="dt">\</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-branch</span><span class="op">=</span>595 <span class="dt">\</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--driver-version</span><span class="op">=</span>595.71.05 <span class="dt">\</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-version</span><span class="op">=</span>13.1 <span class="dt">\</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--module-flavor</span><span class="op">=</span>open <span class="dt">\</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--gpu</span><span class="op">=</span>all <span class="dt">\</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-gpu-count</span><span class="op">=</span>2 <span class="dt">\</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--require-compute-capability</span><span class="op">=</span>8.6 <span class="dt">\</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--persistence</span><span class="op">=</span>auto <span class="dt">\</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">--nccl</span><span class="op">=</span>auto <span class="dt">\</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-source-migration</span></span></code></pre></div>
+      <p><code>validate</code> refreshes NVIDIA-owned readiness facts at
+      <code>/etc/ansible/debian/facts/nvidia.yml</code>. It requires
+      <code>nvidia-smi</code> for every profile and, for
+      <code>cuda</code> and <code>llm</code>, also requires the
+      package-managed <code>nvcc</code> and readable
+      <code>/usr/local/cuda/include/cuda_runtime.h</code>. It cannot be
+      combined with <code>--skip-live-validate</code>; a failed
+      validation records the live failure in the facts rather than
+      reporting a stale ready state.</p>
+      <p>Then confirm the driver inventory and compiler from an
+      interactive shell:</p>
+      <div class="sourceCode" id="cb5"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> /etc/ansible/debian/env/llm-nvidia.sh</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">nvidia-smi</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="ex">nvidia-smi</span> <span class="at">--query-gpu</span><span class="op">=</span>index,name,uuid,pci.bus_id,memory.total,driver_version,compute_cap <span class="dt">\</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--format</span><span class="op">=</span>csv,noheader</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="ex">nvcc</span> <span class="at">--version</span></span></code></pre></div>
+      <p>The managed environment fragment exports
+      <code>CUDA_HOME=/usr/local/cuda</code> and adds
+      <code>${CUDA_HOME}/bin</code> to <code>PATH</code> only when both
+      the driver and package-managed compiler validate. It intentionally
+      does not add a global <code>LD_LIBRARY_PATH</code>.</p>
+      <h2
+      id="edge-case-a-kernel-update-leaves-nvidia-dkms-without-matching-headers">Edge
+      case: a kernel update leaves NVIDIA DKMS without matching
+      headers</h2>
+      <p>The NVIDIA kernel-module packages use DKMS. A running-kernel
+      update without its matching <code>linux-headers</code> package
+      leaves no <code>nvidia</code> module in that kernel's module tree.
+      CUDA's compiler and headers can still work, but
+      <code>nvidia-smi</code> cannot communicate with a driver and every
+      NVIDIA or NVLink live validation correctly fails closed.</p>
+      <p>The NVIDIA runner always installs headers matching the kernel
+      that is running at <code>apply</code> or <code>upgrade</code>
+      time. To also follow subsequent Debian generic-kernel updates,
+      explicitly add <code>--maintain-kernel-headers</code> to that
+      command. Before any package action, the runner opens
+      <code>/dev/tty</code>, explains the future DKMS effect, and
+      requires this exact response:</p>
+      <pre class="text"><code>I UNDERSTAND KERNEL HEADER CHANGES</code></pre>
+      <p>This opt-in installs <code>linux-headers-amd64</code>; it does
+      <strong>not</strong> install a new kernel image, select a boot
+      target, or reboot the machine. A noninteractive caller cannot
+      bypass the confirmation and fails before privilege escalation or
+      package activity.</p>
+      <p>Typical evidence is:</p>
+      <pre class="text"><code>nvidia-smi: couldn&#39;t communicate with the NVIDIA driver
+modprobe: FATAL: Module nvidia not found in directory /lib/modules/&lt;running-kernel&gt;
+dkms status: nvidia/&lt;version&gt; built only for an older kernel
+ls: /lib/modules/&lt;running-kernel&gt;/build: No such file or directory</code></pre>
+      <p>First identify the exact running-kernel/header/DKMS
+      relationship. These commands are read-only:</p>
+      <div class="sourceCode" id="cb8"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="va">kernel</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="fu">uname</span> <span class="at">-r</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="fu">uname</span> <span class="at">-r</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="ex">apt-cache</span> policy <span class="st">&quot;linux-headers-</span><span class="va">${kernel}</span><span class="st">&quot;</span> linux-headers-amd64 linux-image-amd64</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> dkms status</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> <span class="at">-ld</span> <span class="st">&quot;/lib/modules/</span><span class="va">${kernel}</span><span class="st">&quot;</span> <span class="st">&quot;/lib/modules/</span><span class="va">${kernel}</span><span class="st">/build&quot;</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="ex">nvidia-smi</span></span></code></pre></div>
+      <p>If APT offers <code>linux-headers-${kernel}</code>, install the
+      exact headers and the Debian AMD64 headers meta-package. The
+      meta-package follows future kernel image updates and prevents the
+      same header gap from recurring.</p>
+      <div class="sourceCode" id="cb9"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="va">kernel</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="fu">uname</span> <span class="at">-r</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt install <span class="dt">\</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;linux-headers-</span><span class="va">${kernel}</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  linux-headers-amd64</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Header installation normally triggers this automatically; these commands</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co"># are safe, idempotent confirmation for the running kernel.</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> dkms autoinstall <span class="at">-k</span> <span class="st">&quot;</span><span class="va">${kernel}</span><span class="st">&quot;</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> depmod <span class="at">-a</span> <span class="st">&quot;</span><span class="va">${kernel}</span><span class="st">&quot;</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> modprobe nvidia</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> dkms status</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="fu">lsmod</span> <span class="kw">|</span> <span class="fu">grep</span> <span class="st">&#39;^nvidia&#39;</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a><span class="ex">nvidia-smi</span></span></code></pre></div>
+      <p>Do not reinstall CUDA or change the selected driver policy
+      merely because <code>nvcc --version</code> succeeds: those are
+      userspace toolkit checks and do not prove that a matching kernel
+      module exists. Similarly, a routine <code>apt full-upgrade</code>
+      does not repair the gap when <code>linux-headers-amd64</code> is
+      absent; it must actually select the matching headers.</p>
+      <p>If <code>linux-headers-${kernel}</code> has no APT candidate,
+      do not copy modules between kernels or force-load a module. Boot a
+      locally installed kernel that has its matching headers, or first
+      make a reviewed repository policy provide a matching kernel image
+      and headers. If modules exist but cannot load, inspect the current
+      boot's kernel log for Secure Boot, lockdown, Nouveau, or module
+      verification messages before changing NVIDIA packages:</p>
+      <div class="sourceCode" id="cb10"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> journalctl <span class="at">-k</span> <span class="at">-b</span> <span class="at">--no-pager</span> <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">grep</span> <span class="at">-Ei</span> <span class="st">&#39;nvidia|nouveau|secure boot|lockdown|module verification&#39;</span> <span class="kw">||</span> <span class="fu">true</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> /usr/sbin/modinfo <span class="at">-k</span> <span class="st">&quot;</span><span class="va">$(</span><span class="fu">uname</span> <span class="at">-r</span><span class="va">)</span><span class="st">&quot;</span> nvidia</span></code></pre></div>
+      <p>After <code>nvidia-smi</code> succeeds, rerun the complete
+      <code>nvidia.sh validate</code> command from the previous section
+      to refresh NVIDIA-owned facts, then continue to <a
+      href="/debian/cli/nvlink/">NVLink validation</a>. Do not edit
+      <code>/etc/ansible/debian/facts/nvidia.yml</code> manually.</p>
+      <h2 id="fact-ownership-and-migration">Fact ownership and
+      migration</h2>
+      <p>The NVIDIA feature exclusively owns
+      <code>/etc/ansible/debian/facts/nvidia.yml</code>. Schema version
+      1 records the selected validation policy plus observed driver,
+      CUDA, inventory reference, and readiness state. The shared <a
+      href="/debian/cli/gpu/">GPU runner</a> exclusively owns
+      <code>/etc/ansible/debian/facts/gpu.yml</code>; NVIDIA refreshes
+      that current snapshot after its own live driver/CUDA observations.
+      NVLink never writes either file directly.</p>
+      <h3
+      id="edge-case-nvidia-or-cuda-changed-after-facts-were-written">Edge
+      case: NVIDIA or CUDA changed after facts were written</h3>
+      <p>Package upgrades, a kernel update, or running setup features in
+      the wrong order can leave persisted policy behind the live host.
+      Check <code>uname -r</code>, <code>nvidia-smi</code>,
+      <code>/usr/local/cuda/bin/nvcc --version</code>, and the CUDA
+      runtime header before rerunning a dependent feature.</p>
+      <p>If the live installation is still the intended policy, rerun
+      NVIDIA in <code>validate</code> mode with the complete current
+      flags so it can rewrite NVIDIA facts and refresh the shared GPU
+      snapshot. If the intended policy changed, use <code>apply</code>
+      or <code>upgrade</code> with the newly reviewed exact policy. Do
+      not repair a mismatch by editing YAML under
+      <code>/etc/ansible/debian/facts/</code>.</p>
+      <p>For the full ordered recovery procedure, publication check,
+      rollback copies, and commands, see <a
+      href="/debian/cli/nvlink/#recovery-after-earlier-runners-changed-drivers-or-wrong-execution-order">NVLink
+      recovery after earlier runners, changed drivers, or wrong
+      execution order</a>.</p>
+      <p>At the beginning of every managed NVLink run, NVLink imports
+      NVIDIA in internal <code>validate-from-facts</code> mode. NVIDIA
+      reads its own recorded policy, performs live validation, and
+      atomically refreshes its fact file before NVLink rereads it. Older
+      schema-1 facts that predate <code>validation_policy</code> are
+      reconstructed from their recorded profile, source, driver, CUDA,
+      and inventory fields; a successful refresh persists the complete
+      policy. Missing, malformed, or unsupported-schema facts fail
+      closed. Re-run the complete NVIDIA <code>apply</code> command
+      above to initialize a valid policy rather than editing the fact
+      file.</p>
+      <p>For NVIDIA records, the shared GPU snapshot keeps CUDA UUIDs
+      for isolated runtime selection, canonical PCI addresses for stable
+      physical identity, and the current <code>GPU#</code> label only
+      for a matching <code>nvidia-smi topo -m</code> matrix. A CUDA
+      ordinal or a selected-list position must never be reused as a
+      topology matrix key.</p>
+      <h2 id="next-step">Next step</h2>
+      <p>NVIDIA installation alone does not prove CUDA compile/run
+      readiness on every physical GPU or validate the NVLink topology.
+      For the selected RTX 3090 pair, continue with the opt-in <a
+      href="/debian/cli/nvlink/">NVLink validation runner</a>. Managed
+      NVLink runs automatically invoke NVIDIA validate mode from the
+      NVIDIA-owned fact policy before CUDA/NVLink testing; running
+      NVIDIA <code>validate</code> directly remains useful for
+      inspecting driver/CUDA readiness by itself.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/nvidia.sh"><code>setup/cli/nvidia.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/nvidia.sh">https://devs-guide.github.io/debian/setup/cli/nvidia.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/nvidia.sh">https://devs-guide.github.io/debian/setup/cli/nvidia.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

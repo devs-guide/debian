@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Sudo access policy test · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/test/">Test</a> / <a href="/debian/actions/test/sudo-access/">Sudo
+access</a>
+    </p>
+    <article>
+      <h1 id="sudo-access-policy-test">Sudo access policy test</h1>
+      <p>Exercises the GPU, NVIDIA, NVLink, and LLM-host delegated-root
+      contract using shell mocks.</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.sudo-access.sh</span></code></pre></div>
+      <p>The suite verifies:</p>
+      <ul>
+      <li>an already-root process never calls sudo;</li>
+      <li>cached or passwordless sudo uses only noninteractive
+      <code>sudo -n</code>;</li>
+      <li>an interactive streamed runner authenticates exactly once with
+      <code>sudo -v</code> through <code>/dev/tty</code>;</li>
+      <li>cancelled authentication stops before package or Ansible
+      activity;</li>
+      <li>no-TTY execution without cached/passwordless credentials fails
+      closed;</li>
+      <li>both <code>wget | bash</code> and the
+      <code>wget | sudo bash</code> compatibility form reach the managed
+      command;</li>
+      <li>preflight remains unprivileged;</li>
+      <li>delegated root receives only the explicit environment
+      allowlist and original argument boundaries; and</li>
+      <li>no delegated sudo command downloads content or invokes a
+      feature runner again.</li>
+      </ul>
+      <p>The test also verifies that <code>apply</code> is a positional
+      mode token after the <code>bash -s --</code> separator. It does
+      not invoke real sudo, download content, install software, run
+      Ansible, or access GPU hardware.</p>
+      <p>This action has no supported flags. Its purpose is
+      runner-policy regression testing, not validation of sudo
+      credentials on the current machine.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/test.sudo-access.sh"><code>actions/test.sudo-access.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>
