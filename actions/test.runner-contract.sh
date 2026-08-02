@@ -21,6 +21,7 @@ for marker in \
   'runner.ensure.privileged.session' \
   'runner.run.as.root' \
   'runner.cleanup.runtime' \
+  'RUNNER_RUNTIME_NAMESPACE' \
   'runner.relative.path.is.safe' \
   'runner.fetch.file' \
   'runner.copy.file' \
@@ -91,6 +92,7 @@ direct_fetch_count="$(
 require_shell_syntax "${runner}"
 for marker in \
   'RUNNER_HELPER_URL' \
+  'RUNNER_NAMESPACE=ansible' \
   'source.runner.common' \
   'runner.ensure.privileged.session' \
   'runner.source.release.common' \

@@ -18,6 +18,8 @@ The helper provides:
   high-impact feature action;
 - noninteractive delegated-root commands using `sudo -n`;
 - unique per-invocation runtime directories;
+- an optional `devs-guide` or `ansible` runtime namespace selected explicitly
+  by the owning feature, with the existing namespace retained by default;
 - path-constrained cleanup;
 - one unprivileged HTTP(S) implementation for managed runner-source files;
 - local-copy or published-source manifest staging;
@@ -94,6 +96,9 @@ After the bootstrap trust boundary is established, migrated features use:
 
 Feature-specific argument parsing, policy checks, extra-vars rendering,
 preflight contents, and managed-mode decisions remain in each CLI runner.
+The optional third argument to `runner.create.runtime` and
+`runner.adopt.runtime` selects the allow-listed runtime namespace. ipmctl uses
+`ansible`, while existing callers that omit it retain their current behavior.
 
 ## Migration status
 
