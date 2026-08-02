@@ -57,6 +57,7 @@ for marker in \
   'readonly EXIT_USAGE=64' \
   'readonly IPMCTL_BIN=/usr/local/bin/ipmctl' \
   'readonly IPMCTL_VERSION=03.00.00.0538' \
+  'readonly RUNNER_NAMESPACE=ansible' \
   'FEATURE_PLAYBOOKS=("install.packages.yml" "cli/ipmctl.yml")' \
   'files/ipmctl/apply-patch.yml' \
   'files/ipmctl/patches/0001-edk2-stable202511-host-os-build.patch' \
@@ -78,7 +79,14 @@ for marker in \
   'ipmctl_edk2_tag: edk2-stable202511' \
   'ipmctl_edk2_commit: 46548b1adac82211d8d11da12dd914f41e7aa775' \
   'ipmctl_install_prefix: /usr/local' \
-  'ipmctl_receipt_path: /var/lib/devs-guide/ipmctl/receipt.json' \
+  'ipmctl_receipt_path: /var/lib/ansible/debian/ipmctl/receipt.json' \
+  'ipmctl_cache_root: "{{ ipmctl_build_home }}/.cache/ansible/ipmctl"' \
+  'ipmctl_legacy_receipt_path: /var/lib/devs-guide/ipmctl/receipt.json' \
+  'ipmctl_legacy_cache_root: "{{ ipmctl_build_home }}/.cache/devs-guide/ipmctl"' \
+  'Require an unambiguous build cache migration' \
+  'Migrate retained build cache to the neutral namespace' \
+  'Require an unambiguous managed state migration' \
+  'Migrate receipt and manifest to the neutral namespace' \
   'Refuse an unmanaged local ipmctl binary' \
   'Determine whether installation is current' \
   'Fetch only reviewed source tags' \

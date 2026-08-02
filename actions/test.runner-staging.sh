@@ -74,6 +74,38 @@ run_case() {
   fi
 }
 
+run_case "runtime namespaces remain explicit and cleanup-safe" '
+  source "${TEST_HELPER}"
+  runner.create.runtime staging "${TEST_CASE_ROOT}"
+  default_runtime="${RUNNER_RUNTIME_DIR}"
+  [[ "${default_runtime##*/}" == devs-guide-staging.* ]]
+  [[ "${RUNNER_RUNTIME_NAMESPACE}" == devs-guide ]]
+  runner.cleanup.runtime
+  [[ ! -e "${default_runtime}" ]]
+
+  runner.create.runtime ipmctl "${TEST_CASE_ROOT}" ansible
+  neutral_runtime="${RUNNER_RUNTIME_DIR}"
+  [[ "${neutral_runtime##*/}" == ansible-ipmctl.* ]]
+  [[ "${RUNNER_RUNTIME_NAMESPACE}" == ansible ]]
+  runner.cleanup.runtime
+  [[ ! -e "${neutral_runtime}" ]]
+  printf "RUNTIME_NAMESPACES_OK\n"
+'
+expect_status 0 "${CASE_STATUS}" "runtime namespaces"
+expect_contains 'RUNTIME_NAMESPACES_OK' "${CASE_OUTPUT}" "runtime namespaces"
+
+run_case "unsupported runtime namespace fails before allocation" '
+  source "${TEST_HELPER}"
+  if runner.create.runtime ipmctl "${TEST_CASE_ROOT}" repository-brand; then
+    exit 90
+  fi
+  [[ -z "$(find "${TEST_CASE_ROOT}" -mindepth 1 -print -quit)" ]]
+  printf "UNSAFE_NAMESPACE_BLOCKED\n"
+'
+expect_status 0 "${CASE_STATUS}" "unsupported runtime namespace"
+expect_contains 'Runner runtime namespace is unsupported: repository-brand' "${CASE_OUTPUT}" "unsupported runtime namespace"
+expect_contains 'UNSAFE_NAMESPACE_BLOCKED' "${CASE_OUTPUT}" "unsupported runtime namespace"
+
 run_case "local declarative Ansible manifest" '
   source "${TEST_HELPER}"
   runner.create.runtime staging "${TEST_CASE_ROOT}"

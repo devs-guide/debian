@@ -20,9 +20,12 @@
     ipmctl_edk2_commit: 46548b1adac82211d8d11da12dd914f41e7aa775
     ipmctl_install_prefix: /usr/local
     ipmctl_binary_path: /usr/local/bin/ipmctl
-    ipmctl_receipt_root: /var/lib/devs-guide/ipmctl
-    ipmctl_receipt_path: /var/lib/devs-guide/ipmctl/receipt.json
-    ipmctl_install_manifest_path: /var/lib/devs-guide/ipmctl/install_manifest.txt
+    ipmctl_receipt_root: /var/lib/ansible/debian/ipmctl
+    ipmctl_receipt_path: /var/lib/ansible/debian/ipmctl/receipt.json
+    ipmctl_install_manifest_path: /var/lib/ansible/debian/ipmctl/install_manifest.txt
+    ipmctl_legacy_receipt_root: /var/lib/devs-guide/ipmctl
+    ipmctl_legacy_receipt_path: /var/lib/devs-guide/ipmctl/receipt.json
+    ipmctl_legacy_install_manifest_path: /var/lib/devs-guide/ipmctl/install_manifest.txt
     ipmctl_patch_root: "{{ playbook_dir }}/../files/ipmctl/patches"
     ipmctl_patches:
       - id: edk2-stable202511-host-os-build
@@ -83,7 +86,8 @@
     - name: Resolve per-run source paths
       ansible.builtin.set_fact:
         ipmctl_run_id: "{{ lookup('pipe', '/usr/bin/date -u +%Y%m%dT%H%M%S%N') }}"
-        ipmctl_cache_root: "{{ ipmctl_build_home }}/.cache/devs-guide/ipmctl"
+        ipmctl_cache_root: "{{ ipmctl_build_home }}/.cache/ansible/ipmctl"
+        ipmctl_legacy_cache_root: "{{ ipmctl_build_home }}/.cache/devs-guide/ipmctl"
 
     - name: Resolve mutable worktree paths
       ansible.builtin.set_fact:
@@ -92,14 +96,148 @@
         ipmctl_edk2_source_dir: "{{ ipmctl_cache_root }}/runs/{{ ipmctl_run_id }}/edk2"
         ipmctl_build_dir: "{{ ipmctl_cache_root }}/runs/{{ ipmctl_run_id }}/build"
 
+    - name: Inspect neutral and legacy build cache roots
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ ipmctl_cache_root }}"
+        - "{{ ipmctl_legacy_cache_root }}"
+      register: ipmctl_cache_roots
+
+    - name: Require an unambiguous build cache migration
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (ipmctl_cache_roots.results[0].stat.exists | default(false))
+            or (ipmctl_cache_roots.results[0].stat.isdir | default(false))
+          - >-
+            not (ipmctl_cache_roots.results[1].stat.exists | default(false))
+            or (ipmctl_cache_roots.results[1].stat.isdir | default(false))
+          - >-
+            not (
+              (ipmctl_cache_roots.results[0].stat.exists | default(false))
+              and (ipmctl_cache_roots.results[1].stat.exists | default(false))
+            )
+        fail_msg: >-
+          Neutral and legacy ipmctl cache roots conflict or are not directories.
+          Resolve them manually; the installer will not merge or delete ambiguous data.
+
+    - name: Inspect neutral and legacy managed state
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - "{{ ipmctl_receipt_path }}"
+        - "{{ ipmctl_install_manifest_path }}"
+        - "{{ ipmctl_legacy_receipt_path }}"
+        - "{{ ipmctl_legacy_install_manifest_path }}"
+      register: ipmctl_managed_state
+
+    - name: Require an unambiguous managed state migration
+      ansible.builtin.assert:
+        that:
+          - >-
+            (ipmctl_managed_state.results[0].stat.exists | default(false))
+            == (ipmctl_managed_state.results[1].stat.exists | default(false))
+          - >-
+            (ipmctl_managed_state.results[2].stat.exists | default(false))
+            == (ipmctl_managed_state.results[3].stat.exists | default(false))
+          - >-
+            not (
+              (ipmctl_managed_state.results[0].stat.exists | default(false))
+              and (ipmctl_managed_state.results[2].stat.exists | default(false))
+            )
+          - >-
+            not (ipmctl_managed_state.results[0].stat.exists | default(false))
+            or (ipmctl_managed_state.results[0].stat.isreg | default(false))
+          - >-
+            not (ipmctl_managed_state.results[1].stat.exists | default(false))
+            or (ipmctl_managed_state.results[1].stat.isreg | default(false))
+          - >-
+            not (ipmctl_managed_state.results[2].stat.exists | default(false))
+            or (ipmctl_managed_state.results[2].stat.isreg | default(false))
+          - >-
+            not (ipmctl_managed_state.results[3].stat.exists | default(false))
+            or (ipmctl_managed_state.results[3].stat.isreg | default(false))
+        fail_msg: >-
+          Neutral and legacy ipmctl receipts or manifests conflict, are incomplete,
+          or are not regular files. Resolve them manually before continuing.
+
+    - name: Create neutral cache parent for legacy migration
+      ansible.builtin.file:
+        path: "{{ ipmctl_build_home }}/.cache/ansible"
+        state: directory
+        owner: "{{ ipmctl_build_user }}"
+        group: "{{ ipmctl_build_group }}"
+        mode: "0750"
+      when:
+        - ipmctl_cache_roots.results[1].stat.isdir | default(false)
+        - not (ipmctl_cache_roots.results[0].stat.exists | default(false))
+      become: true
+
+    - name: Migrate retained build cache to the neutral namespace
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/mv
+          - "{{ ipmctl_legacy_cache_root }}"
+          - "{{ ipmctl_cache_root }}"
+      when:
+        - ipmctl_cache_roots.results[1].stat.isdir | default(false)
+        - not (ipmctl_cache_roots.results[0].stat.exists | default(false))
+      become: true
+      changed_when: true
+
+    - name: Remove empty legacy user cache parent
+      ansible.builtin.command:
+        argv: [/usr/bin/rmdir, "{{ ipmctl_build_home }}/.cache/devs-guide"]
+      register: ipmctl_legacy_cache_parent_cleanup
+      become: true
+      changed_when: ipmctl_legacy_cache_parent_cleanup.rc == 0
+      failed_when: false
+
+    - name: Create neutral managed state directory for legacy migration
+      ansible.builtin.file:
+        path: "{{ ipmctl_receipt_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: ipmctl_managed_state.results[2].stat.isreg | default(false)
+      become: true
+
+    - name: Migrate receipt and manifest to the neutral namespace
+      ansible.builtin.command:
+        argv: [/usr/bin/mv, "{{ item.source }}", "{{ item.destination }}"]
+      loop:
+        - source: "{{ ipmctl_legacy_receipt_path }}"
+          destination: "{{ ipmctl_receipt_path }}"
+        - source: "{{ ipmctl_legacy_install_manifest_path }}"
+          destination: "{{ ipmctl_install_manifest_path }}"
+      when: ipmctl_managed_state.results[2].stat.isreg | default(false)
+      become: true
+      changed_when: true
+
+    - name: Remove empty legacy managed state directories
+      ansible.builtin.command:
+        argv: [/usr/bin/rmdir, "{{ item }}"]
+      loop:
+        - "{{ ipmctl_legacy_receipt_root }}"
+        - /var/lib/devs-guide
+      register: ipmctl_legacy_state_cleanup
+      become: true
+      changed_when: ipmctl_legacy_state_cleanup.rc == 0
+      failed_when: false
+
   tasks:
-    - name: Inspect managed receipt and installed binary
+    - name: Inspect managed receipt, manifest, and installed binary
       ansible.builtin.stat:
         path: "{{ item }}"
         follow: false
         checksum_algorithm: sha256
       loop:
         - "{{ ipmctl_receipt_path }}"
+        - "{{ ipmctl_install_manifest_path }}"
         - "{{ ipmctl_binary_path }}"
       register: ipmctl_initial_stats
 
@@ -107,10 +245,13 @@
       ansible.builtin.assert:
         that:
           - >-
-            not (ipmctl_initial_stats.results[1].stat.exists | default(false))
-            or (ipmctl_initial_stats.results[0].stat.isreg | default(false))
+            not (ipmctl_initial_stats.results[2].stat.exists | default(false))
+            or (
+              (ipmctl_initial_stats.results[0].stat.isreg | default(false))
+              and (ipmctl_initial_stats.results[1].stat.isreg | default(false))
+            )
         fail_msg: >-
-          {{ ipmctl_binary_path }} exists without the devs-guide receipt.
+          {{ ipmctl_binary_path }} exists without the managed Ansible receipt and manifest.
           Refusing to overwrite an unmanaged installation.
 
     - name: Decode the optional managed receipt safely
@@ -145,7 +286,7 @@
       register: ipmctl_current_software
       changed_when: false
       failed_when: false
-      when: ipmctl_initial_stats.results[1].stat.isreg | default(false)
+      when: ipmctl_initial_stats.results[2].stat.isreg | default(false)
 
     - name: Determine whether installation is current
       ansible.builtin.set_fact:
@@ -153,6 +294,7 @@
           {{
             (ipmctl_initial_stats.results[0].stat.isreg | default(false))
             and (ipmctl_initial_stats.results[1].stat.isreg | default(false))
+            and (ipmctl_initial_stats.results[2].stat.isreg | default(false))
             and (ipmctl_previous_receipt.schema_version | default(0) | int == 1)
             and (ipmctl_previous_receipt.platform.debian | default('') == '13')
             and (ipmctl_previous_receipt.platform.architecture | default('') == 'amd64')
@@ -166,7 +308,7 @@
             and (ipmctl_previous_receipt.install.binary | default('') == ipmctl_binary_path)
             and
             (
-              ipmctl_initial_stats.results[1].stat.checksum | default('')
+              ipmctl_initial_stats.results[2].stat.checksum | default('')
               == ipmctl_previous_receipt.install.binary_sha256 | default('')
             )
             and (ipmctl_current_software.results[0].rc | default(1) | int == 0)

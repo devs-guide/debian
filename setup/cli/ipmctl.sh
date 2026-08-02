@@ -10,6 +10,7 @@ readonly EXIT_BLOCKED=3
 readonly EXIT_USAGE=64
 readonly IPMCTL_BIN=/usr/local/bin/ipmctl
 readonly IPMCTL_VERSION=03.00.00.0538
+readonly RUNNER_NAMESPACE=ansible
 
 log() { printf '[setup.cli.ipmctl] %s\n' "$*" >&2; }
 log.error() { printf '[setup.cli.ipmctl][error] %s\n' "$*" >&2; }
@@ -109,7 +110,7 @@ source.runner.common() {
         RUNNER_HELPER_PATH="$(cd "$(dirname "${local_helper}")" && pwd)/$(basename "${local_helper}")"
         # shellcheck source=setup/runner.common.sh
         source "${RUNNER_HELPER_PATH}"
-        runner.create.runtime ipmctl "${RUNNER_TMP_PARENT}"
+        runner.create.runtime ipmctl "${RUNNER_TMP_PARENT}" "${RUNNER_NAMESPACE}"
         configure.runtime.paths
         return
       fi
@@ -117,7 +118,7 @@ source.runner.common() {
   esac
 
   command -v wget >/dev/null 2>&1 || { log.error "wget is required."; exit "${EXIT_BLOCKED}"; }
-  bootstrap_dir="$(mktemp -d "${RUNNER_TMP_PARENT%/}/devs-guide-ipmctl.XXXXXX")"
+  bootstrap_dir="$(mktemp -d "${RUNNER_TMP_PARENT%/}/${RUNNER_NAMESPACE}-ipmctl.XXXXXX")"
   chmod 0700 "${bootstrap_dir}"
   RUNNER_HELPER_PATH="${bootstrap_dir}/${RUNNER_HELPER_NAME}"
   if ! wget -qO "${RUNNER_HELPER_PATH}" "${RUNNER_HELPER_URL}" || [[ ! -s "${RUNNER_HELPER_PATH}" ]]; then
@@ -127,7 +128,7 @@ source.runner.common() {
   bash -n "${RUNNER_HELPER_PATH}" || { log.error "Downloaded runner helper is invalid."; exit "${EXIT_BLOCKED}"; }
   # shellcheck disable=SC1090
   source "${RUNNER_HELPER_PATH}"
-  runner.adopt.runtime ipmctl "${bootstrap_dir}"
+  runner.adopt.runtime ipmctl "${bootstrap_dir}" "${RUNNER_NAMESPACE}"
   configure.runtime.paths
 }
 

@@ -68,10 +68,10 @@ For an audit-friendly remote run, download and review the exact published
 entrypoint first:
 
 ```bash
-wget -qO /tmp/devs-guide-ipmctl.sh \
+wget -qO /tmp/ansible-ipmctl.sh \
   https://devs-guide.github.io/debian/setup/cli/ipmctl.sh
-less /tmp/devs-guide-ipmctl.sh
-bash /tmp/devs-guide-ipmctl.sh install
+less /tmp/ansible-ipmctl.sh
+bash /tmp/ansible-ipmctl.sh install
 ```
 
 The exact Git tags and commits are verified before patches are applied. CMake
@@ -79,14 +79,21 @@ uses a Release build with two parallel jobs. A successful install records its
 commits, patch checksums, toolchain, binary checksum, and install manifest at:
 
 ```text
-/var/lib/devs-guide/ipmctl/receipt.json
+/var/lib/ansible/debian/ipmctl/receipt.json
 ```
 
 A repeat install skips source fetching and compilation only when the receipt,
 binary checksum, exact version, and complete runtime linkage still match.
 The installer refuses to overwrite an unmanaged `/usr/local/bin/ipmctl`.
 Failed build workspaces remain under the invoking user's
-`~/.cache/devs-guide/ipmctl/runs/` for inspection.
+`~/.cache/ansible/ipmctl/runs/` for inspection. Temporary runner files use
+`/tmp/ansible-ipmctl.*` and are removed by the path-constrained cleanup trap.
+
+Installations created before the neutral Ansible namespace was introduced are
+migrated without rebuilding. The installer moves the complete legacy cache,
+receipt, and manifest only when the new destinations do not already exist. If
+both namespaces contain state, it stops for human review instead of merging or
+deleting ambiguous data.
 
 ## Verify
 
@@ -122,16 +129,24 @@ failure is a warning distinct from a broken software installation.
 Only `install`, `verify`, and `--help` are accepted. PMem allocation changes
 remain a manual maintenance operation outside this runner.
 
-## Remote acceptance
+## Validated target and remote acceptance
 
-Before merge, fetch the candidate commit into the intended Debian 13 amd64
-PMem-200 server and run from that checked-out repository. Do not substitute an
-unpublished Pages URL for the reviewed candidate files.
+The pinned source tuple was built successfully from the published runner on a
+Debian 13 amd64 Intel Ice Lake host with four Intel Optane PMem 200 modules.
+Version, linkage, DIMM discovery, topology, memory resources, and the current
+or pending goal query passed. The accepted host was using Memory Mode with no
+App Direct allocation and no pending goal. Hardware identifiers and serial
+numbers are deliberately excluded from this documentation.
+
+Before merging a future runtime change, fetch its exact candidate commit from
+`raw.githubusercontent.com` and set `PAGES_BASE_URL` to that same immutable
+commit so the runner and every staged dependency come from one revision. A Git
+clone is not required.
 
 1. Capture `/etc/os-release`, architecture, kernel, GCC/G++, CMake, Python, and
    the installed build-dependency versions for the pull-request evidence.
-2. Run `bash setup/cli/ipmctl.sh install` once and retain the complete output.
-3. Run `bash setup/cli/ipmctl.sh install` again and confirm it reports the
+2. Run the candidate `install` once and retain the complete output.
+3. Run the candidate `install` again and confirm it reports the
    matching installation rather than rebuilding.
 4. Run `bash setup/cli/ipmctl.sh verify` and retain all four labeled probe
    sections.
@@ -141,9 +156,8 @@ unpublished Pages URL for the reviewed candidate files.
 6. Only then run the LLM host validator with `--require-ipmctl` and, when
    appropriate, `--require-memory-mode`.
 
-After review, merge, and `www` publication, fetch the published runner and run
-`verify` again. Reinstall from the public URL only if the published content
-differs from the accepted candidate or a reinstall is intentional.
+After review, merge, and `www` publication, run the published `install` once
+to prove the managed receipt still skips rebuilding, then run `verify` again.
 
 GitHub Actions checks the static runner, playbook, patch checksums, YAML, and
 publication contract. It deliberately does not rebuild archived Intel source

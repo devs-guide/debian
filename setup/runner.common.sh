@@ -6,6 +6,7 @@ set -euo pipefail
 
 : "${RUNNER_RUNTIME_DIR:=}"
 : "${RUNNER_RUNTIME_FEATURE:=}"
+: "${RUNNER_RUNTIME_NAMESPACE:=}"
 : "${RUNNER_RUNTIME_ACTIVE:=0}"
 : "${RUNNER_SUDO_AUTHENTICATED:=0}"
 : "${RUNNER_TTY_PATH:=/dev/tty}"
@@ -58,15 +59,17 @@ runner.confirm.exact() {
 runner.runtime.path.is.safe() {
   local feature="$1"
   local path="$2"
+  local namespace="${3:-${RUNNER_RUNTIME_NAMESPACE:-devs-guide}}"
   local basename=""
   local suffix=""
 
   [[ "${feature}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || return 1
+  [[ "${namespace}" == devs-guide || "${namespace}" == ansible ]] || return 1
   [[ -n "${path}" && "${path}" == /* && "${path}" != / && "${path}" != /tmp ]] || return 1
 
   basename="${path##*/}"
-  [[ "${basename}" == "devs-guide-${feature}."* ]] || return 1
-  suffix="${basename#devs-guide-${feature}.}"
+  [[ "${basename}" == "${namespace}-${feature}."* ]] || return 1
+  suffix="${basename#${namespace}-${feature}.}"
   [[ "${suffix}" =~ ^[A-Za-z0-9]+$ ]]
 }
 
@@ -79,6 +82,7 @@ runner.install.cleanup.trap() {
 runner.adopt.runtime() {
   local feature="$1"
   local path="$2"
+  local namespace="${3:-devs-guide}"
   local resolved=""
 
   [[ -d "${path}" ]] || {
@@ -86,7 +90,7 @@ runner.adopt.runtime() {
     return 1
   }
   resolved="$(cd "${path}" && pwd -P)"
-  runner.runtime.path.is.safe "${feature}" "${resolved}" || {
+  runner.runtime.path.is.safe "${feature}" "${resolved}" "${namespace}" || {
     log.error "Refusing unsafe runner runtime directory: ${resolved}"
     return 1
   }
@@ -97,6 +101,7 @@ runner.adopt.runtime() {
 
   chmod 0700 "${resolved}"
   RUNNER_RUNTIME_FEATURE="${feature}"
+  RUNNER_RUNTIME_NAMESPACE="${namespace}"
   RUNNER_RUNTIME_DIR="${resolved}"
   RUNNER_RUNTIME_ACTIVE=1
   runner.install.cleanup.trap
@@ -105,6 +110,7 @@ runner.adopt.runtime() {
 runner.create.runtime() {
   local feature="$1"
   local parent="${2:-/tmp}"
+  local namespace="${3:-devs-guide}"
   local resolved_parent=""
   local runtime=""
 
@@ -117,8 +123,12 @@ runner.create.runtime() {
     return 1
   }
   resolved_parent="$(cd "${parent}" && pwd -P)"
-  runtime="$(mktemp -d "${resolved_parent%/}/devs-guide-${feature}.XXXXXX")"
-  runner.adopt.runtime "${feature}" "${runtime}"
+  [[ "${namespace}" == devs-guide || "${namespace}" == ansible ]] || {
+    log.error "Runner runtime namespace is unsupported: ${namespace}"
+    return 1
+  }
+  runtime="$(mktemp -d "${resolved_parent%/}/${namespace}-${feature}.XXXXXX")"
+  runner.adopt.runtime "${feature}" "${runtime}" "${namespace}"
 }
 
 runner.relative.path.is.safe() {
@@ -627,12 +637,13 @@ runner.run.as.root() {
 runner.cleanup.runtime() {
   local runtime="${RUNNER_RUNTIME_DIR:-}"
   local feature="${RUNNER_RUNTIME_FEATURE:-}"
+  local namespace="${RUNNER_RUNTIME_NAMESPACE:-}"
 
   [[ "${RUNNER_RUNTIME_ACTIVE:-0}" == 1 ]] || return 0
   RUNNER_RUNTIME_ACTIVE=0
   RUNNER_RUNTIME_DIR=""
 
-  if ! runner.runtime.path.is.safe "${feature}" "${runtime}"; then
+  if ! runner.runtime.path.is.safe "${feature}" "${runtime}" "${namespace}"; then
     log.warn "Refusing cleanup of an unsafe runner runtime path: ${runtime:-unset}"
     return 1
   fi
