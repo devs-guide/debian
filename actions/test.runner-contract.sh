@@ -42,7 +42,7 @@ for marker in \
   require_contains "${runner_helper}" "${marker}"
 done
 
-for runner in setup/cli/gpu.sh setup/cli/ipmctl.sh setup/cli/llm/host.sh setup/cli/llm/llamacpp.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
+for runner in setup/cli/gpu.sh setup/cli/llm/host.sh setup/cli/llm/llamacpp.sh setup/cli/nvidia.sh setup/cli/nvlink.sh; do
   runner_path="${ROOT}/${runner}"
   direct_fetch_count="$(
     grep -Ec '^[[:space:]]*(if[[:space:]]+![[:space:]]+)?wget[[:space:]]+-qO[[:space:]]' "${runner_path}" || true
@@ -79,6 +79,46 @@ for runner in setup/cli/gpu.sh setup/cli/ipmctl.sh setup/cli/llm/host.sh setup/c
     contract.error "${runner} may directly fetch only the shared-runner bootstrap; found ${direct_fetch_count}"
   fi
 done
+
+# ipmctl intentionally has a smaller install/verify interface and prints its
+# four read-only probe sections directly instead of implementing preflight
+# report helpers shared by the inventory-oriented feature runners.
+runner="setup/cli/ipmctl.sh"
+runner_path="${ROOT}/${runner}"
+direct_fetch_count="$(
+  grep -Ec '^[[:space:]]*(if[[:space:]]+![[:space:]]+)?wget[[:space:]]+-qO[[:space:]]' "${runner_path}" || true
+)"
+require_shell_syntax "${runner}"
+for marker in \
+  'RUNNER_HELPER_URL' \
+  'source.runner.common' \
+  'runner.ensure.privileged.session' \
+  'runner.source.release.common' \
+  'runner.prepare.ansible.feature' \
+  'runner.run.ansible.playbooks' \
+  'runner.run.as.root' \
+  'FEATURE_TEMPLATE_REFS=()' \
+  'mktemp -d'; do
+  require_contains "${runner}" "${marker}"
+done
+for marker in \
+  'fail.streamed.managed.mode' \
+  'runner was executed from stdin' \
+  'ensure.root.or.sudo.reexec' \
+  'current.script.path' \
+  'use.local.feature.files' \
+  'fetch.feature.file' \
+  'fetch.runtime.support.file' \
+  'fetch.file()' \
+  'exec sudo'; do
+  reject_contains "${runner}" "${marker}"
+done
+if grep -Eq 'sudo[[:space:]]+-E([[:space:]]|$)|sudo[^#]*(wget|curl)' "${runner_path}"; then
+  contract.error "${runner} must not preserve the ambient environment or fetch inside sudo"
+fi
+if [[ "${direct_fetch_count}" -ne 1 ]]; then
+  contract.error "${runner} may directly fetch only the shared-runner bootstrap; found ${direct_fetch_count}"
+fi
 
 runner="setup/cli/llm/ktransformers.sh"
 runner_path="${ROOT}/${runner}"

@@ -61,10 +61,13 @@ for marker in \
   'Validate required NVIDIA producer contracts' \
   'Validate required NVLink producer contract' \
   'Validate required directed P2P evidence' \
-  'Validate required ipmctl producer contract' \
-  'Verify live ipmctl has no pending PMem goal' \
-  'Require live ipmctl identity and settled goal state' \
-  '/etc/ansible/debian/facts/ipmctl.yml' \
+  'Verify live reviewed ipmctl version' \
+  'Verify live ipmctl memory resources' \
+  'Collect live ipmctl current or pending goal diagnostic' \
+  'Report live ipmctl goal diagnostic' \
+  'Require live ipmctl identity and memory resources' \
+  'llm_host_ipmctl_binary_path: /usr/local/bin/ipmctl' \
+  'llm_host_ipmctl_expected_version: 03.00.00.0538' \
   'producers:' \
   'ipmctl:' \
   'Read live NVIDIA PCI NUMA affinity' \
@@ -77,6 +80,12 @@ for marker in \
   'runtime_installed: false'; do
   require_contains "ansible/cli/llm/host.yml" "${marker}"
 done
+
+reject_contains "ansible/cli/llm/host.yml" '/etc/ansible/debian/facts/ipmctl.yml'
+reject_contains "setup/cli/llm/host.sh" '/etc/ansible/debian/facts/ipmctl.yml'
+require_contains "setup/cli/llm/host.sh" '/usr/local/bin/ipmctl version'
+require_contains "setup/cli/llm/host.sh" '/usr/local/bin/ipmctl show -memoryresources'
+require_contains "ansible/files/llm/host-inventory.py" '["/usr/local/bin/ipmctl", "show", "-memoryresources"]'
 
 for prohibited in \
   swapoff \

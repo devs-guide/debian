@@ -1,5 +1,0 @@
-Volatile DDR Capacity | 103079215104 B
-Volatile PMem module Capacity | 0 B
-AppDirect PMem module Capacity | 412316860416 B
-Cache DDR Capacity | 0 B
-Inaccessible PMem module Capacity | 0 B

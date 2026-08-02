@@ -1,3 +1,0 @@
-SocketID=0
-Status=New
-MemoryMode=100

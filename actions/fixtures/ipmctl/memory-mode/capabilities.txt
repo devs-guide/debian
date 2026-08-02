@@ -1,5 +1,0 @@
-PlatformConfigSupported=1
-AllowedVolatileMode=Memory Mode
-CurrentVolatileMode=Memory Mode
-AllowedAppDirectMode=App Direct
-ModesSupported=1LM, 2LM, App Direct

@@ -55,6 +55,5 @@ only on the remote GPU host.
 
 `www.pages.sh` replaces its selected publish directory. Contract validation
 only reads project content, aside from temporary fixture locations. The
-dedicated ipmctl source-build action clones and compiles the reviewed source
-pins in an isolated Debian 13 CI job; it does not install onto the Actions
-runner host.
+ipmctl contract validates the vendored patch pack and exact pins statically;
+source compilation and hardware acceptance occur only on the target host.

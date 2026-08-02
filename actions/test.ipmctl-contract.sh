@@ -4,7 +4,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTION_LABEL="test.ipmctl-contract"
-NETWORK_VERIFY="${IPMCTL_SOURCE_NETWORK_VERIFY:-0}"
 rc=0
 SHELL_ONLY=0
 
@@ -20,296 +19,193 @@ esac
 # shellcheck source=actions/lib/contracts.sh
 source "${ROOT}/actions/lib/contracts.sh"
 
-echo "[${ACTION_LABEL}] checking pinned ipmctl and guarded-goal contracts..."
+echo "[${ACTION_LABEL}] checking the pinned Debian 13 ipmctl installer..."
 
 for file in \
   setup/cli/ipmctl.sh \
   ansible/cli/ipmctl.yml \
-  ansible/files/ipmctl/source-profile.py \
-  ansible/files/ipmctl/ipmctl-inventory.py \
-  ansible/files/ipmctl/compatibility-matrix.yml \
-  actions/test.ipmctl-source-build.sh \
-  docs/cli/ipmctl/readme.md \
-  actions/fixtures/ipmctl/memory-mode/version.txt \
-  actions/fixtures/ipmctl/memory-mode/memory-resources.txt \
-  actions/fixtures/ipmctl/app-direct/memory-resources.txt \
-  actions/fixtures/ipmctl/app-direct/regions.txt \
-  actions/fixtures/ipmctl/unsupported/capabilities.txt \
-  actions/fixtures/ipmctl/malformed/dimms.txt \
-  actions/fixtures/ipmctl/namespaces/ndctl-namespaces.txt \
-  actions/fixtures/ipmctl/pending-goal/goal.txt \
-  actions/fixtures/ipmctl/partial-failure/topology.rc; do
+  ansible/files/ipmctl/apply-patch.yml \
+  ansible/files/ipmctl/patches/README.md \
+  ansible/files/ipmctl/patches/0001-edk2-stable202511-host-os-build.patch \
+  ansible/files/ipmctl/patches/0002-ipmctl-disable-c-release-werror.patch \
+  ansible/files/ipmctl/patches/0003-ipmctl-remove-pie-from-shared-linker-flags.patch \
+  docs/cli/ipmctl/readme.md; do
   require_file "${file}"
 done
 
+for removed in \
+  actions/test.ipmctl-source-build.sh \
+  ansible/files/ipmctl/source-profile.py \
+  ansible/files/ipmctl/ipmctl-inventory.py \
+  ansible/files/ipmctl/compatibility-matrix.yml; do
+  if [[ -e "${ROOT}/${removed}" ]]; then
+    contract.error "obsolete ipmctl implementation remains: ${removed}"
+  fi
+done
+if find "${ROOT}/actions/fixtures/ipmctl" -type f -print -quit 2>/dev/null | grep -q .; then
+  contract.error "obsolete ipmctl parser fixtures remain"
+fi
+
 require_shell_syntax "setup/cli/ipmctl.sh"
+require_shell_syntax "actions/test.ipmctl-contract.sh"
+
 for marker in \
+  'Usage: ipmctl.sh [install|verify]' \
+  'readonly EXIT_SOFTWARE=1' \
+  'readonly EXIT_HARDWARE=2' \
+  'readonly EXIT_BLOCKED=3' \
+  'readonly EXIT_USAGE=64' \
+  'readonly IPMCTL_BIN=/usr/local/bin/ipmctl' \
+  'readonly IPMCTL_VERSION=03.00.00.0538' \
   'FEATURE_PLAYBOOKS=("install.packages.yml" "cli/ipmctl.yml")' \
-  'files/ipmctl/source-profile.py' \
-  'files/ipmctl/ipmctl-inventory.py' \
-  'files/ipmctl/compatibility-matrix.yml' \
-  '--commit=FULL_40_CHARACTER_SHA' \
-  '--edk2-commit=FULL_40_CHARACTER_SHA' \
-  '--goal=memory-mode|app-direct|app-direct-not-interleaved' \
-  '--allow-destructive-goal-change' \
-  'runner.confirm.exact' \
-  'GOAL_CONFIRMATION_AUTHORIZED=true' \
-  'I UNDERSTAND PMEM GOAL CHANGES DESTROY DATA AND REQUIRE REBOOT' \
-  'stage.reviewed.sources' \
-  'runner.ensure.privileged.session'; do
+  'files/ipmctl/apply-patch.yml' \
+  'files/ipmctl/patches/0001-edk2-stable202511-host-os-build.patch' \
+  'files/ipmctl/patches/0002-ipmctl-disable-c-release-werror.patch' \
+  'files/ipmctl/patches/0003-ipmctl-remove-pie-from-shared-linker-flags.patch' \
+  'runner.ensure.privileged.session' \
+  'runner.run.as.root "${IPMCTL_BIN}"' \
+  'hardware.probe dimms "PMem DIMMs" show -a -dimm' \
+  'hardware.probe topology "PMem topology" show -topology' \
+  'hardware.probe memoryresources "PMem memory resources" show -memoryresources' \
+  'hardware.probe goal "PMem current or pending goal" show -a -goal'; do
   require_contains "setup/cli/ipmctl.sh" "${marker}"
 done
 
 for marker in \
-  "ipmctl_mode_effective in ['apply', 'validate', 'goal-plan', 'goal-apply']" \
-  'ipmctl_facts_path: /etc/ansible/debian/facts/ipmctl.yml' \
-  'Refuse Debian-packaged or foreign-repository ipmctl migration' \
-  'Refuse unmanaged local ipmctl replacement' \
-  'Fail closed on unsafe PMem goal prerequisites' \
-  "ipmctl_mode_effective == 'goal-apply'" \
-  'ipmctl_goal_confirmation_authorized | bool' \
-  'Return machine-readable PMem goal-plan disposition' \
-  'Apply pinned upstream Linux compatibility patch' \
-  'Verify pinned upstream Linux patch applicability' \
-  'Verify pinned upstream Linux compatibility patch application' \
-  'ipmctl_os_patch_preflight.rc' \
-  '"-DBUILDNUM={{ ipmctl_profile_policy.binary_version }}"' \
-  'ipmctl_previous_facts.ipmctl.source.binary_version' \
-  'ipmctl_previous_facts.ipmctl.source.os_patch_script' \
-  'ipmctl_previous_facts.ipmctl.source.os_patch' \
-  'ipmctl_profile_policy.binary_version in ipmctl_inventory.binary.version' \
-  'namespace_deleted: false' \
-  'pcd_deleted: false' \
-  'firmware_changed: false' \
-  'security_changed: false' \
-  'reboot_performed: false'; do
+  'ipmctl_tag: v03.00.00.0538' \
+  'ipmctl_commit: a71f2fb1c90dd07f9862b71c789881132193e8f9' \
+  'ipmctl_expected_version: 03.00.00.0538' \
+  'ipmctl_edk2_tag: edk2-stable202511' \
+  'ipmctl_edk2_commit: 46548b1adac82211d8d11da12dd914f41e7aa775' \
+  'ipmctl_install_prefix: /usr/local' \
+  'ipmctl_receipt_path: /var/lib/devs-guide/ipmctl/receipt.json' \
+  'Refuse an unmanaged local ipmctl binary' \
+  'Determine whether installation is current' \
+  'Fetch only reviewed source tags' \
+  'Check out reviewed commits detached' \
+  'Require exact source identities' \
+  'Preserve EDK2 CRLF source as a binary Git diff' \
+  'Apply finite reviewed compatibility pack' \
+  'Link reviewed EDK2 components explicitly' \
+  '-DRELEASE=ON' \
+  '-DCMAKE_BUILD_TYPE=Release' \
+  '"-DBUILDNUM={{ ipmctl_expected_version }}"' \
+  'Compile reviewed Release build' \
+  'Write atomic installation receipt'; do
   require_contains "ansible/cli/ipmctl.yml" "${marker}"
 done
 
 for marker in \
-  'IPMCTL_BINARY_VERSION="03.00.00.0538"' \
-  'IPMCTL_OS_PATCH="src/os/patches/0001-Ignore-STATIC_ASSERTs-and-NULL-define-for-os-and-ut-builds.patch"' \
-  './updateedk.sh' \
-  './patch_OS.sh' \
-  'git apply --numstat' \
-  'git apply --check' \
-  '--ignore-space-change' \
-  '--ignore-whitespace' \
-  '--whitespace=nowarn' \
-  'git apply --reverse --check' \
-  '-DBUILDNUM="${IPMCTL_BINARY_VERSION}"' \
-  "grep -R -Fq -- '-Werror' build/CMakeFiles" \
-  'version_token' \
-  'ldd "${TEST_ROOT}/install/bin/ipmctl"'; do
-  require_contains "actions/test.ipmctl-source-build.sh" "${marker}"
+  'checksum_algorithm: sha256' \
+  'git' \
+  'apply' \
+  '--numstat' \
+  '--check' \
+  '--whitespace=error-all' \
+  '--reverse' \
+  'diff' \
+  'ipmctl_patch_preimage' \
+  'ipmctl_patch_postimage'; do
+  require_contains "ansible/files/ipmctl/apply-patch.yml" "${marker}"
 done
 
-for file in actions/test.ipmctl-source-build.sh ansible/cli/ipmctl.yml; do
-  reject_contains "${file}" '-Wno-error'
+declare -a patch_specs=(
+  '0001-edk2-stable202511-host-os-build.patch|ac6f0ea143c357c582135472defe8e936a63d7997221a29d4d0e4c349d7ac013|MdePkg/Include/Base.h'
+  '0002-ipmctl-disable-c-release-werror.patch|d1928dc874219578abbc9eab5cc7a826ccf88457bd148f268aff367d134321b8|CMakeLists.txt'
+  '0003-ipmctl-remove-pie-from-shared-linker-flags.patch|f926a6b07ad33b09f09032e6fd06a9229855d9d0501cfc7e67ecbb4c3c28a031|CMakeLists.txt'
+)
+
+for spec in "${patch_specs[@]}"; do
+  IFS='|' read -r filename expected_sha expected_target <<<"${spec}"
+  patch_path="${ROOT}/ansible/files/ipmctl/patches/${filename}"
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_sha="$(sha256sum "${patch_path}" | awk '{print $1}')"
+  else
+    actual_sha="$(shasum -a 256 "${patch_path}" | awk '{print $1}')"
+  fi
+  [[ "${actual_sha}" == "${expected_sha}" ]] || \
+    contract.error "patch checksum drifted: ${filename}: ${actual_sha}"
+  actual_targets="$(git apply --numstat "${patch_path}" | awk -F '\t' 'NF >= 3 {print $3}')"
+  [[ "${actual_targets}" == "${expected_target}" ]] || \
+    contract.error "patch target drifted: ${filename}: ${actual_targets}"
+  require_contains "ansible/cli/ipmctl.yml" "sha256: ${expected_sha}"
 done
 
-update_line="$(grep -n -m1 'updateedk[.]sh' actions/test.ipmctl-source-build.sh | cut -d: -f1)"
-patch_line="$(
-  grep -n -m1 '^[[:space:]]*[.]/patch_OS[.]sh[[:space:]]*|' \
-    actions/test.ipmctl-source-build.sh |
-    cut -d: -f1
-)"
-preflight_line="$(grep -n -m1 'git apply --check' actions/test.ipmctl-source-build.sh | cut -d: -f1)"
-cmake_line="$(grep -n -m1 'cmake -S' actions/test.ipmctl-source-build.sh | cut -d: -f1)"
-if [[ -z "${update_line}" || -z "${preflight_line}" || -z "${patch_line}" || -z "${cmake_line}" ]] ||
-  ((update_line >= preflight_line || preflight_line >= patch_line || patch_line >= cmake_line)); then
-  contract.error "ipmctl source build must run updateedk.sh, patch preflight, patch_OS.sh, then CMake"
-fi
-
-for prohibited in \
-  'delete -pcd' \
-  'delete -goal' \
-  'delete -dimm' \
-  'start -format' \
-  'load -firmware' \
-  'set -dimm' \
-  'ndctl destroy-namespace' \
-  'systemctl reboot' \
-  '/sbin/reboot'; do
-  reject_contains "ansible/cli/ipmctl.yml" "${prohibited}"
+for file in setup/cli/ipmctl.sh ansible/cli/ipmctl.yml; do
+  for prohibited in \
+    'delete -pcd' \
+    'delete -goal' \
+    'delete -dimm' \
+    'start -format' \
+    'load -firmware' \
+    'set -dimm' \
+    'ndctl destroy-namespace' \
+    'systemctl reboot' \
+    '/sbin/reboot' \
+    './updateedk.sh' \
+    './patch_OS.sh' \
+    '--ignore-space-change' \
+    '--ignore-whitespace' \
+    '--whitespace=nowarn' \
+    '-Wno-error'; do
+    reject_contains "${file}" "${prohibited}"
+  done
 done
 
+for obsolete_interface in \
+  'goal-plan' \
+  'goal-apply' \
+  '--allow-destructive-goal-change' \
+  '--repository-url=' \
+  '--commit=' \
+  '--build-type='; do
+  reject_contains "setup/cli/ipmctl.sh" "${obsolete_interface}"
+done
+
+help_output="$(bash "${ROOT}/setup/cli/ipmctl.sh" --help)" || \
+  contract.error "ipmctl --help failed"
+[[ "${help_output}" == *'Usage: ipmctl.sh [install|verify]'* ]] || \
+  contract.error "ipmctl --help omitted the two-mode interface"
 set +e
-confirmation_trace="$(
-  TEST_RUNNER="${ROOT}/setup/cli/ipmctl.sh" bash -c '
-    source "${TEST_RUNNER}"
-    FEATURE_MODE=goal-apply
-    ANSIBLE_VENV_BIN=/usr/bin/true
-    GOAL_PLAN_RESULT_PATH="$(mktemp)"
-    runner.ensure.privileged.session() { return 0; }
-    write.extra.vars.file() { :; }
-    run.feature.playbook() { printf "no_op=false\n" > "${GOAL_PLAN_RESULT_PATH}"; }
-    runner.confirm.exact() {
-      printf "PROMPT=%s\nEXPECTED=%s\n" "$1" "$2"
-      return 3
-    }
-    run.managed.mode
-  ' 2>&1
-)"
-confirmation_status=$?
+bash "${ROOT}/setup/cli/ipmctl.sh" unsupported-mode >/dev/null 2>&1
+invalid_status=$?
 set -e
-if [[ "${confirmation_status}" -ne 3 ]]; then
-  contract.error "non-no-op goal-apply did not stop when exact confirmation was rejected"
-fi
-if [[ "${confirmation_trace}" != *"EXPECTED=I UNDERSTAND PMEM GOAL CHANGES DESTROY DATA AND REQUIRE REBOOT"* ]]; then
-  contract.error "goal-apply did not pass the exact destructive confirmation phrase"
-fi
-
-set +e
-noop_trace="$(
-  TEST_RUNNER="${ROOT}/setup/cli/ipmctl.sh" bash -c '
-    source "${TEST_RUNNER}"
-    FEATURE_MODE=goal-apply
-    ANSIBLE_VENV_BIN=/usr/bin/true
-    GOAL_PLAN_RESULT_PATH="$(mktemp)"
-    runner.ensure.privileged.session() { return 0; }
-    write.extra.vars.file() { printf "WRITE:%s\n" "${FEATURE_MODE}"; }
-    run.feature.playbook() {
-      printf "RUN:%s\n" "${FEATURE_MODE}"
-      [[ "${FEATURE_MODE}" != goal-plan ]] || printf "no_op=true\n" > "${GOAL_PLAN_RESULT_PATH}"
-    }
-    runner.confirm.exact() { printf "UNEXPECTED_CONFIRM\n"; return 90; }
-    run.managed.mode
-  ' 2>&1
-)"
-noop_status=$?
-set -e
-if [[ "${noop_status}" -ne 0 ]] || \
-  [[ "${noop_trace}" != *"RUN:goal-plan"* ]] || \
-  [[ "${noop_trace}" != *"RUN:validate"* ]] || \
-  [[ "${noop_trace}" == *"UNEXPECTED_CONFIRM"* ]]; then
-  contract.error "a settled no-op goal did not refresh facts without confirmation or mutation"
-fi
+[[ "${invalid_status}" -eq 64 ]] || \
+  contract.error "invalid ipmctl mode must exit 64, got ${invalid_status}"
 
 require_contains "ansible/packages.yml" 'ipmctl_build:'
 require_contains "ansible/install.packages.yml" '      - ipmctl_build'
-require_contains "setup/cli/llm/host.sh" '--require-ipmctl'
-require_contains "ansible/cli/llm/host.yml" 'llm_host_ipmctl_facts_path: /etc/ansible/debian/facts/ipmctl.yml'
-require_contains "docs/cli/llm/host/readme.md" '/etc/ansible/debian/facts/ipmctl.yml'
+require_contains "ansible/cli/llm/host.yml" 'llm_host_ipmctl_binary_path: /usr/local/bin/ipmctl'
+require_contains "ansible/cli/llm/host.yml" 'llm_host_ipmctl_expected_version: 03.00.00.0538'
+reject_contains "ansible/cli/llm/host.yml" '/etc/ansible/debian/facts/ipmctl.yml'
+require_contains ".github/workflows/www.pages.yml" 'validate-runtime:'
+reject_contains ".github/workflows/www.pages.yml" 'validate-ipmctl-source'
+require_contains "actions/publication.manifest" 'file|setup/cli/ipmctl.sh|setup/cli/ipmctl.sh'
+require_contains "actions/publication.manifest" 'tree|ansible|ansible'
 
 if ! validate_yaml_file "${ROOT}/ansible/cli/ipmctl.yml"; then
+  rc=1
+fi
+if ! validate_yaml_file "${ROOT}/ansible/files/ipmctl/apply-patch.yml"; then
   rc=1
 fi
 if ! validate_shell_payloads "${ROOT}/ansible/cli/ipmctl.yml"; then
   rc=1
 fi
 
-if [[ "${SHELL_ONLY}" -eq 0 ]]; then
-  matrix="${ROOT}/ansible/files/ipmctl/compatibility-matrix.yml"
-  profile_helper="${ROOT}/ansible/files/ipmctl/source-profile.py"
-  inventory_helper="${ROOT}/ansible/files/ipmctl/ipmctl-inventory.py"
-  fixture_base="${ROOT}/actions/fixtures/ipmctl/memory-mode"
-
-  python3 "${profile_helper}" \
-    --matrix "${matrix}" \
-    --profile trixie-v03.00.00.0538 \
-    --repository-url https://github.com/intel/ipmctl.git \
-    --release v03.00.00.0538 \
-    --commit a71f2fb1c90dd07f9862b71c789881132193e8f9 \
-    --edk2-repository-url https://github.com/tianocore/edk2.git \
-    --edk2-release edk2-stable202111 \
-    --edk2-commit bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 >/dev/null || rc=1
-
-  if python3 "${profile_helper}" \
-    --matrix "${matrix}" \
-    --profile trixie-v03.00.00.0538 \
-    --repository-url https://github.com/intel/ipmctl.git \
-    --release v03.00.00.0538 \
-    --commit a71f2fb \
-    --edk2-repository-url https://github.com/tianocore/edk2.git \
-    --edk2-release edk2-stable202111 \
-    --edk2-commit bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 >/dev/null 2>&1; then
-    contract.error "a shortened ipmctl commit was accepted"
+if [[ "${SHELL_ONLY}" -eq 0 ]] && command -v ansible-playbook >/dev/null 2>&1; then
+  if ! ansible-playbook --syntax-check -i localhost, \
+    -e ansible_python_interpreter_managed=/usr/bin/python3 \
+    -e ipmctl_build_user=nobody \
+    -e ipmctl_build_group=nogroup \
+    -e ipmctl_build_home=/tmp \
+    "${ROOT}/ansible/cli/ipmctl.yml"; then
+    contract.error "ipmctl playbook failed ansible-playbook --syntax-check"
   fi
-
-  snapshot="$(
-    python3 "${inventory_helper}" --fixture-dir "${fixture_base}"
-  )" || {
-    contract.error "ipmctl Memory Mode fixture execution failed"
-    snapshot=""
-  }
-  if [[ -n "${snapshot}" ]]; then
-    python3 - "${snapshot}" <<'PY' || rc=1
-import json
-import sys
-
-snapshot = json.loads(sys.argv[1])
-assert snapshot["schema_version"] == 1
-assert snapshot["hardware"]["socket_ids"] == [0, 1]
-assert snapshot["hardware"]["topology_verified"] is True
-assert snapshot["hardware"]["manageable"] is True
-assert snapshot["hardware"]["healthy"] is True
-assert snapshot["hardware"]["security_safe_for_goal"] is True
-assert snapshot["memory_resources"]["current_mode"] == "memory-mode"
-assert snapshot["memory_resources"]["memory_mode_verified"] is True
-assert snapshot["pending_goal"]["present"] is False
-assert snapshot["ndctl"]["namespace_count"] == 0
-assert snapshot["readiness"]["goal_change_supported"] is True
-PY
-  fi
-
-  for scenario in app-direct unsupported malformed namespaces pending-goal partial-failure; do
-    snapshot="$(
-      python3 "${inventory_helper}" \
-        --fixture-dir "${ROOT}/actions/fixtures/ipmctl/${scenario}" \
-        --fixture-base-dir "${fixture_base}"
-    )" || {
-      contract.error "ipmctl ${scenario} fixture execution failed"
-      snapshot=""
-    }
-    [[ -n "${snapshot}" ]] || continue
-    python3 - "${scenario}" "${snapshot}" <<'PY' || rc=1
-import json
-import sys
-
-scenario = sys.argv[1]
-snapshot = json.loads(sys.argv[2])
-if scenario == "app-direct":
-    assert snapshot["memory_resources"]["current_mode"] == "app-direct"
-    assert snapshot["memory_resources"]["memory_mode_verified"] is False
-elif scenario == "unsupported":
-    assert snapshot["capabilities"]["platform_config_supported"] is False
-    assert snapshot["readiness"]["goal_change_supported"] is False
-elif scenario == "malformed":
-    assert snapshot["hardware"]["present"] is False
-    assert snapshot["readiness"]["inventory_ready"] is False
-    assert snapshot["readiness"]["goal_change_supported"] is False
-elif scenario == "namespaces":
-    assert snapshot["ndctl"]["namespace_count"] == 1
-elif scenario == "pending-goal":
-    assert snapshot["pending_goal"]["present"] is True
-    assert snapshot["readiness"]["settled"] is False
-elif scenario == "partial-failure":
-    assert snapshot["commands"]["topology"]["rc"] == 1
-    assert snapshot["readiness"]["inventory_ready"] is False
-PY
-  done
+elif [[ "${SHELL_ONLY}" -eq 0 ]]; then
+  contract.warn "ansible-playbook unavailable; syntax check deferred to CI"
 else
-  echo "[${ACTION_LABEL}] shell-only mode: deferred Python fixtures and source verification to CI"
-fi
-
-resolve_remote_tag() {
-  local repository="$1" release="$2" output="" direct="" peeled=""
-  output="$(git ls-remote --tags "${repository}" "refs/tags/${release}" "refs/tags/${release}^{}")"
-  direct="$(printf '%s\n' "${output}" | awk -v ref="refs/tags/${release}" '$2 == ref {print $1}')"
-  peeled="$(printf '%s\n' "${output}" | awk -v ref="refs/tags/${release}^{}" '$2 == ref {print $1}')"
-  printf '%s\n' "${peeled:-${direct}}"
-}
-
-if [[ "${SHELL_ONLY}" -eq 0 && "${NETWORK_VERIFY}" == 1 ]]; then
-  actual_ipmctl="$(resolve_remote_tag https://github.com/intel/ipmctl.git v03.00.00.0538)"
-  [[ "${actual_ipmctl}" == a71f2fb1c90dd07f9862b71c789881132193e8f9 ]] ||
-    contract.error "ipmctl reviewed tag changed: ${actual_ipmctl}"
-  actual_edk2="$(resolve_remote_tag https://github.com/tianocore/edk2.git edk2-stable202111)"
-  [[ "${actual_edk2}" == bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 ]] ||
-    contract.error "edk2 reviewed tag changed: ${actual_edk2}"
-else
-  echo "[${ACTION_LABEL}] source network verification deferred to GitHub Actions"
+  echo "[${ACTION_LABEL}] shell-only mode: deferred Ansible syntax check to CI"
 fi
 
 exit "${rc}"

@@ -291,15 +291,14 @@ run.read.only.preflight() {
   runner.report.text "${PREFLIGHT_REPORT_PATH}" "Shared GPU facts" /etc/ansible/debian/facts/gpu.yml
   runner.report.text "${PREFLIGHT_REPORT_PATH}" "NVIDIA readiness facts" /etc/ansible/debian/facts/nvidia.yml
   runner.report.text "${PREFLIGHT_REPORT_PATH}" "NVLink readiness facts" /etc/ansible/debian/facts/nvlink.yml
-  runner.report.text "${PREFLIGHT_REPORT_PATH}" "ipmctl readiness facts" /etc/ansible/debian/facts/ipmctl.yml
+  report.command "Reviewed ipmctl version" /usr/local/bin/ipmctl version
   report.command "CPU summary" lscpu
   report.command "CPU topology" lscpu --parse=CPU,SOCKET,CORE,ONLINE,NODE
   report.command "Host memory" sed -n '1,24p' /proc/meminfo
   report.command "NUMA topology" numactl --hardware
   report.command "NVIDIA runtime inventory" nvidia-smi --query-gpu=index,name,uuid,pci.bus_id,memory.total,driver_version,compute_cap --format=csv,noheader
-  report.command "Persistent-memory resources" ipmctl show -memoryresources
-  report.command "Persistent-memory system capabilities" ipmctl show -a -system -capabilities
-  report.command "Pending persistent-memory goal" ipmctl show -a -goal
+  report.command "Persistent-memory resources" /usr/local/bin/ipmctl show -memoryresources
+  report.command "Pending persistent-memory goal" /usr/local/bin/ipmctl show -a -goal
   log "Preflight is read-only: it did not install packages, create directories, write facts, download models, or alter kernel, CPU, memory, swap, NVIDIA, or boot policy."
 }
 

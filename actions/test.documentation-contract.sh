@@ -70,7 +70,6 @@ require.runner.options.documented "setup/cli/llm/ktransformers.sh" "docs/cli/llm
 
 for document in \
   docs/cli/gpu/readme.md \
-  docs/cli/ipmctl/readme.md \
   docs/cli/llm/host/readme.md \
   docs/cli/llm/llamacpp/readme.md \
   docs/cli/llm/ktransformers/readme.md \
@@ -85,8 +84,15 @@ for document in \
   require_regex "${document}" '^[[:space:]]+bash -s -- apply([[:space:]]|$)'
   require_regex "${document}" '^[[:space:]]+sudo bash -s -- (apply|validate)([[:space:]]|$)'
 done
+for marker in \
+  'wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh' \
+  '/dev/tty'; do
+  require_contains "docs/cli/ipmctl/readme.md" "${marker}"
+done
+require_regex "docs/cli/ipmctl/readme.md" '^[[:space:]]+bash -s -- install([[:space:]]|$)'
+require_regex "docs/cli/ipmctl/readme.md" '^[[:space:]]+sudo bash -s -- verify([[:space:]]|$)'
 require_contains "docs/cli/gpu/readme.md" '/etc/ansible/debian/facts/gpu.yml'
-require_contains "docs/cli/ipmctl/readme.md" '/etc/ansible/debian/facts/ipmctl.yml'
+require_contains "docs/cli/ipmctl/readme.md" '/var/lib/devs-guide/ipmctl/receipt.json'
 require_contains "docs/cli/llm/host/readme.md" '/etc/ansible/debian/facts/llm-host.yml'
 require_contains "docs/cli/llm/host/readme.md" '/etc/ansible/debian/facts/gpu.yml'
 require_contains "docs/cli/llm/host/readme.md" '/etc/ansible/debian/facts/nvidia.yml'

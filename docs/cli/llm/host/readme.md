@@ -103,8 +103,8 @@ For a checked-out repository, use the same modes and flags directly:
 | `--allow-low-host-reserve` | Permits validation while current `MemAvailable` is below the requested reserve. Use only after reviewing active workloads. |
 | `--gpu-reserve-mib=N` | Per-device VRAM reservation exported for later runtimes. It does not allocate or test VRAM. Default: 4096 MiB. |
 | `--require-physical-cores=N` | Requires at least N physical cores and records one logical CPU from each core. |
-| `--require-memory-mode` | Requires `verified` ipmctl evidence or `consistent` DMI persistent-memory evidence. Unknown evidence fails closed. |
-| `--require-ipmctl` | Requires current schema-1 `/etc/ansible/debian/facts/ipmctl.yml`, a matching live binary, complete inventory, and matching fact/live evidence that no PMem goal is pending. |
+| `--require-memory-mode` | Requires live `/usr/local/bin/ipmctl` evidence with positive Memory Mode capacity. DMI-only `consistent` evidence is informational and fails this hard requirement. Also enables `--require-ipmctl`. |
+| `--require-ipmctl` | Requires live `/usr/local/bin/ipmctl` version `03.00.00.0538` and readable memory resources. Current/pending goal output is printed for human review but is not interpreted as a second inventory database. |
 | `--require-nvidia` | Requires schema-1 GPU/NVIDIA facts and matching live UUIDs, loaded driver, `nvidia-smi`, `nvcc`, and CUDA runtime headers. |
 | `--require-nvlink` | Also requires a current schema-2 NVLink fact with a physical pair, NVLink route, and positive link evidence. Requires `--require-nvidia`. |
 | `--require-p2p` | Also requires a completed passing directed CUDA P2P result. Requires `--require-nvlink`. |
@@ -211,17 +211,18 @@ The runner writes:
 - `/opt/llm/bin/llm-host-numa`
 - `/opt/llm/bin/llm-host-env`
 
-It consumes but never owns:
+It checks `/usr/local/bin/ipmctl` directly when ipmctl is required. It consumes
+but never owns these GPU producer facts:
 
-- `/etc/ansible/debian/facts/ipmctl.yml`
 - `/etc/ansible/debian/facts/gpu.yml`
 - `/etc/ansible/debian/facts/nvidia.yml`
 - `/etc/ansible/debian/facts/nvlink.yml`
 
 If a PMem goal, driver, CUDA toolkit, kernel, GPU, NVLink bridge, or GPU
 ordering changes, refresh those producers before rerunning host validation.
-After a PMem goal and maintenance reboot, run `ipmctl.sh validate` first. The
-host gate rejects pending PMem goals and stale producer identity.
+After a PMem goal and maintenance reboot, run `ipmctl.sh verify` first. The
+host gate independently rejects an unexpected version or unreadable memory
+resources and prints current/pending goal output for human review.
 
 Managed paths include `/opt/src`, `/opt/venvs`, `/opt/llm`, and the `/models`
 subtree. Missing directories are created for the selected owner. Existing
@@ -231,12 +232,13 @@ ownership repair.
 
 ## Memory Mode classification
 
-`verified` means live inventory reported positive Memory Mode capacity.
-`consistent` means DMI records provide persistent-memory evidence but the
-stronger query is unavailable. `unknown` makes no claim. The generic profile
-can record `unknown`; `--require-memory-mode` rejects it. The exact Ice Lake
-profile also requires source-managed ipmctl facts with positive PMem volatile
-capacity, DDR cache capacity, and no pending goal.
+`verified` means live `/usr/local/bin/ipmctl` inventory reported positive
+Memory Mode capacity. `consistent` means DMI records provide
+persistent-memory evidence but the stronger query is unavailable. `unknown`
+makes no claim. The generic profile can record either weaker classification;
+`--require-memory-mode` rejects both. The exact Ice Lake profile also requires
+the reviewed live ipmctl version and readable memory resources. Goal output
+remains a diagnostic reviewed during remote acceptance.
 
 PCIe or NVLink bandwidth is not hard-coded here. Link-rate evidence remains
 owned by the NVLink producer and is treated as positive/active evidence rather

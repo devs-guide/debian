@@ -1,6 +1,0 @@
-DimmID | MemoryType                  | Capacity       | PhysicalID | DeviceLocator | SocketID
-================================================================================================
-0x0001 | Logical Non-Volatile Device | 206158430208 B | 0x0028     | CPU1_DIMM_A2   | 0x0000
-0x1001 | Logical Non-Volatile Device | 206158430208 B | 0x0044     | CPU2_DIMM_A2   | 0x0001
-N/A    | DDR4                        | 51539607552 B  | 0x0026     | CPU1_DIMM_A1   | 0x0000
-N/A    | DDR4                        | 51539607552 B  | 0x0042     | CPU2_DIMM_A1   | 0x0001

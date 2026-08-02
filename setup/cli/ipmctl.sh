@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Published path: https://devs-guide.github.io/debian/setup/cli/ipmctl.sh
-# Pinned Intel Optane PMem inventory, source build, and guarded goal runner.
-#
-# wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
-#   bash -s -- preflight --profile=trixie-v03.00.00.0538
+# Pinned Debian 13 source installer and read-only Intel Optane PMem verifier.
 
 set -euo pipefail
 
+readonly EXIT_SOFTWARE=1
+readonly EXIT_HARDWARE=2
 readonly EXIT_BLOCKED=3
 readonly EXIT_USAGE=64
-readonly GOAL_CONFIRMATION="I UNDERSTAND PMEM GOAL CHANGES DESTROY DATA AND REQUIRE REBOOT"
+readonly IPMCTL_BIN=/usr/local/bin/ipmctl
+readonly IPMCTL_VERSION=03.00.00.0538
 
 log() { printf '[setup.cli.ipmctl] %s\n' "$*" >&2; }
 log.error() { printf '[setup.cli.ipmctl][error] %s\n' "$*" >&2; }
@@ -27,195 +27,73 @@ PLAYBOOK_ROOT=""
 PACKAGE_PLAYBOOK_PATH=""
 FEATURE_PLAYBOOK_PATH=""
 EXTRA_VARS_PATH=""
-PREFLIGHT_REPORT_PATH=""
-GOAL_PLAN_RESULT_PATH=""
-SOURCE_PROFILE_HELPER_PATH=""
-SOURCE_MATRIX_PATH=""
-STAGED_IPMCTL_SOURCE=""
-STAGED_EDK2_SOURCE=""
 RUNNER_HELPER_PATH=""
 COMMON_HELPER_PATH=""
 RUNNER_LOCAL_REPO_ROOT=""
+BUILD_USER=""
+BUILD_HOME=""
+BUILD_GROUP=""
+FEATURE_MODE="${DEBIAN_IPMCTL_MODE:-install}"
+SHOW_HELP=0
 
 GROUP_VARS_FILES=("all.yml" "debian.yml")
 FEATURE_PLAYBOOKS=("install.packages.yml" "cli/ipmctl.yml")
 RUNTIME_SUPPORT_REFS=(
   "packages.yml"
-  "files/ipmctl/source-profile.py"
-  "files/ipmctl/ipmctl-inventory.py"
-  "files/ipmctl/compatibility-matrix.yml"
+  "files/ipmctl/apply-patch.yml"
+  "files/ipmctl/patches/README.md"
+  "files/ipmctl/patches/0001-edk2-stable202511-host-os-build.patch"
+  "files/ipmctl/patches/0002-ipmctl-disable-c-release-werror.patch"
+  "files/ipmctl/patches/0003-ipmctl-remove-pie-from-shared-linker-flags.patch"
 )
 FEATURE_TEMPLATE_REFS=()
 declare -a FEATURE_GROUP_VARS_ARGS=()
 declare -a FEATURE_PLAYBOOK_PATHS=()
 
-FEATURE_MODE="${DEBIAN_IPMCTL_MODE:-preflight}"
-PROFILE="${DEBIAN_IPMCTL_PROFILE:-trixie-v03.00.00.0538}"
-REPOSITORY_URL="${DEBIAN_IPMCTL_REPOSITORY_URL:-https://github.com/intel/ipmctl.git}"
-RELEASE="${DEBIAN_IPMCTL_RELEASE:-v03.00.00.0538}"
-COMMIT="${DEBIAN_IPMCTL_COMMIT:-a71f2fb1c90dd07f9862b71c789881132193e8f9}"
-EDK2_REPOSITORY_URL="${DEBIAN_IPMCTL_EDK2_REPOSITORY_URL:-https://github.com/tianocore/edk2.git}"
-EDK2_RELEASE="${DEBIAN_IPMCTL_EDK2_RELEASE:-edk2-stable202111}"
-EDK2_COMMIT="${DEBIAN_IPMCTL_EDK2_COMMIT:-bb1bba3d776733c41dbfa2d1dc0fe234819a79f2}"
-BUILD_TYPE="${DEBIAN_IPMCTL_BUILD_TYPE:-release}"
-INSTALL_BUILD_TOOLS="${DEBIAN_IPMCTL_INSTALL_BUILD_TOOLS:-false}"
-GOAL="${DEBIAN_IPMCTL_GOAL:-}"
-SOCKET_TARGET="${DEBIAN_IPMCTL_SOCKET:-}"
-ALLOW_DESTRUCTIVE_GOAL_CHANGE="${DEBIAN_IPMCTL_ALLOW_DESTRUCTIVE_GOAL_CHANGE:-false}"
-GOAL_CONFIRMATION_AUTHORIZED=false
-SHOW_HELP=0
-
 usage() {
   cat <<'EOF_USAGE'
-Usage: ipmctl.sh [preflight|apply|validate|goal-plan|goal-apply] [options]
+Usage: ipmctl.sh [install|verify]
 
 Modes:
-  preflight                  Unprivileged read-only policy and host report.
-  apply                      Build, install, inventory, and persist facts only.
-  validate                   Refresh privileged read-only inventory and facts.
-  goal-plan                  Print a privileged read-only PMem goal plan.
-  goal-apply                 Re-plan, confirm exactly, and create one goal.
+  install  Build and install the reviewed Debian 13 source tuple, then verify.
+  verify   Run software checks and four read-only PMem probes.
 
-Options:
-  --profile=trixie-v03.00.00.0538
-  --repository-url=HTTPS_GIT_URL
-  --release=TAG
-  --commit=FULL_40_CHARACTER_SHA
-  --edk2-repository-url=HTTPS_GIT_URL
-  --edk2-release=TAG
-  --edk2-commit=FULL_40_CHARACTER_SHA
-  --build-type=release|debug
-  --install-build-tools
-  --no-install-build-tools
-  --goal=memory-mode|app-direct|app-direct-not-interleaved
-  --socket=all|COMMA_SEPARATED_SOCKET_IDS
-  --allow-destructive-goal-change
-  --help
-
-Reviewed Debian 13 source install:
-  wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
-    bash -s -- apply \
-      --profile=trixie-v03.00.00.0538 \
-      --repository-url=https://github.com/intel/ipmctl.git \
-      --release=v03.00.00.0538 \
-      --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
-      --edk2-repository-url=https://github.com/tianocore/edk2.git \
-      --edk2-release=edk2-stable202111 \
-      --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
-      --build-type=release \
-      --install-build-tools
-
-Destructive Memory Mode workflow:
-  wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
-    bash -s -- goal-plan \
-      --profile=trixie-v03.00.00.0538 \
-      --repository-url=https://github.com/intel/ipmctl.git \
-      --release=v03.00.00.0538 \
-      --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
-      --edk2-repository-url=https://github.com/tianocore/edk2.git \
-      --edk2-release=edk2-stable202111 \
-      --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
-      --build-type=release \
-      --goal=memory-mode \
-      --socket=all \
-      --no-install-build-tools
-
-  wget -qO- https://devs-guide.github.io/debian/setup/cli/ipmctl.sh | \
-    bash -s -- goal-apply \
-      --profile=trixie-v03.00.00.0538 \
-      --repository-url=https://github.com/intel/ipmctl.git \
-      --release=v03.00.00.0538 \
-      --commit=a71f2fb1c90dd07f9862b71c789881132193e8f9 \
-      --edk2-repository-url=https://github.com/tianocore/edk2.git \
-      --edk2-release=edk2-stable202111 \
-      --edk2-commit=bb1bba3d776733c41dbfa2d1dc0fe234819a79f2 \
-      --build-type=release \
-      --goal=memory-mode \
-      --socket=all \
-      --no-install-build-tools \
-      --allow-destructive-goal-change
-
-goal-apply can destroy App Direct data and requires a reboot. It never deletes
-namespaces or PCD, changes firmware/security, or reboots. There is no
-noninteractive confirmation bypass.
+The runner supports Debian 13 amd64 only. It never creates or deletes a PMem
+goal, changes firmware or security state, formats a DIMM, manages namespaces,
+or schedules a reboot. The installed ipmctl binary itself remains a powerful
+administrative tool; destructive commands are manual and outside this runner.
 EOF_USAGE
 }
 
 parse.arguments() {
-  local first=1 argument=""
-  while (($#)); do
-    argument="$1"
-    shift
-    if [[ "${first}" -eq 1 && "${argument}" != --* ]]; then
-      FEATURE_MODE="${argument}"
-      first=0
-      continue
-    fi
-    first=0
-    case "${argument}" in
-      --help|-h) SHOW_HELP=1 ;;
-      --profile=*) PROFILE="${argument#*=}" ;;
-      --repository-url=*) REPOSITORY_URL="${argument#*=}" ;;
-      --release=*) RELEASE="${argument#*=}" ;;
-      --commit=*) COMMIT="${argument#*=}" ;;
-      --edk2-repository-url=*) EDK2_REPOSITORY_URL="${argument#*=}" ;;
-      --edk2-release=*) EDK2_RELEASE="${argument#*=}" ;;
-      --edk2-commit=*) EDK2_COMMIT="${argument#*=}" ;;
-      --build-type=*) BUILD_TYPE="${argument#*=}" ;;
-      --install-build-tools) INSTALL_BUILD_TOOLS=true ;;
-      --no-install-build-tools) INSTALL_BUILD_TOOLS=false ;;
-      --goal=*) GOAL="${argument#*=}" ;;
-      --socket=*) SOCKET_TARGET="${argument#*=}" ;;
-      --allow-destructive-goal-change) ALLOW_DESTRUCTIVE_GOAL_CHANGE=true ;;
-      --*) invalid "Unsupported option: ${argument}" ;;
-      *) invalid "Unexpected argument: ${argument}" ;;
-    esac
-  done
+  (($# <= 1)) || invalid "Only one mode is accepted."
+  case "${1:-${FEATURE_MODE}}" in
+    install|verify) FEATURE_MODE="${1:-${FEATURE_MODE}}" ;;
+    --help|-h) SHOW_HELP=1 ;;
+    --*) invalid "Unsupported option: ${1}" ;;
+    *) invalid "Unsupported mode: ${1}" ;;
+  esac
 }
 
-validate.repository.url() {
-  local value="$1" label="$2"
-  [[ "${value}" =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._+~-]+)+[.]git$ ]] ||
-    invalid "${label} must be a credential-free HTTPS Git URL ending in .git."
-  [[ "${value}" != *"@"* && "${value}" != *"?"* && "${value}" != *"#"* ]] ||
-    invalid "${label} cannot contain credentials, a query, or a fragment."
-}
-
-validate.configuration() {
-  case "${FEATURE_MODE}" in preflight|apply|validate|goal-plan|goal-apply) ;; *) invalid "Unsupported mode: ${FEATURE_MODE}" ;; esac
-  [[ "${PROFILE}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || invalid "Invalid profile."
-  [[ "${RELEASE}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || invalid "Invalid release."
-  [[ "${EDK2_RELEASE}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || invalid "Invalid edk2 release."
-  [[ "${COMMIT}" =~ ^[0-9a-f]{40}$ ]] || invalid "--commit must be a lowercase full 40-character SHA."
-  [[ "${EDK2_COMMIT}" =~ ^[0-9a-f]{40}$ ]] || invalid "--edk2-commit must be a lowercase full 40-character SHA."
-  validate.repository.url "${REPOSITORY_URL}" --repository-url
-  validate.repository.url "${EDK2_REPOSITORY_URL}" --edk2-repository-url
-  case "${BUILD_TYPE}" in release|debug) ;; *) invalid "--build-type must be release or debug." ;; esac
-  case "${INSTALL_BUILD_TOOLS}" in true|false) ;; *) invalid "Invalid build-tool policy." ;; esac
-  case "${ALLOW_DESTRUCTIVE_GOAL_CHANGE}" in true|false) ;; *) invalid "Invalid destructive-goal policy." ;; esac
-  if [[ "${FEATURE_MODE}" == goal-plan || "${FEATURE_MODE}" == goal-apply ]]; then
-    case "${GOAL}" in memory-mode|app-direct|app-direct-not-interleaved) ;; *) invalid "Goal modes require an explicit supported --goal." ;; esac
-    [[ "${SOCKET_TARGET}" == all || "${SOCKET_TARGET}" =~ ^[0-9]+(,[0-9]+)*$ ]] ||
-      invalid "Goal modes require --socket=all or a comma-separated socket list."
-  elif [[ -n "${GOAL}" || -n "${SOCKET_TARGET}" || "${ALLOW_DESTRUCTIVE_GOAL_CHANGE}" == true ]]; then
-    invalid "Goal options are accepted only by goal-plan or goal-apply."
-  fi
-  if [[ "${FEATURE_MODE}" == goal-apply && "${ALLOW_DESTRUCTIVE_GOAL_CHANGE}" != true ]]; then
-    invalid "goal-apply requires --allow-destructive-goal-change."
-  fi
-  [[ "${FEATURE_MODE}" == apply || "${INSTALL_BUILD_TOOLS}" != true ]] ||
-    invalid "--install-build-tools is accepted only by apply."
+require.platform() {
+  local platform_id="" platform_version="" architecture=""
+  [[ -r /etc/os-release ]] || { log.error "Debian os-release metadata is unavailable."; return "${EXIT_BLOCKED}"; }
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  platform_id="${ID:-}"
+  platform_version="${VERSION_ID:-}"
+  architecture="$(dpkg --print-architecture 2>/dev/null || true)"
+  [[ "${platform_id}" == debian && "${platform_version}" == 13 && "${architecture}" == amd64 ]] || {
+    log.error "Supported platform is Debian 13 amd64; found ${platform_id:-unknown} ${platform_version:-unknown} ${architecture:-unknown}."
+    return "${EXIT_BLOCKED}"
+  }
 }
 
 configure.runtime.paths() {
   TMP_DIR="${RUNNER_RUNTIME_DIR}"
   PLAYBOOK_ROOT="${TMP_DIR}/runtime"
   EXTRA_VARS_PATH="${TMP_DIR}/cli.ipmctl.extra-vars.yml"
-  PREFLIGHT_REPORT_PATH="${TMP_DIR}/preflight.txt"
-  GOAL_PLAN_RESULT_PATH="${TMP_DIR}/goal-plan.result"
   COMMON_HELPER_PATH="${TMP_DIR}/${COMMON_HELPER_NAME}"
-  SOURCE_PROFILE_HELPER_PATH="${PLAYBOOK_ROOT}/files/ipmctl/source-profile.py"
-  SOURCE_MATRIX_PATH="${PLAYBOOK_ROOT}/files/ipmctl/compatibility-matrix.yml"
 }
 
 source.runner.common() {
@@ -229,6 +107,7 @@ source.runner.common() {
         repo_root="$(cd "${script_dir}/../.." && pwd -P)"
         RUNNER_LOCAL_REPO_ROOT="${repo_root}"
         RUNNER_HELPER_PATH="$(cd "$(dirname "${local_helper}")" && pwd)/$(basename "${local_helper}")"
+        # shellcheck source=setup/runner.common.sh
         source "${RUNNER_HELPER_PATH}"
         runner.create.runtime ipmctl "${RUNNER_TMP_PARENT}"
         configure.runtime.paths
@@ -236,14 +115,17 @@ source.runner.common() {
       fi
       ;;
   esac
+
   command -v wget >/dev/null 2>&1 || { log.error "wget is required."; exit "${EXIT_BLOCKED}"; }
   bootstrap_dir="$(mktemp -d "${RUNNER_TMP_PARENT%/}/devs-guide-ipmctl.XXXXXX")"
   chmod 0700 "${bootstrap_dir}"
   RUNNER_HELPER_PATH="${bootstrap_dir}/${RUNNER_HELPER_NAME}"
-  log "Fetching shared runner helper: ${RUNNER_HELPER_URL}"
-  wget -qO "${RUNNER_HELPER_PATH}" "${RUNNER_HELPER_URL}" && [[ -s "${RUNNER_HELPER_PATH}" ]] ||
-    { log.error "Failed to fetch ${RUNNER_HELPER_URL}"; exit "${EXIT_BLOCKED}"; }
+  if ! wget -qO "${RUNNER_HELPER_PATH}" "${RUNNER_HELPER_URL}" || [[ ! -s "${RUNNER_HELPER_PATH}" ]]; then
+    log.error "Failed to fetch ${RUNNER_HELPER_URL}."
+    exit "${EXIT_BLOCKED}"
+  fi
   bash -n "${RUNNER_HELPER_PATH}" || { log.error "Downloaded runner helper is invalid."; exit "${EXIT_BLOCKED}"; }
+  # shellcheck disable=SC1090
   source "${RUNNER_HELPER_PATH}"
   runner.adopt.runtime ipmctl "${bootstrap_dir}"
   configure.runtime.paths
@@ -252,57 +134,45 @@ source.runner.common() {
 source.release.common() {
   local local_setup_root=""
   [[ -z "${RUNNER_LOCAL_REPO_ROOT}" ]] || local_setup_root="${RUNNER_LOCAL_REPO_ROOT}/setup"
-  runner.source.release.common "${local_setup_root}" "${PAGES_BASE_URL}/setup" "${TMP_DIR}" "${COMMON_HELPER_NAME}" ||
-    { log.error "Unable to stage the shared release helper."; exit "${EXIT_BLOCKED}"; }
+  runner.source.release.common "${local_setup_root}" "${PAGES_BASE_URL}/setup" "${TMP_DIR}" "${COMMON_HELPER_NAME}" || {
+    log.error "Unable to stage the shared release helper."
+    exit "${EXIT_BLOCKED}"
+  }
 }
 
 prepare.feature.files() {
   local local_ansible_root=""
   [[ -z "${RUNNER_LOCAL_REPO_ROOT}" ]] || local_ansible_root="${RUNNER_LOCAL_REPO_ROOT}/ansible"
-  runner.prepare.ansible.feature "${local_ansible_root}" "${PAGES_BASE_URL}/ansible" "${PLAYBOOK_ROOT}" ||
-    { log.error "Unable to stage the ipmctl feature."; exit "${EXIT_BLOCKED}"; }
+  runner.prepare.ansible.feature "${local_ansible_root}" "${PAGES_BASE_URL}/ansible" "${PLAYBOOK_ROOT}" || {
+    log.error "Unable to stage the ipmctl feature."
+    exit "${EXIT_BLOCKED}"
+  }
   PACKAGE_PLAYBOOK_PATH="${FEATURE_PLAYBOOK_PATHS[0]}"
   FEATURE_PLAYBOOK_PATH="${FEATURE_PLAYBOOK_PATHS[1]}"
 }
 
-validate.reviewed.source() {
-  python3 "${SOURCE_PROFILE_HELPER_PATH}" \
-    --matrix "${SOURCE_MATRIX_PATH}" \
-    --profile "${PROFILE}" \
-    --repository-url "${REPOSITORY_URL}" \
-    --release "${RELEASE}" \
-    --commit "${COMMIT}" \
-    --edk2-repository-url "${EDK2_REPOSITORY_URL}" \
-    --edk2-release "${EDK2_RELEASE}" \
-    --edk2-commit "${EDK2_COMMIT}" >/dev/null ||
-    { log.error "The requested ipmctl/edk2 source tuple is not reviewed."; exit "${EXIT_BLOCKED}"; }
-}
-
-stage.one.source() {
-  local destination="$1" repository="$2" release="$3" commit="$4" label="$5" resolved=""
-  git init -q "${destination}"
-  git -C "${destination}" remote add origin "${repository}"
-  log "Fetching reviewed ${label} tag ${release} as the invoking user."
-  git -C "${destination}" fetch -q --depth=1 origin "refs/tags/${release}:refs/tags/${release}"
-  resolved="$(git -C "${destination}" rev-list -n 1 "refs/tags/${release}")"
-  [[ "${resolved}" == "${commit}" ]] ||
-    { log.error "${label} tag ${release} resolves to ${resolved}, not ${commit}."; exit "${EXIT_BLOCKED}"; }
-  git -C "${destination}" -c advice.detachedHead=false checkout -q --detach "${commit}"
-  [[ -z "$(git -C "${destination}" status --porcelain)" ]] ||
-    { log.error "Staged ${label} source is unexpectedly dirty."; exit "${EXIT_BLOCKED}"; }
-}
-
-stage.reviewed.sources() {
-  command -v git >/dev/null 2>&1 || { log.error "git is required to stage reviewed source."; exit "${EXIT_BLOCKED}"; }
-  STAGED_IPMCTL_SOURCE="${TMP_DIR}/upstream/ipmctl"
-  STAGED_EDK2_SOURCE="${TMP_DIR}/upstream/edk2"
-  mkdir -p "${TMP_DIR}/upstream"
-  stage.one.source "${STAGED_IPMCTL_SOURCE}" "${REPOSITORY_URL}" "${RELEASE}" "${COMMIT}" ipmctl
-  stage.one.source "${STAGED_EDK2_SOURCE}" "${EDK2_REPOSITORY_URL}" "${EDK2_RELEASE}" "${EDK2_COMMIT}" edk2
+resolve.build.identity() {
+  local passwd_record=""
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    BUILD_USER="${SUDO_USER:-}"
+    [[ -n "${BUILD_USER}" && "${BUILD_USER}" != root ]] || {
+      log.error "Run install as a non-root user with sudo access; a direct root invocation is not accepted."
+      return "${EXIT_BLOCKED}"
+    }
+  else
+    BUILD_USER="$(id -un)"
+  fi
+  BUILD_GROUP="$(id -gn "${BUILD_USER}" 2>/dev/null || true)"
+  passwd_record="$(getent passwd "${BUILD_USER}" 2>/dev/null || true)"
+  BUILD_HOME="$(printf '%s\n' "${passwd_record}" | cut -d: -f6)"
+  [[ "${BUILD_USER}" =~ ^[a-z_][a-z0-9_-]*[$]?$ && "${BUILD_GROUP}" =~ ^[a-z_][a-z0-9_-]*[$]?$ && "${BUILD_HOME}" == /* && -d "${BUILD_HOME}" ]] || {
+    log.error "Unable to resolve a safe build user and home directory."
+    return "${EXIT_BLOCKED}"
+  }
 }
 
 write.extra.vars.file() {
-  cat > "${EXTRA_VARS_PATH}" <<EOF_VARS
+  cat >"${EXTRA_VARS_PATH}" <<EOF_VARS
 ---
 ansible_python_interpreter_managed: "/usr/bin/python3"
 package_catalog_url: "${PAGES_BASE_URL}/ansible/packages.yml"
@@ -310,104 +180,110 @@ package_catalog_filename: "packages.yml"
 package_group_allowlist: ["ipmctl_build"]
 package_group_overrides:
   ipmctl_build: true
-ipmctl_mode: "${FEATURE_MODE}"
-ipmctl_profile: "${PROFILE}"
-ipmctl_repository_url: "${REPOSITORY_URL}"
-ipmctl_release: "${RELEASE}"
-ipmctl_commit: "${COMMIT}"
-ipmctl_edk2_repository_url: "${EDK2_REPOSITORY_URL}"
-ipmctl_edk2_release: "${EDK2_RELEASE}"
-ipmctl_edk2_commit: "${EDK2_COMMIT}"
-ipmctl_build_type: "${BUILD_TYPE}"
-ipmctl_install_build_tools: ${INSTALL_BUILD_TOOLS}
-ipmctl_staged_source_path: "${STAGED_IPMCTL_SOURCE}"
-ipmctl_staged_edk2_path: "${STAGED_EDK2_SOURCE}"
-ipmctl_goal: "${GOAL}"
-ipmctl_socket_target: "${SOCKET_TARGET}"
-ipmctl_goal_plan_result_path: "${GOAL_PLAN_RESULT_PATH}"
-ipmctl_goal_confirmation_authorized: ${GOAL_CONFIRMATION_AUTHORIZED}
+ipmctl_mode: "install"
+ipmctl_build_user: "${BUILD_USER}"
+ipmctl_build_group: "${BUILD_GROUP}"
+ipmctl_build_home: "${BUILD_HOME}"
 EOF_VARS
+  chmod 0600 "${EXTRA_VARS_PATH}"
 }
 
-run.read.only.preflight() {
-  : > "${PREFLIGHT_REPORT_PATH}"
-  runner.report.text "${PREFLIGHT_REPORT_PATH}" "Managed ipmctl facts" /etc/ansible/debian/facts/ipmctl.yml
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Debian release" sed -n '1,20p' /etc/os-release
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Installed ipmctl binary" sh -c 'command -v ipmctl && ipmctl version'
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Debian ipmctl package policy" apt-cache policy ipmctl
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Intel Optane PMem modules" ipmctl show -a -dimm
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Intel Optane PMem topology" ipmctl show -topology
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Persistent-memory resources" ipmctl show -u B -memoryresources
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Persistent-memory regions" ipmctl show -a -region
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Persistent-memory capabilities" ipmctl show -a -system -capabilities
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Pending persistent-memory goal" ipmctl show -a -goal
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Linux persistent-memory devices" ndctl list -D
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Linux persistent-memory regions" ndctl list -R
-  runner.report.command "${PREFLIGHT_REPORT_PATH}" "Linux persistent-memory namespaces" ndctl list -N
-  printf '\n## Reviewed source policy\nprofile=%s\nipmctl=%s %s %s\nedk2=%s %s %s\nbuild_type=%s\n' \
-    "${PROFILE}" "${REPOSITORY_URL}" "${RELEASE}" "${COMMIT}" \
-    "${EDK2_REPOSITORY_URL}" "${EDK2_RELEASE}" "${EDK2_COMMIT}" "${BUILD_TYPE}" |
-    tee -a "${PREFLIGHT_REPORT_PATH}"
-  log "Preflight is read-only: no source was cloned, package installed, fact written, or PMem goal changed."
-}
-
-run.package.playbook() {
-  runner.run.ansible.playbooks "${EXTRA_VARS_PATH}" "${PACKAGE_PLAYBOOK_PATH}"
-}
-
-run.feature.playbook() {
-  runner.run.ansible.playbooks "${EXTRA_VARS_PATH}" "${FEATURE_PLAYBOOK_PATH}"
-}
-
-ensure.local.ansible.as.root() {
-  runner.ensure.local.ansible
-}
-
-run.managed.mode() {
-  runner.ensure.privileged.session || exit "${EXIT_BLOCKED}"
-  [[ -x "${ANSIBLE_VENV_BIN}" ]] || ensure.local.ansible.as.root
-  if [[ "${FEATURE_MODE}" == apply && "${INSTALL_BUILD_TOOLS}" == true ]]; then
-    write.extra.vars.file
-    log "Installing the opt-in ipmctl source-build package group."
-    run.package.playbook
+software.verify() {
+  local version_output="" version_token="" linkage_output=""
+  [[ -x "${IPMCTL_BIN}" ]] || { log.error "Reviewed binary is unavailable: ${IPMCTL_BIN}"; return "${EXIT_SOFTWARE}"; }
+  if ! version_output="$(${IPMCTL_BIN} version 2>&1)"; then
+    log.error "ipmctl version failed: ${version_output}"
+    return "${EXIT_SOFTWARE}"
   fi
-  if [[ "${FEATURE_MODE}" == apply ]]; then
-    stage.reviewed.sources
+  version_token="$(printf '%s\n' "${version_output}" | grep -Eo '[0-9]{2}[.][0-9]{2}[.][0-9]{2}[.][0-9]{4}' | head -n1 || true)"
+  [[ "${version_token}" == "${IPMCTL_VERSION}" ]] || {
+    log.error "Expected ipmctl ${IPMCTL_VERSION}; observed ${version_token:-unknown}."
+    return "${EXIT_SOFTWARE}"
+  }
+  if ! linkage_output="$(ldd "${IPMCTL_BIN}" 2>&1)"; then
+    log.error "Unable to inspect ipmctl runtime linkage: ${linkage_output}"
+    return "${EXIT_SOFTWARE}"
   fi
-  if [[ "${FEATURE_MODE}" == goal-apply ]]; then
-    FEATURE_MODE=goal-plan
-    write.extra.vars.file
-    run.feature.playbook
-    if grep -Fxq 'no_op=true' "${GOAL_PLAN_RESULT_PATH}"; then
-      log "Requested PMem mode is already active and settled; refreshing facts without confirmation or mutation."
-      FEATURE_MODE=validate
-      write.extra.vars.file
-      run.feature.playbook
-      return 0
+  [[ "${linkage_output}" != *"not found"* ]] || {
+    log.error "ipmctl has unresolved runtime linkage."
+    printf '%s\n' "${linkage_output}" >&2
+    return "${EXIT_SOFTWARE}"
+  }
+  printf '[PASS] software  version=%s binary=%s\n' "${version_token}" "${IPMCTL_BIN}"
+  printf '%s\n' "${linkage_output}"
+}
+
+hardware.probe() {
+  local id="$1" label="$2" output_path="" error_path="" status=0
+  shift 2
+  output_path="${RUNNER_RUNTIME_DIR}/${id}.stdout"
+  error_path="${RUNNER_RUNTIME_DIR}/${id}.stderr"
+  if runner.run.as.root "${IPMCTL_BIN}" "$@" >"${output_path}" 2>"${error_path}"; then
+    status=0
+  else
+    status=$?
+  fi
+  printf '\n## %s\n' "${label}"
+  [[ ! -s "${output_path}" ]] || sed -n '1,320p' "${output_path}"
+  [[ ! -s "${error_path}" ]] || sed -n '1,160p' "${error_path}" >&2
+  if [[ "${status}" -eq 0 ]]; then
+    if [[ ! -s "${output_path}" ]]; then
+      printf '[WARN] %s returned no output\n' "${label}" >&2
+      return 1
     fi
-    runner.confirm.exact \
-      "The displayed ipmctl goal can destroy App Direct data and requires a BIOS reboot to apply. No namespace, PCD, firmware, security, or reboot operation will be performed automatically." \
-      "${GOAL_CONFIRMATION}"
-    GOAL_CONFIRMATION_AUTHORIZED=true
-    FEATURE_MODE=goal-apply
+    printf '[PASS] %s\n' "${label}"
+  else
+    printf '[WARN] %s (exit=%s)\n' "${label}" "${status}" >&2
   fi
+  return "${status}"
+}
+
+run.verify() {
+  local hardware_warning=0
+  local dimms_result=WARN topology_result=WARN memoryresources_result=WARN goal_result=WARN
+  software.verify || return "${EXIT_SOFTWARE}"
+  runner.ensure.privileged.session || return "${EXIT_BLOCKED}"
+  if hardware.probe dimms "PMem DIMMs" show -a -dimm; then dimms_result=PASS; else hardware_warning=1; fi
+  if hardware.probe topology "PMem topology" show -topology; then topology_result=PASS; else hardware_warning=1; fi
+  if hardware.probe memoryresources "PMem memory resources" show -memoryresources; then memoryresources_result=PASS; else hardware_warning=1; fi
+  if hardware.probe goal "PMem current or pending goal" show -a -goal; then goal_result=PASS; else hardware_warning=1; fi
+  printf '\n%-24s | %-6s | %s\n' Probe Result Meaning
+  printf '%-24s-+-%-6s-+-%s\n' '------------------------' '------' '---------------------------------------------'
+  printf '%-24s | %-6s | %s\n' 'version/linkage' PASS 'CLI installation health'
+  printf '%-24s | %-6s | %s\n' DIMMs "${dimms_result}" 'module discovery'
+  printf '%-24s | %-6s | %s\n' topology "${topology_result}" 'platform topology/PMTT visibility'
+  printf '%-24s | %-6s | %s\n' 'memory resources' "${memoryresources_result}" 'current volatile/App Direct allocation'
+  printf '%-24s | %-6s | %s\n' 'current/pending goal' "${goal_result}" 'read-only goal report'
+  if [[ "${hardware_warning}" -ne 0 ]]; then
+    log "Software is installed, but one or more hardware probes require human review."
+    return "${EXIT_HARDWARE}"
+  fi
+  log "Software and all read-only hardware probes passed."
+}
+
+run.install() {
+  resolve.build.identity
+  source.release.common
+  prepare.feature.files
+  runner.ensure.privileged.session || return "${EXIT_BLOCKED}"
+  [[ -x "${ANSIBLE_VENV_BIN}" ]] || runner.ensure.local.ansible
   write.extra.vars.file
-  run.feature.playbook
+  log "Installing the reviewed ipmctl build dependency group."
+  runner.run.ansible.playbooks "${EXTRA_VARS_PATH}" "${PACKAGE_PLAYBOOK_PATH}"
+  log "Building and installing the pinned ipmctl source tuple."
+  runner.run.ansible.playbooks "${EXTRA_VARS_PATH}" "${FEATURE_PLAYBOOK_PATH}"
+  run.verify
 }
 
 main() {
   parse.arguments "$@"
   [[ "${SHOW_HELP}" -eq 0 ]] || { usage; return 0; }
-  validate.configuration
+  require.platform
   source.runner.common
-  source.release.common
-  require.debian
-  prepare.feature.files
-  validate.reviewed.source
-  if [[ "${FEATURE_MODE}" == preflight ]]; then
-    run.read.only.preflight
+  if [[ "${FEATURE_MODE}" == install ]]; then
+    run.install
   else
-    run.managed.mode
+    run.verify
   fi
 }
 

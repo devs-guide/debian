@@ -1,8 +1,0 @@
----DimmID=0x0001---
-   ManageabilityState=Manageable
-   HealthState=Healthy
-   LockState=Disabled, Frozen
----DimmID=0x1001---
-   ManageabilityState=Manageable
-   HealthState=Healthy
-   LockState=Unlocked

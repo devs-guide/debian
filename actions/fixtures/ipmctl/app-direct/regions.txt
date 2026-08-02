@@ -1,4 +1,0 @@
-SocketID | ISetID            | PersistentMemoryType | Capacity       | FreeCapacity | HealthState
-=================================================================================================
-0x0000   | 0x111111111111111 | AppDirect           | 206158430208 B | 0 B          | Healthy
-0x0001   | 0x222222222222222 | AppDirect           | 206158430208 B | 0 B          | Healthy
