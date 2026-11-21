@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="${REPO_ROOT}"
 PUBLICATION_LABEL="test.publication-manifest"
 REAL_MANIFEST="${ROOT}/actions/publication.manifest"
+PAGES_WORKFLOW="${ROOT}/.github/workflows/www.pages.yml"
 TEST_PARENT="${TMPDIR:-/tmp}"
 TEST_ROOT="$(mktemp -d "${TEST_PARENT%/}/test.publication-manifest.XXXXXX")"
 rc=0
@@ -97,5 +98,35 @@ expect_failure "filesystem root output" publication.output.path.is.safe /
 if [[ -n "${HOME:-}" ]]; then
   expect_failure "home output" publication.output.path.is.safe "${HOME}"
 fi
+
+if [[ ! -f "${PAGES_WORKFLOW}" ]]; then
+  fail "Pages workflow is missing"
+else
+  deploy_job="$(sed -n '/^  deploy-www:/,$p' "${PAGES_WORKFLOW}")"
+  for marker in \
+    "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" \
+    'needs: build-www' \
+    'path: .pages-artifact' \
+    'publish_dir: ./.pages-artifact' \
+    'publish_branch: www' \
+    'force_orphan: true'; do
+    if ! grep -Fq -- "${marker}" <<< "${deploy_job}"; then
+      fail "Pages deploy job is missing required artifact-isolation marker: ${marker}"
+    fi
+  done
+  if grep -Eq '^[[:space:]]+(path:[[:space:]]+static|publish_dir:[[:space:]]+\.?/?static)[[:space:]]*$' <<< "${deploy_job}"; then
+    fail "Pages deploy job must not overlay its downloaded artifact onto tracked static content"
+  fi
+fi
+
+for retired_nvlink_artifact in \
+  ansible/files/nvlink/nvidia-cuda-smoke.cu \
+  ansible/files/nvlink/nvidia-topology-parser.py \
+  static/ansible/files/nvlink/nvidia-cuda-smoke.cu \
+  static/ansible/files/nvlink/nvidia-topology-parser.py; do
+  if [[ -e "${REPO_ROOT}/${retired_nvlink_artifact}" ]]; then
+    fail "retired NVLink artifact remains publishable: ${retired_nvlink_artifact}"
+  fi
+done
 
 exit "${rc}"

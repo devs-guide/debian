@@ -49,3 +49,6 @@ The output directory is disposable generated content. Do not hand-edit
 Pull requests run runtime validation and build this artifact without
 deployment. Only a successful push to `main` grants the deploy job write
 permission and publishes the previously built artifact to the `www` branch.
+The deploy job downloads into the isolated, untracked `.pages-artifact/`
+directory so files left in the repository's compatibility `static/` tree
+cannot leak into the deployed artifact.
