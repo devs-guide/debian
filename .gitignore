@@ -27,6 +27,11 @@ tools/
 logs/
 log/
 
+# Generated runtime and publication artifacts
+__pycache__/
+*.py[cod]
+/.pages-artifact/
+
 # Legacy generated docs are replaced by the Pages build.
 /static/docs/
 
