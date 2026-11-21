@@ -1,0 +1,384 @@
+---
+- name: "[debian]: touchscreen setup"
+  hosts: all
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed | default('/usr/bin/python3') }}"
+    touchscreen_enable: false
+    touchscreen_mode: "apply"
+    touchscreen_user: "app"
+    touchscreen_match: "eGalax|D-WAV|Titan6001|TouchController|Touchscreen"
+    touchscreen_primary_id: ""
+    touchscreen_disable_ids: ""
+    touchscreen_output: ""
+    touchscreen_matrix: "identity"
+    touchscreen_custom_matrix: "1 0 0 0 1 0 0 0 1"
+    touchscreen_config_file: "/etc/default/debian-touchscreen"
+    touchscreen_apply_script_path: "/usr/local/bin/debian-touchscreen-apply"
+    touchscreen_list_script_path: "/usr/local/bin/debian-touchscreen-list"
+    touchscreen_xsession_hook_dir: "/home/app/.config/debian/xsession.d"
+    touchscreen_hook_script: "20-touchscreen.sh"
+    touchscreen_runtime_facts_path: "/etc/ansible/debian/facts/touchscreen.yml"
+    touchscreen_install_packages: true
+    touchscreen_packages:
+      - xinput
+      - xinput-calibrator
+      - xserver-xorg-input-evdev
+    touchscreen_install_evtest: false
+
+  pre_tasks:
+    - name: Check Debian host marker
+      ansible.builtin.stat:
+        path: /etc/debian_version
+      register: touchscreen_debian_version_marker
+
+    - name: Assert Debian family host
+      ansible.builtin.assert:
+        that:
+          - touchscreen_debian_version_marker.stat.exists
+        fail_msg: "Touchscreen feature is supported only on Debian-family hosts."
+
+    - name: Normalize touchscreen mode and target settings
+      ansible.builtin.set_fact:
+        touchscreen_mode_effective: "{{ touchscreen_mode | default('apply') | lower }}"
+        touchscreen_enable_effective: "{{ touchscreen_enable | default(false) | bool }}"
+
+    - name: Validate touchscreen mode
+      ansible.builtin.assert:
+        that:
+          - touchscreen_mode_effective in ['preflight', 'apply', 'disable']
+        fail_msg: "Unsupported touchscreen_mode={{ touchscreen_mode_effective }}. Use preflight, apply, or disable."
+
+    - name: Check required package installability
+      ansible.builtin.command:
+        argv:
+          - apt-cache
+          - policy
+          - "{{ item }}"
+      register: touchscreen_pkg_policy
+      changed_when: false
+      loop: "{{ touchscreen_packages + ((touchscreen_install_evtest | default(false) | bool) | ternary(['evtest'], [])) }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Capture touchscreen user passwd entry
+      ansible.builtin.command:
+        argv:
+          - getent
+          - passwd
+          - "{{ touchscreen_user }}"
+      register: touchscreen_user_getent
+      changed_when: false
+      failed_when: false
+
+    - name: Assert touchscreen user exists
+      ansible.builtin.assert:
+        that:
+          - touchscreen_user_getent.rc == 0
+          - touchscreen_user_getent.stdout | length > 0
+        fail_msg: "Touchscreen user does not exist: {{ touchscreen_user }}"
+
+    - name: Resolve touchscreen user identity
+      ansible.builtin.set_fact:
+        touchscreen_user_fields: "{{ touchscreen_user_getent.stdout.split(':') }}"
+        touchscreen_user_uid_effective: "{{ (touchscreen_user_getent.stdout.split(':'))[2] }}"
+        touchscreen_user_gid_effective: "{{ (touchscreen_user_getent.stdout.split(':'))[3] }}"
+        touchscreen_user_home_effective: "{{ (touchscreen_user_getent.stdout.split(':'))[5] }}"
+
+    - name: Assert touchscreen user has expected passwd fields
+      ansible.builtin.assert:
+        that:
+          - touchscreen_user_fields | length >= 7
+        fail_msg: "Could not parse passwd entry for {{ touchscreen_user }}."
+
+    - name: Capture and validate touchscreen user home
+      ansible.builtin.stat:
+        path: "{{ touchscreen_user_home_effective }}"
+      register: touchscreen_user_home_stat
+
+    - name: Assert touchscreen user home exists
+      ansible.builtin.assert:
+        that:
+          - touchscreen_user_home_stat.stat.exists
+          - touchscreen_user_home_stat.stat.isdir
+        fail_msg: "Touchscreen user home is missing: {{ touchscreen_user_home_effective }}"
+
+    - name: Resolve touchscreen derived paths
+      ansible.builtin.set_fact:
+        touchscreen_config_file_effective: "{{ touchscreen_config_file }}"
+        touchscreen_apply_script_path_effective: "{{ touchscreen_apply_script_path }}"
+        touchscreen_list_script_path_effective: "{{ touchscreen_list_script_path }}"
+        touchscreen_xsession_hook_dir_effective: "{{ touchscreen_xsession_hook_dir }}"
+        touchscreen_hook_script_path_effective: "{{ touchscreen_xsession_hook_dir }}/{{ touchscreen_hook_script }}"
+        touchscreen_packages_effective: >-
+          {{
+            touchscreen_packages
+            if (touchscreen_packages is sequence and touchscreen_packages is not string)
+            else []
+          }}
+        touchscreen_install_evtest_effective: "{{ touchscreen_install_evtest | default(false) | bool }}"
+
+    - name: Capture touchscreen preflight summary
+      ansible.builtin.debug:
+        msg:
+          enabled: "{{ touchscreen_enable_effective | bool }}"
+          mode: "{{ touchscreen_mode_effective }}"
+          user: "{{ touchscreen_user }}"
+          hook_dir: "{{ touchscreen_xsession_hook_dir_effective }}"
+          match: "{{ touchscreen_match }}"
+          install_packages: "{{ touchscreen_install_packages | bool }}"
+          primary_id: "{{ touchscreen_primary_id }}"
+          disable_ids: "{{ touchscreen_disable_ids }}"
+          matrix: "{{ touchscreen_matrix }}"
+          custom_matrix: "{{ touchscreen_custom_matrix }}"
+          output: "{{ touchscreen_output }}"
+
+    - name: End play in preflight mode
+      ansible.builtin.meta: end_play
+      when: touchscreen_mode_effective == 'preflight'
+
+  tasks:
+    - name: Install touchscreen packages
+      ansible.builtin.apt:
+        name: "{{ touchscreen_packages_effective }}"
+        state: present
+        install_recommends: false
+      when:
+        - touchscreen_mode_effective == 'apply'
+        - touchscreen_enable_effective | bool
+        - touchscreen_install_packages | bool
+
+    - name: Install optional evtest utility
+      ansible.builtin.apt:
+        name: evtest
+        state: present
+        install_recommends: false
+      when:
+        - touchscreen_mode_effective == 'apply'
+        - touchscreen_enable_effective | bool
+        - touchscreen_install_evtest_effective | bool
+
+    - name: Ensure touchscreen config directory exists
+      ansible.builtin.file:
+        path: "{{ touchscreen_config_file_effective | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when:
+        - touchscreen_mode_effective == 'apply'
+        - touchscreen_enable_effective | bool
+
+    - name: Write touchscreen runtime config defaults
+      ansible.builtin.copy:
+        dest: "{{ touchscreen_config_file_effective }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          DEBIAN_TOUCHSCREEN_ENABLE={{ '1' if touchscreen_enable_effective | bool else '0' }}
+          DEBIAN_TOUCHSCREEN_MATCH='{{ touchscreen_match }}'
+          DEBIAN_TOUCHSCREEN_PRIMARY_ID='{{ touchscreen_primary_id }}'
+          DEBIAN_TOUCHSCREEN_DISABLE_IDS='{{ touchscreen_disable_ids }}'
+          DEBIAN_TOUCHSCREEN_OUTPUT='{{ touchscreen_output }}'
+          DEBIAN_TOUCHSCREEN_MATRIX='{{ touchscreen_matrix }}'
+          DEBIAN_TOUCHSCREEN_CUSTOM_MATRIX='{{ touchscreen_custom_matrix }}'
+          DEBIAN_TOUCHSCREEN_CONFIG_FILE='{{ touchscreen_config_file_effective }}'
+      when:
+        - touchscreen_mode_effective == 'apply'
+        - touchscreen_enable_effective | bool
+
+    - name: Ensure touchscreen apply script parent directory exists
+      ansible.builtin.file:
+        path: "{{ touchscreen_apply_script_path_effective | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when:
+        - touchscreen_mode_effective == 'apply'
+
+    - name: Write touchscreen list helper script
+      ansible.builtin.copy:
+        dest: "{{ touchscreen_list_script_path_effective }}"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          export DISPLAY="${DISPLAY:-:0}"
+          export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+          exec xinput list
+      when:
+        - touchscreen_mode_effective == 'apply'
+
+    - name: Write touchscreen apply helper script
+      ansible.builtin.copy:
+        dest: "{{ touchscreen_apply_script_path_effective }}"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          export DISPLAY="${DISPLAY:-:0}"
+          export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+
+          CONFIG_FILE="${DEBIAN_TOUCHSCREEN_CONFIG_FILE:-${DEBIAN_TOUCHSCREEN_CONFIG:-{{ touchscreen_config_file_effective }}}}"
+          if [ ! -r "${CONFIG_FILE}" ]; then
+            exit 0
+          fi
+          . "${CONFIG_FILE}"
+
+          case "${DEBIAN_TOUCHSCREEN_ENABLE:-0}" in
+            1|true|yes|on) ;;
+            *) exit 0 ;;
+          esac
+
+          PRIMARY_ID="${DEBIAN_TOUCHSCREEN_PRIMARY_ID:-}"
+          MATCH="${DEBIAN_TOUCHSCREEN_MATCH:-}"
+          DISABLE_IDS="${DEBIAN_TOUCHSCREEN_DISABLE_IDS:-}"
+          OUTPUT="${DEBIAN_TOUCHSCREEN_OUTPUT:-}"
+          MATRIX_MODE="${DEBIAN_TOUCHSCREEN_MATRIX:-identity}"
+          CUSTOM_MATRIX="${DEBIAN_TOUCHSCREEN_CUSTOM_MATRIX:-1 0 0 0 1 0 0 0 1}"
+
+          for disabled_id in ${DISABLE_IDS}; do
+            xinput disable "${disabled_id}" 2>/dev/null || true
+          done
+
+          if command -v xinput >/dev/null 2>&1; then
+            if [ -z "${PRIMARY_ID}" ]; then
+              PRIMARY_ID="$(xinput list 2>/dev/null | awk -v match_re="${MATCH}" 'tolower($0) ~ tolower(match_re) { if (match($0, /id=([0-9]+)/, arr)) { print arr[1]; exit } }')"
+            fi
+          fi
+
+          if [ -z "${PRIMARY_ID}" ]; then
+            exit 0
+          fi
+
+          case "${MATRIX_MODE}" in
+            identity)
+              MATRIX_VALUES="1 0 0 0 1 0 0 0 1"
+              ;;
+            inverted)
+              MATRIX_VALUES="-1 0 1 0 -1 1 0 0 1"
+              ;;
+            left)
+              MATRIX_VALUES="0 -1 1 1 0 0 0 0 1"
+              ;;
+            right)
+              MATRIX_VALUES="0 1 0 -1 0 1 0 0 1"
+              ;;
+            custom)
+              MATRIX_VALUES="${CUSTOM_MATRIX}"
+              ;;
+            *)
+              MATRIX_VALUES="1 0 0 0 1 0 0 0 1"
+              ;;
+          esac
+
+          if [ -n "${OUTPUT}" ]; then
+            xinput map-to-output "${PRIMARY_ID}" "${OUTPUT}" 2>/dev/null || true
+          fi
+
+          xinput set-prop "${PRIMARY_ID}" "Coordinate Transformation Matrix" ${MATRIX_VALUES} 2>/dev/null || true
+      when:
+        - touchscreen_mode_effective == 'apply'
+
+    - name: Ensure touchscreen xsession hook directory exists
+      ansible.builtin.file:
+        path: "{{ touchscreen_xsession_hook_dir_effective }}"
+        state: directory
+        owner: "{{ touchscreen_user_uid_effective }}"
+        group: "{{ touchscreen_user_gid_effective }}"
+        mode: "0755"
+      when:
+        - touchscreen_mode_effective == 'apply'
+        - touchscreen_enable_effective | bool
+
+    - name: Install touchscreen xsession hook
+      ansible.builtin.copy:
+        dest: "{{ touchscreen_hook_script_path_effective }}"
+        owner: "{{ touchscreen_user_uid_effective }}"
+        group: "{{ touchscreen_user_gid_effective }}"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env sh
+          if [ -x "{{ touchscreen_apply_script_path_effective }}" ]; then
+            ( "{{ touchscreen_apply_script_path_effective }}" ) >/tmp/debian-touchscreen-apply.log 2>&1 || true
+          fi
+      when:
+        - touchscreen_mode_effective == 'apply'
+        - touchscreen_enable_effective | bool
+
+    - name: Remove touchscreen xsession hook on disable
+      ansible.builtin.file:
+        path: "{{ touchscreen_xsession_hook_dir_effective }}/{{ touchscreen_hook_script }}"
+        state: absent
+      when:
+        - touchscreen_mode_effective == 'disable'
+
+    - name: Remove touchscreen runtime apply helper on disable
+      ansible.builtin.file:
+        path: "{{ touchscreen_apply_script_path_effective }}"
+        state: absent
+      when:
+        - touchscreen_mode_effective == 'disable'
+
+    - name: Remove touchscreen runtime list helper on disable
+      ansible.builtin.file:
+        path: "{{ touchscreen_list_script_path_effective }}"
+        state: absent
+      when:
+        - touchscreen_mode_effective == 'disable'
+
+    - name: Remove touchscreen runtime config on disable
+      ansible.builtin.file:
+        path: "{{ touchscreen_config_file_effective }}"
+        state: absent
+      when:
+        - touchscreen_mode_effective == 'disable'
+
+    - name: Ensure touchscreen runtime facts directory exists
+      ansible.builtin.file:
+        path: "{{ touchscreen_runtime_facts_path | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write touchscreen runtime facts
+      ansible.builtin.copy:
+        dest: "{{ touchscreen_runtime_facts_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          ---
+          debian_touchscreen_runtime:
+            enabled: {{ (touchscreen_mode_effective == 'apply') and (touchscreen_enable_effective | bool) }}
+            mode: "{{ touchscreen_mode_effective }}"
+            user: "{{ touchscreen_user }}"
+            match: "{{ touchscreen_match }}"
+            primary_id: "{{ touchscreen_primary_id }}"
+            disable_ids: "{{ touchscreen_disable_ids }}"
+            output: "{{ touchscreen_output }}"
+            matrix: "{{ touchscreen_matrix }}"
+            custom_matrix: "{{ touchscreen_custom_matrix }}"
+            hook_dir: "{{ touchscreen_xsession_hook_dir_effective }}"
+            config_file: "{{ touchscreen_config_file_effective }}"
+            apply_script: "{{ touchscreen_apply_script_path_effective }}"
+            list_script: "{{ touchscreen_list_script_path_effective }}"
+
+    - name: Print touchscreen next steps
+      ansible.builtin.debug:
+        msg:
+          - "Touchscreen setup complete for mode={{ touchscreen_mode_effective }} user={{ touchscreen_user }}"
+          - "Runtime facts: {{ touchscreen_runtime_facts_path }}"
+          - "Hook file: {{ touchscreen_hook_script_path_effective }}"

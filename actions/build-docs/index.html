@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Build documentation action · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/build-docs/">Build
+documentation</a>
+    </p>
+    <article>
+      <h1 id="build-documentation-action">Build documentation
+      action</h1>
+      <p>Renders the canonical Markdown hierarchy in <code>docs/</code>
+      into an existing static publish directory.</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/build.docs.sh <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--source</span> docs <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--output</span> static <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--site-root</span> /debian</span></code></pre></div>
+      <p>Pandoc is an explicit prerequisite. The action never installs
+      it; the Pages workflow supplies it. Canonical pages require
+      <code>title</code> and <code>section</code> front matter, and
+      their optional <code>source_path</code> must resolve in the
+      checkout.</p>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Option</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>--source docs</code></td>
+      <td>Selects the canonical Markdown source hierarchy.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--output static</code></td>
+      <td>Writes rendered HTML and assets to the selected generated
+      directory.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--site-root /debian</code></td>
+      <td>Generates project-site links for
+      <code>https://devs-guide.github.io/debian/</code>. Use the actual
+      project path when validating another Pages site.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Legacy files retained at the old <code>docs/</code> paths are
+      not rendered as current public pages. They remain in the
+      repository while their content is migrated into the canonical
+      hierarchy.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/build.docs.sh"><code>actions/build.docs.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

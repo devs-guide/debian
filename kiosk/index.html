@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Kiosk workflow · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/kiosk/">Kiosk</a>
+    </p>
+    <article>
+      <h1 id="kiosk-workflow">Kiosk workflow</h1>
+      <p>The kiosk feature is intentionally split into small runners
+      with explicit ownership:</p>
+      <ol type="1">
+      <li>X11 provides the base X packages.</li>
+      <li>STARTX owns local-console X startup and the managed
+      wrapper.</li>
+      <li>Openbox owns the session configuration.</li>
+      <li>Touchscreen is optional and device-specific.</li>
+      <li>Autologin owns the console login behavior.</li>
+      </ol>
+      <p>Use <a href="/debian/cli/kiosk.app/">kiosk app</a> to
+      orchestrate that order, or review the related <a
+      href="/debian/kiosk/app-launch/">app launch</a> and <a
+      href="/debian/kiosk/remote-debug/">remote-debug</a> guidance
+      first.</p>
+      <h2 id="complete-local-xopenbox-kiosk-profile">Complete local
+      X/Openbox kiosk profile</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/kiosk.app.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_AUTOAPP_MODE=apply <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_ENABLE=1 <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_USER=app <span class="dt">\</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_TTY=tty1 <span class="dt">\</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_PROFILE=startx <span class="dt">\</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_COMMAND=/usr/local/bin/kiosk-startx <span class="dt">\</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_RUN_X11=1 <span class="dt">\</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_RUN_STARTX=1 <span class="dt">\</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_RUN_OPENBOX=1 <span class="dt">\</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>      DEBIAN_AUTOAPP_RUN_TOUCHSCREEN=0 <span class="dt">\</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <p>This command deliberately leaves touchscreen support off until
+      the target input device and display mapping have been verified.
+      Enable it with <code>DEBIAN_AUTOAPP_RUN_TOUCHSCREEN=1</code> only
+      after reviewing the <a href="/debian/cli/touchscreen/">touchscreen
+      runner</a> controls.</p>
+      <p>The <a href="/debian/kiosk/reference/">reference material</a>
+      is retained for historical device notes. It is not a substitute
+      for the current runner documentation.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/kiosk.app.sh"><code>setup/cli/kiosk.app.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

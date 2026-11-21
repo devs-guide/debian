@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "feature": "ktransformers",
+      "id": "v0.6.3-icelake-sm86-source",
+      "repository_url": "https://github.com/kvcache-ai/ktransformers.git",
+      "release": "v0.6.3",
+      "commit": "ce7c3ddbe93f7ac1f992375eed54058bbc512646",
+      "sglang_repository_url": "https://github.com/kvcache-ai/sglang.git",
+      "sglang_commit": "8b636f9008dbad58c0a8e481b03e794739e6c146",
+      "install_profile": "source",
+      "python_version": "3.12.3",
+      "python_source_url": "https://www.python.org/ftp/python/3.12.3/Python-3.12.3.tar.xz",
+      "python_source_sha256": "56bfef1fdfc1221ce6720e43a661e3eb41785dd914ce99698d8c7896af4bdaa1",
+      "cuda_architectures": "86",
+      "cpu_profile": "icelake-avx512-vnni",
+      "cpu_environment": {
+        "CPUINFER_CPU_INSTRUCT": "FANCY",
+        "CPUINFER_ENABLE_AMX": "OFF",
+        "CPUINFER_ENABLE_AVX512_VNNI": "ON",
+        "CPUINFER_ENABLE_AVX512_BF16": "OFF"
+      }
+    }
+  ]
+}

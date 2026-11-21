@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>X11 runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/x11/">X11</a>
+    </p>
+    <article>
+      <h1 id="x11-runner">X11 runner</h1>
+      <p>Configures the minimal X11 prerequisites used by the kiosk
+      workflow. Modes are <code>preflight</code>, <code>apply</code>,
+      and <code>disable</code>.</p>
+      <h2 id="install-the-x11-prerequisite-layer">Install the X11
+      prerequisite layer</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/x11.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_X11_MODE=apply <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_X11_ENABLE=1 <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_X11_INSTALL_PACKAGES=1 <span class="dt">\</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>DEBIAN_X11_MODE</code></td>
+      <td>Uses <code>preflight</code>, <code>apply</code>, or
+      <code>disable</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_X11_ENABLE</code></td>
+      <td>Explicitly enables or disables the managed X11 feature.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_X11_INSTALL_PACKAGES</code></td>
+      <td>Allows this runner to install its X11 package set during
+      apply.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_X11_PACKAGES</code></td>
+      <td>Optional explicit package-list override; leave unset unless
+      the host policy requires a reviewed change.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Use it independently for a narrow X11 setup or let
+      <code>kiosk.app.sh</code> orchestrate it as part of a managed
+      kiosk profile.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/x11.sh"><code>setup/cli/x11.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/x11.sh">https://devs-guide.github.io/debian/setup/cli/x11.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/x11.sh">https://devs-guide.github.io/debian/setup/cli/x11.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

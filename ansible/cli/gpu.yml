@@ -1,0 +1,31 @@
+---
+- name: "[debian]: shared GPU inventory and topology snapshot"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed }}"
+    gpu_mode: apply
+    gpu_vendor: auto
+    gpu_facts_path: /etc/ansible/debian/facts/gpu.yml
+    gpu_inventory_helper_path: "{{ playbook_dir }}/../files/gpu/gpu-inventory.py"
+    gpu_write_facts: true
+
+  pre_tasks:
+    - name: Validate shared GPU inventory policy
+      ansible.builtin.assert:
+        that:
+          - gpu_mode | lower in ['apply', 'validate']
+          - gpu_vendor | lower in ['auto', 'nvidia']
+          - gpu_facts_path == '/etc/ansible/debian/facts/gpu.yml'
+        fail_msg: >-
+          The shared GPU inventory supports apply and validate only. It never
+          installs drivers, CUDA, packages, kernel modules, or repositories.
+
+  tasks:
+    - name: Refresh the shared GPU hardware and runtime snapshot
+      ansible.builtin.include_tasks: ../tasks/gpu.inventory.yml
+      vars:
+        gpu_vendor: "{{ gpu_vendor | lower }}"

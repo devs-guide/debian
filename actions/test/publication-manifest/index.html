@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Shell-only regression coverage for
+canonical Pages source publication entries.">
+  <title>Publication manifest test · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/test/">Test</a> / <a href="/debian/actions/test/publication-manifest/">Publication
+manifest</a>
+    </p>
+    <article>
+      <h1 id="publication-manifest-test">Publication manifest test</h1>
+      <p>Run the shell-only manifest regression:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.publication-manifest.sh</span></code></pre></div>
+      <p>It validates <code>actions/publication.manifest</code>,
+      confirms every setup runner has one canonical <code>.sh</code>
+      destination, and exercises rejection of unsafe paths,
+      extensionless setup destinations, missing sources, and duplicate
+      destinations.</p>
+      <p>The test uses an isolated temporary directory and does not
+      publish files or access the network.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/test.publication-manifest.sh"><code>actions/test.publication-manifest.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

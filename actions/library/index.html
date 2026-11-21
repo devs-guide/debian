@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Shared portable assertions, YAML
+checks, and publication-manifest parsing for repository actions.">
+  <title>Action validation libraries · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/library/">Library</a>
+    </p>
+    <article>
+      <h1 id="action-validation-libraries">Action validation
+      libraries</h1>
+      <p>The files under <code>actions/lib/</code> are sourced
+      implementation helpers, not standalone commands:</p>
+      <ul>
+      <li><code>contracts.sh</code> provides portable
+      <code>rg</code>/<code>grep</code> searching, common assertions,
+      shell syntax checks, YAML parsing, and embedded-shell
+      validation.</li>
+      <li><code>publication.sh</code> validates and iterates the
+      canonical publication manifest without evaluating manifest content
+      as shell code.</li>
+      </ul>
+      <p>Focused test actions and the public validation orchestrators
+      use these libraries so error handling and fallback behavior remain
+      consistent.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/lib"><code>actions/lib</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

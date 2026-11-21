@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Openbox runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/openbox/">Openbox</a>
+    </p>
+    <article>
+      <h1 id="openbox-runner">Openbox runner</h1>
+      <p>Manages the selected user’s Openbox session integration. Modes
+      are <code>preflight</code>, <code>apply</code>, and
+      <code>disable</code>.</p>
+      <h2 id="managed-openbox-session">Managed Openbox session</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/openbox.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_OPENBOX_MODE=apply <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_OPENBOX_ENABLE=1 <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_OPENBOX_USER=app <span class="dt">\</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>      DEBIAN_OPENBOX_INSTALL_PACKAGES=1 <span class="dt">\</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>      DEBIAN_OPENBOX_SESSION_COMMAND=/usr/bin/openbox-session <span class="dt">\</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>      DEBIAN_OPENBOX_MANAGE_XINITRC=1 <span class="dt">\</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>      DEBIAN_OPENBOX_MANAGE_XSESSION_HOOK_DIR=1 <span class="dt">\</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>      DEBIAN_OPENBOX_FULLSCREEN=0 <span class="dt">\</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>DEBIAN_OPENBOX_USER</code></td>
+      <td>User whose Openbox/X session files are managed.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_OPENBOX_SESSION_COMMAND</code></td>
+      <td>Session executable; the default is
+      <code>/usr/bin/openbox-session</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_OPENBOX_MANAGE_XINITRC</code> /
+      <code>DEBIAN_OPENBOX_MANAGE_XSESSION_HOOK_DIR</code></td>
+      <td>Controls managed session startup files and hook
+      directory.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_OPENBOX_FULLSCREEN</code></td>
+      <td>Enables the optional fullscreen helper only when explicitly
+      set to <code>1</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_OPENBOX_FULLSCREEN_MATCH</code></td>
+      <td>Window match used by that optional helper; review it before
+      enabling fullscreen automation.</td>
+      </tr>
+      </tbody>
+      </table>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/openbox.sh"><code>setup/cli/openbox.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/openbox.sh">https://devs-guide.github.io/debian/setup/cli/openbox.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/openbox.sh">https://devs-guide.github.io/debian/setup/cli/openbox.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

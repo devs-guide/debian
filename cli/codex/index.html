@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Codex CLI runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/codex/">Codex</a>
+    </p>
+    <article>
+      <h1 id="codex-cli-runner">Codex CLI runner</h1>
+      <p>Sets up the project’s Node plus Codex CLI feature. It supports
+      <code>preflight</code> and <code>apply</code> modes and is
+      independent of the baseline bootstrap playlist.</p>
+      <h2 id="preflight">Preflight</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/codex.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_CLI_CODEX_MODE=preflight bash</span></code></pre></div>
+      <h2 id="shared-codex-cli-installation">Shared Codex CLI
+      installation</h2>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/codex.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_CLI_CODEX_MODE=apply <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_CODEX_NODE_VERSION=<span class="st">&#39;lts/*&#39;</span> <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_CODEX_NODE_INSTALL_SCOPE=shared <span class="dt">\</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_CODEX_NODE_CREATE_SYSTEM_SYMLINKS=1 <span class="dt">\</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_CODEX_PACKAGE=<span class="st">&#39;@openai/codex&#39;</span> <span class="dt">\</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_CODEX_VERSION=latest <span class="dt">\</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_CODEX_INSTALL_DOCS_MCP=1 <span class="dt">\</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_CODEX_DOCS_MCP_NAME=openaiDeveloperDocs <span class="dt">\</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_CODEX_DOCS_MCP_URL=https://developers.openai.com/mcp <span class="dt">\</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>DEBIAN_CLI_CODEX_MODE</code></td>
+      <td>Selects the read-only <code>preflight</code> or mutating
+      <code>apply</code> mode.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_CLI_CODEX_NODE_VERSION</code></td>
+      <td>Selects the NVM Node version; use a fixed version instead of
+      <code>lts/*</code> when reproducibility matters.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_CLI_CODEX_NODE_INSTALL_SCOPE</code></td>
+      <td>Uses the shared NVM install for a host-wide command.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_CLI_CODEX_PACKAGE</code> /
+      <code>DEBIAN_CLI_CODEX_VERSION</code></td>
+      <td>Selects the npm package and version. Replace
+      <code>latest</code> with an approved exact version when
+      required.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_CLI_CODEX_INSTALL_DOCS_MCP</code></td>
+      <td>Opts into the documented OpenAI developer-docs MCP
+      configuration.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>After an apply run, open a new shell and run
+      <code>codex --version</code>. Authenticate through the Codex CLI’s
+      normal supported flow; this runner does not store an API key for
+      you.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/codex.sh"><code>setup/cli/codex.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/codex.sh">https://devs-guide.github.io/debian/setup/cli/codex.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/codex.sh">https://devs-guide.github.io/debian/setup/cli/codex.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

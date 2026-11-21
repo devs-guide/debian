@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Kiosk application launch · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/kiosk/">Kiosk</a> / <a href="/debian/kiosk/app-launch/">Application
+launch</a>
+    </p>
+    <article>
+      <h1 id="kiosk-application-launch">Kiosk application launch</h1>
+      <p>In the STARTX profile, the terminal X application is controlled
+      by <code>DEBIAN_STARTX_OPENBOX_COMMAND</code>. The autologin/kiosk
+      runner points the local console session at the managed STARTX
+      wrapper; it does not replace the X application command.</p>
+      <p>For a Tauri development session, install the optional Tauri
+      toolchain first, then configure STARTX with a command appropriate
+      to the checked-out application. Treat developer commands and
+      long-lived kiosk launch commands as separate deployment
+      choices.</p>
+      <p>The managed wrapper intentionally refuses to start X from SSH.
+      SSH can attach an application to an already-running local X
+      display only after the local console session has established
+      it.</p>
+      <h2 id="set-a-reviewed-local-application-command">Set a reviewed
+      local application command</h2>
+      <p>The following STARTX policy keeps the standard local console
+      setup while launching an already-installed application binary in
+      place of the default Openbox session command:</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/startx.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_STARTX_MODE=apply <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_ENABLE=1 <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_USER=app <span class="dt">\</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_TTY=tty1 <span class="dt">\</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_DISPLAY=:0 <span class="dt">\</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_MANAGE_XWRAPPER=1 <span class="dt">\</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_MANAGE_XINITRC=1 <span class="dt">\</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_MANAGE_WRAPPER=1 <span class="dt">\</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_WRAPPER_PATH=/usr/local/bin/kiosk-startx <span class="dt">\</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_OPENBOX_COMMAND=/opt/my-tauri-app/bin/my-app <span class="dt">\</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <p>Replace only <code>/opt/my-tauri-app/bin/my-app</code> with the
+      verified local executable. The other values are the explicit
+      local-console STARTX policy.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/startx.sh"><code>setup/cli/startx.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

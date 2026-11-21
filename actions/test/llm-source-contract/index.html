@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>LLM reviewed-source contract action · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/test/">Test</a> / <a href="/debian/actions/test/llm-source-contract/">llm-source-contract</a>
+    </p>
+    <article>
+      <h1 id="llm-reviewed-source-contract-action">LLM reviewed-source
+      contract action</h1>
+      <p>GitHub Actions checks the llama.cpp and KTransformers runner
+      interfaces, exact source-profile matrices, Ansible ownership
+      boundaries, fact paths, and documentation through
+      <code>actions/validate.runtime.sh</code>.</p>
+      <p>The GitHub Pages workflow sets
+      <code>LLM_SOURCE_NETWORK_VERIFY=1</code>. In that Actions
+      environment the test also resolves the reviewed Git tags, verifies
+      the KTransformers SGLang submodule object, downloads the official
+      Python source archive, and checks its committed SHA-256.</p>
+      <p>CUDA/SM86 builds, Ice Lake instruction checks, and model smokes
+      remain remote server acceptance tests. They are not run on a
+      developer workstation.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/test.llm-source-contract.sh"><code>actions/test.llm-source-contract.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Intel Optane ipmctl runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/ipmctl/">ipmctl</a>
+    </p>
+    <article>
+      <h1 id="intel-optane-ipmctl-runner">Intel Optane ipmctl
+      runner</h1>
+      <p><code>ipmctl.sh</code> installs one reviewed Intel Optane PMem
+      CLI build on Debian 13 amd64 and provides a small read-only
+      verification mode. Debian Trixie does not publish an
+      <code>ipmctl</code> binary package, so the runner builds from
+      exact upstream source instead of mixing packages from another
+      Debian release. Intel archived ipmctl and does not promise further
+      fixes or releases, so this repository owns and discloses its
+      finite downstream build policy.</p>
+      <p>The runner does not create or delete PMem goals, format DIMMs,
+      manage namespaces, change firmware or security state, or reboot
+      the host. The installed <code>ipmctl</code> program remains an
+      administrative tool, so any command not shown here is outside this
+      automation and requires separate human review.</p>
+      <h2 id="reviewed-source-tuple">Reviewed source tuple</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Source</th>
+      <th>Reviewed value</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td>ipmctl repository</td>
+      <td><code>https://github.com/intel/ipmctl.git</code></td>
+      </tr>
+      <tr class="even">
+      <td>ipmctl tag</td>
+      <td><code>v03.00.00.0538</code></td>
+      </tr>
+      <tr class="odd">
+      <td>ipmctl commit</td>
+      <td><code>a71f2fb1c90dd07f9862b71c789881132193e8f9</code></td>
+      </tr>
+      <tr class="even">
+      <td>expected version</td>
+      <td><code>03.00.00.0538</code></td>
+      </tr>
+      <tr class="odd">
+      <td>EDK2 repository</td>
+      <td><code>https://github.com/tianocore/edk2.git</code></td>
+      </tr>
+      <tr class="even">
+      <td>EDK2 tag</td>
+      <td><code>edk2-stable202511</code></td>
+      </tr>
+      <tr class="odd">
+      <td>EDK2 commit</td>
+      <td><code>46548b1adac82211d8d11da12dd914f41e7aa775</code></td>
+      </tr>
+      <tr class="even">
+      <td>install prefix</td>
+      <td><code>/usr/local</code></td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Three repository-owned, checksum-pinned compatibility patches
+      are applied:</p>
+      <ol type="1">
+      <li>An exact EDK2 <code>MdePkg/Include/Base.h</code> host-build
+      patch regenerated against the pinned CRLF source blob.</li>
+      <li>The meta-intel patch that removes Release <code>-Werror</code>
+      from the C compiler flags for this archived source.</li>
+      <li>The meta-intel patch that removes PIE from shared-library
+      linker flags.</li>
+      </ol>
+      <p>Every patch is checked for its file checksum, sole target,
+      exact preimage, strict applicability, reverse applicability, exact
+      postimage, and clean Git diff before compilation. This replaces
+      Intel's drifting <code>patch_OS.sh</code> and
+      <code>updateedk.sh</code> path with a small reproducible patch
+      pack.</p>
+      <p>References:</p>
+      <ul>
+      <li><a
+      href="https://github.com/intel/ipmctl/releases/tag/v03.00.00.0538">Intel
+      ipmctl v03.00.00.0538</a></li>
+      <li><a href="https://github.com/intel/ipmctl/issues/199">Intel
+      Linux build issue 199</a></li>
+      <li><a
+      href="https://github.com/YoeDistro/meta-intel/tree/8877caca6b1fe6efe33c756698ce6ecdcaea2238/dynamic-layers/openembedded-layer/recipes-support/ipmctl/ipmctl">meta-intel
+      ipmctl recipe</a></li>
+      <li><a
+      href="https://github.com/tianocore/edk2/releases/tag/edk2-stable202511">EDK2
+      stable202511</a></li>
+      <li><a
+      href="https://packages.debian.org/search?keywords=ipmctl">Debian
+      package search for ipmctl</a></li>
+      </ul>
+      <h2 id="install">Install</h2>
+      <p>Run as the non-root account that should own the source cache.
+      The runner asks for sudo through <code>/dev/tty</code>, installs
+      only the opt-in <code>ipmctl_build</code> dependency group, builds
+      as the invoking user, and installs into <code>/usr/local</code> as
+      root.</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/ipmctl.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> install</span></code></pre></div>
+      <p>For an audit-friendly remote run, download and review the exact
+      published entrypoint first:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO</span> /tmp/ansible-ipmctl.sh <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  https://devs-guide.github.io/debian/setup/cli/ipmctl.sh</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="fu">less</span> /tmp/ansible-ipmctl.sh</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> /tmp/ansible-ipmctl.sh install</span></code></pre></div>
+      <p>The exact Git tags and commits are verified before patches are
+      applied. CMake uses a Release build with two parallel jobs. A
+      successful install records its commits, patch checksums,
+      toolchain, binary checksum, and install manifest at:</p>
+      <pre class="text"><code>/var/lib/ansible/debian/ipmctl/receipt.json</code></pre>
+      <p>A repeat install skips source fetching and compilation only
+      when the receipt, binary checksum, exact version, and complete
+      runtime linkage still match. The installer refuses to overwrite an
+      unmanaged <code>/usr/local/bin/ipmctl</code>. Failed build
+      workspaces remain under the invoking user's
+      <code>~/.cache/ansible/ipmctl/runs/</code> for inspection.
+      Temporary runner files use <code>/tmp/ansible-ipmctl.*</code> and
+      are removed by the path-constrained cleanup trap.</p>
+      <p>Installations created before the neutral Ansible namespace was
+      introduced are migrated without rebuilding. The installer moves
+      the complete legacy cache, receipt, and manifest only when the new
+      destinations do not already exist. If both namespaces contain
+      state, it stops for human review instead of merging or deleting
+      ambiguous data.</p>
+      <h2 id="verify">Verify</h2>
+      <p>Verification does not bootstrap Ansible or install packages. It
+      requires the exact <code>/usr/local/bin/ipmctl</code> version and
+      no unresolved <code>ldd</code> dependencies, then runs four
+      privileged read-only probes:</p>
+      <div class="sourceCode" id="cb4"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/ipmctl.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sudo</span> bash <span class="at">-s</span> <span class="at">--</span> verify</span></code></pre></div>
+      <p>The probes are equivalent to:</p>
+      <div class="sourceCode" id="cb5"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> /usr/local/bin/ipmctl show <span class="at">-a</span> <span class="at">-dimm</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> /usr/local/bin/ipmctl show <span class="at">-topology</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> /usr/local/bin/ipmctl show <span class="at">-memoryresources</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> /usr/local/bin/ipmctl show <span class="at">-a</span> <span class="at">-goal</span></span></code></pre></div>
+      <p>Output is printed in labeled sections for a human to review. A
+      hardware probe failure is a warning distinct from a broken
+      software installation.</p>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Exit</th>
+      <th>Meaning</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>0</code></td>
+      <td>Software and all requested read-only probes passed.</td>
+      </tr>
+      <tr class="even">
+      <td><code>1</code></td>
+      <td>Binary version, linkage, or another software check
+      failed.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>2</code></td>
+      <td>Software passed, but at least one hardware probe needs
+      review.</td>
+      </tr>
+      <tr class="even">
+      <td><code>3</code></td>
+      <td>Platform, privilege, staging, or another prerequisite blocked
+      the run.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>64</code></td>
+      <td>Invalid mode or option.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>Only <code>install</code>, <code>verify</code>, and
+      <code>--help</code> are accepted. PMem allocation changes remain a
+      manual maintenance operation outside this runner.</p>
+      <h2 id="validated-target-and-remote-acceptance">Validated target
+      and remote acceptance</h2>
+      <p>The pinned source tuple was built successfully from the
+      published runner on a Debian 13 amd64 Intel Ice Lake host with
+      four Intel Optane PMem 200 modules. Version, linkage, DIMM
+      discovery, topology, memory resources, and the current or pending
+      goal query passed. The accepted host was using Memory Mode with no
+      App Direct allocation and no pending goal. Hardware identifiers
+      and serial numbers are deliberately excluded from this
+      documentation.</p>
+      <p>Before merging a future runtime change, fetch its exact
+      candidate commit from <code>raw.githubusercontent.com</code> and
+      set <code>PAGES_BASE_URL</code> to that same immutable commit so
+      the runner and every staged dependency come from one revision. A
+      Git clone is not required.</p>
+      <ol type="1">
+      <li>Capture <code>/etc/os-release</code>, architecture, kernel,
+      GCC/G++, CMake, Python, and the installed build-dependency
+      versions for the pull-request evidence.</li>
+      <li>Run the candidate <code>install</code> once and retain the
+      complete output.</li>
+      <li>Run the candidate <code>install</code> again and confirm it
+      reports the matching installation rather than rebuilding.</li>
+      <li>Run <code>bash setup/cli/ipmctl.sh verify</code> and retain
+      all four labeled probe sections.</li>
+      <li>Confirm the expected version, complete linkage, receipt and
+      manifest, detected DIMMs, topology, memory resources, and that any
+      current or pending goal is understood.</li>
+      <li>Only then run the LLM host validator with
+      <code>--require-ipmctl</code> and, when appropriate,
+      <code>--require-memory-mode</code>.</li>
+      </ol>
+      <p>After review, merge, and <code>www</code> publication, run the
+      published <code>install</code> once to prove the managed receipt
+      still skips rebuilding, then run <code>verify</code> again.</p>
+      <p>GitHub Actions checks the static runner, playbook, patch
+      checksums, YAML, and publication contract. It deliberately does
+      not rebuild archived Intel source or pretend to validate PMem
+      hardware in a hosted runner.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/ipmctl.sh"><code>setup/cli/ipmctl.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/ipmctl.sh">https://devs-guide.github.io/debian/setup/cli/ipmctl.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/ipmctl.sh">https://devs-guide.github.io/debian/setup/cli/ipmctl.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

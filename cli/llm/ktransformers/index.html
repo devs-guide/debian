@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>KTransformers heterogeneous runtime
+runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/llm/">LLM</a> / <a href="/debian/cli/llm/ktransformers/">ktransformers</a>
+    </p>
+    <article>
+      <h1 id="ktransformers-heterogeneous-runtime-runner">KTransformers
+      heterogeneous runtime runner</h1>
+      <p><code>ktransformers.sh</code> builds an isolated, exact-source
+      KTransformers, KT-Kernel, and SGLang-KT environment after host and
+      llama.cpp acceptance. It performs model-free imports and
+      capability checks only; model acquisition, expert placement,
+      server startup, and the 80B MoE smoke remain separate
+      features.</p>
+      <p>The standalone llama.cpp feature is not a technical dependency.
+      KTransformers does not consume <code>llamacpp.yml</code>, and its
+      internal <code>LLAMAFILE</code> method does not execute
+      <code>/opt/llama.cpp</code>.</p>
+      <h2 id="memory-semantics">Memory semantics</h2>
+      <p>KTransformers can keep selected hot experts in GPU VRAM while
+      remaining cold experts execute from CPU-visible host memory. On an
+      Intel Optane host in Memory Mode, DDR caching is controlled by the
+      processor memory controller. The runner does not expose a flag
+      claiming to place experts directly in DDR.</p>
+      <h2 id="reviewed-source-profile">Reviewed source profile</h2>
+      <pre class="text"><code>profile: v0.6.3-icelake-sm86-source
+KTransformers repository: https://github.com/kvcache-ai/ktransformers.git
+KTransformers release: v0.6.3
+KTransformers commit: ce7c3ddbe93f7ac1f992375eed54058bbc512646
+SGLang-KT repository: https://github.com/kvcache-ai/sglang.git
+SGLang-KT commit: 8b636f9008dbad58c0a8e481b03e794739e6c146
+Python: 3.12.3
+CUDA architecture: 86
+CPU profile: icelake-avx512-vnni</code></pre>
+      <p>Future repositories and commits use the same command interface.
+      Add the exact KTransformers/SGLang/Python tuple to the reviewed
+      matrix, verify it in GitHub Actions and on the remote host, then
+      select the new profile. Floating branches, short commits,
+      credentials, and unreviewed source combinations are rejected.</p>
+      <h2 id="remote-sequence">Remote sequence</h2>
+      <p>Read-only preflight:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/ktransformers.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> preflight <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--matrix-profile</span><span class="op">=</span>v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--repository-url</span><span class="op">=</span>https://github.com/kvcache-ai/ktransformers.git <span class="dt">\</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--release</span><span class="op">=</span>v0.6.3 <span class="dt">\</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--commit</span><span class="op">=</span>ce7c3ddbe93f7ac1f992375eed54058bbc512646 <span class="dt">\</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--sglang-repository-url</span><span class="op">=</span>https://github.com/kvcache-ai/sglang.git <span class="dt">\</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--sglang-commit</span><span class="op">=</span>8b636f9008dbad58c0a8e481b03e794739e6c146 <span class="dt">\</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-profile</span><span class="op">=</span>source <span class="dt">\</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--python-version</span><span class="op">=</span>3.12.3 <span class="dt">\</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-architectures</span><span class="op">=</span>86 <span class="dt">\</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cpu-profile</span><span class="op">=</span>icelake-avx512-vnni</span></code></pre></div>
+      <p>Initial source build with explicit online dependency
+      acknowledgement:</p>
+      <div class="sourceCode" id="cb3"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/ktransformers.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bash</span> <span class="at">-s</span> <span class="at">--</span> apply <span class="dt">\</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--matrix-profile</span><span class="op">=</span>v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--repository-url</span><span class="op">=</span>https://github.com/kvcache-ai/ktransformers.git <span class="dt">\</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--release</span><span class="op">=</span>v0.6.3 <span class="dt">\</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--commit</span><span class="op">=</span>ce7c3ddbe93f7ac1f992375eed54058bbc512646 <span class="dt">\</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--sglang-repository-url</span><span class="op">=</span>https://github.com/kvcache-ai/sglang.git <span class="dt">\</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--sglang-commit</span><span class="op">=</span>8b636f9008dbad58c0a8e481b03e794739e6c146 <span class="dt">\</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-profile</span><span class="op">=</span>source <span class="dt">\</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--python-version</span><span class="op">=</span>3.12.3 <span class="dt">\</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--allow-online-dependencies</span> <span class="dt">\</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-architectures</span><span class="op">=</span>86 <span class="dt">\</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cpu-profile</span><span class="op">=</span>icelake-avx512-vnni <span class="dt">\</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--source-dir</span><span class="op">=</span>/opt/src/ktransformers/v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-dir</span><span class="op">=</span>/opt/build/ktransformers/v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-dir</span><span class="op">=</span>/opt/venvs/ktransformers-v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-build-tools</span></span></code></pre></div>
+      <p>Validate the installed model-free environment without another
+      dependency transaction:</p>
+      <div class="sourceCode" id="cb4"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/llm/ktransformers.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sudo</span> bash <span class="at">-s</span> <span class="at">--</span> validate <span class="dt">\</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--matrix-profile</span><span class="op">=</span>v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">--repository-url</span><span class="op">=</span>https://github.com/kvcache-ai/ktransformers.git <span class="dt">\</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">--release</span><span class="op">=</span>v0.6.3 <span class="dt">\</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">--commit</span><span class="op">=</span>ce7c3ddbe93f7ac1f992375eed54058bbc512646 <span class="dt">\</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">--sglang-repository-url</span><span class="op">=</span>https://github.com/kvcache-ai/sglang.git <span class="dt">\</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">--sglang-commit</span><span class="op">=</span>8b636f9008dbad58c0a8e481b03e794739e6c146 <span class="dt">\</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-profile</span><span class="op">=</span>source <span class="dt">\</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">--python-version</span><span class="op">=</span>3.12.3 <span class="dt">\</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">--no-online-dependencies</span> <span class="dt">\</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cuda-architectures</span><span class="op">=</span>86 <span class="dt">\</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">--cpu-profile</span><span class="op">=</span>icelake-avx512-vnni <span class="dt">\</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">--source-dir</span><span class="op">=</span>/opt/src/ktransformers/v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">--build-dir</span><span class="op">=</span>/opt/build/ktransformers/v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">--install-dir</span><span class="op">=</span>/opt/venvs/ktransformers-v0.6.3-icelake-sm86-source <span class="dt">\</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">--no-install-build-tools</span></span></code></pre></div>
+      <p>The runner requests sudo once through <code>/dev/tty</code>.
+      KTransformers, its recursive submodules, and Python source are
+      downloaded and verified as the invoking user before delegated-root
+      execution. The remote playbook keeps the reviewed Git tree
+      pristine under <code>/opt/src</code>, copies it to a mutable
+      <code>/opt/build</code> worktree, and independently rechecks the
+      managed Python archive SHA-256 before building. The first
+      explicitly online bootstrap records <code>pip freeze --all</code>;
+      use that evidence to create an approved wheelhouse before any
+      model-bearing phase.</p>
+      <p>For a later reviewed rebuild, replace
+      <code>--allow-online-dependencies</code> in the filled
+      <code>apply</code> command with:</p>
+      <div class="sourceCode" id="cb5"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>    <span class="ex">--wheelhouse=/models/manifests/ktransformers-wheelhouse</span> <span class="dt">\</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--no-online-dependencies</span></span></code></pre></div>
+      <h2 id="flag-reference">Flag reference</h2>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Flag</th>
+      <th>Behavior</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>--matrix-profile=PROFILE</code></td>
+      <td>Selects one exact reviewed source/toolchain record.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--repository-url=HTTPS_GIT_URL</code></td>
+      <td>Exact KTransformers repository ending in
+      <code>.git</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--release=TAG</code></td>
+      <td>Exact KTransformers release tag.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--commit=FULL_40_CHARACTER_SHA</code></td>
+      <td>Full lowercase KTransformers commit.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--sglang-repository-url=HTTPS_GIT_URL</code></td>
+      <td>Exact reviewed SGLang-KT submodule repository.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--sglang-commit=FULL_40_CHARACTER_SHA</code></td>
+      <td>Full lowercase SGLang-KT submodule commit.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--install-profile=source</code></td>
+      <td>Initial authoritative source-build profile.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--python-version=X.Y.Z</code></td>
+      <td>Exact reviewed Python 3.12 patch.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--wheelhouse=/absolute/local/directory</code></td>
+      <td>Uses an approved local dependency source.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--allow-online-dependencies</code></td>
+      <td>Explicitly permits the exact-source upstream installers to
+      resolve Python dependencies online.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--no-online-dependencies</code></td>
+      <td>Forbids online Python dependency resolution.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--cuda-architectures=LIST</code></td>
+      <td>Reviewed CUDA architecture list; initial value is
+      <code>86</code>.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--cpu-profile=PROFILE</code></td>
+      <td>Reviewed host CPU instruction profile.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--source-dir=/opt/src/ktransformers/PATH</code></td>
+      <td>Optional constrained source destination.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--build-dir=/opt/build/ktransformers/PATH</code></td>
+      <td>Optional constrained build destination.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--install-dir=/opt/venvs/ktransformers-PATH</code></td>
+      <td>Optional constrained environment destination.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--clean-build</code></td>
+      <td>Removes only the selected build and unpromoted
+      environment.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--install-build-tools</code></td>
+      <td>Installs only the opt-in <code>ktransformers_build</code>
+      package group.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>--no-install-build-tools</code></td>
+      <td>Forbids a package transaction.</td>
+      </tr>
+      <tr class="even">
+      <td><code>--help</code></td>
+      <td>Prints usage without staging.</td>
+      </tr>
+      </tbody>
+      </table>
+      <h2 id="flag-interaction-notes">Flag interaction notes</h2>
+      <ul>
+      <li>The KTransformers URL/tag/commit, SGLang URL/commit, Python
+      version, CPU profile, CUDA architecture, and matrix profile are
+      one reviewed tuple.</li>
+      <li><code>apply</code> and <code>upgrade</code> require either an
+      approved <code>--wheelhouse</code> or the explicit
+      <code>--allow-online-dependencies</code> bootstrap
+      acknowledgement. <code>--no-online-dependencies</code> is the
+      fail-closed default.</li>
+      <li>A wheelhouse path is consumed by the managed LLM owner and
+      must already contain the reviewed dependencies. This runner does
+      not create or populate that directory.</li>
+      <li><code>--source-dir</code> stores the pristine detached source,
+      <code>--build-dir</code> contains the mutable installation
+      worktree, and <code>--install-dir</code> contains the isolated
+      Python environment.</li>
+      <li><code>--clean-build</code> removes only the selected build
+      worktree and unpromoted virtual environment. It refuses to remove
+      <code>/opt/venvs/ktransformers-current</code> and does not delete
+      pristine source, the managed Python archive, models, or producer
+      facts.</li>
+      <li><code>--install-build-tools</code> enables only the opt-in
+      Debian package group during <code>apply</code> or
+      <code>upgrade</code>; it never changes NVIDIA or CUDA policy.</li>
+      <li>Every mode remains model-free. Model paths, expert counts, and
+      server launch settings belong to later KTransformers model and
+      smoke runners.</li>
+      </ul>
+      <h2 id="facts-and-acceptance">Facts and acceptance</h2>
+      <p>The runner owns:</p>
+      <pre class="text"><code>/etc/ansible/debian/facts/ktransformers.yml
+/etc/ansible/debian/env/ktransformers.sh
+/opt/venvs/ktransformers-current</code></pre>
+      <p>Facts record full source URLs and commits, Python and
+      dependency inventory, CPU/CUDA policy, selected UUIDs,
+      <code>kt doctor</code>, imports, and generated SGLang-KT
+      capabilities. They deliberately report
+      <code>model_ready: false</code>.</p>
+      <p>GitHub Actions owns source/checksum/matrix and publication
+      verification. CUDA 13.1, SM86, AVX-512/VNNI, imports, and later
+      model acceptance run on the remote server. No local
+      development-machine compilation is part of acceptance.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/llm/ktransformers.sh"><code>setup/cli/llm/ktransformers.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/llm/ktransformers.sh">https://devs-guide.github.io/debian/setup/cli/llm/ktransformers.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/llm/ktransformers.sh">https://devs-guide.github.io/debian/setup/cli/llm/ktransformers.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

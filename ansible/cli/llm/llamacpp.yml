@@ -1,0 +1,665 @@
+---
+- name: "[debian]: versioned llama.cpp CPU and CUDA runtime"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed }}"
+    llamacpp_mode: validate
+    llamacpp_matrix_profile: b10075-icelake-sm86
+    llamacpp_repository_url: https://github.com/ggml-org/llama.cpp.git
+    llamacpp_release: b10075
+    llamacpp_commit: 76f46ad29d61fd8c1401e8221842934bf62a6064
+    llamacpp_build_profile: icelake-sm86
+    llamacpp_cuda_architectures: "86"
+    llamacpp_source_dir_override: ""
+    llamacpp_build_dir_override: ""
+    llamacpp_install_dir_override: ""
+    llamacpp_clean_build: false
+    llamacpp_install_build_tools: false
+    llamacpp_staged_source_path: ""
+    llamacpp_model_path_b64: ""
+    llamacpp_smoke_prompt_b64: ""
+    llamacpp_max_tokens: 32
+    llamacpp_ctx_size: 2048
+    llamacpp_threads: 36
+    llamacpp_threads_batch: 36
+    llamacpp_gpu_layers: auto
+    llamacpp_split_mode: layer
+    llamacpp_tensor_split: 1,1
+    llamacpp_fit_target: ""
+    llamacpp_offline: true
+    llamacpp_check_tensors: true
+    llamacpp_seed: 1
+    llamacpp_cpu_moe: false
+    llamacpp_n_cpu_moe: ""
+    llamacpp_smoke_timeout_seconds: 900
+    llamacpp_matrix_path: "{{ playbook_dir }}/../../files/llm/llamacpp/compatibility-matrix.yml"
+    llamacpp_host_facts_path: /etc/ansible/debian/facts/llm-host.yml
+    llamacpp_nvidia_facts_path: /etc/ansible/debian/facts/nvidia.yml
+    llamacpp_facts_path: /etc/ansible/debian/facts/llamacpp.yml
+    llamacpp_env_path: /etc/ansible/debian/env/llamacpp.sh
+
+  pre_tasks:
+    - name: Load reviewed llama.cpp compatibility matrix
+      ansible.builtin.set_fact:
+        llamacpp_matrix: "{{ lookup('file', llamacpp_matrix_path) | from_json }}"
+
+    - name: Select reviewed llama.cpp profile
+      ansible.builtin.set_fact:
+        llamacpp_profile_matches: >-
+          {{
+            llamacpp_matrix.profiles
+            | selectattr('feature', 'equalto', 'llamacpp')
+            | selectattr('id', 'equalto', llamacpp_matrix_profile)
+            | list
+          }}
+
+    - name: Require one reviewed llama.cpp profile
+      ansible.builtin.assert:
+        that:
+          - llamacpp_matrix.schema_version | int == 1
+          - llamacpp_profile_matches | length == 1
+        fail_msg: "The requested llama.cpp matrix profile is not uniquely reviewed."
+
+    - name: Normalize reviewed llama.cpp policy
+      ansible.builtin.set_fact:
+        llamacpp_profile: "{{ llamacpp_profile_matches[0] }}"
+        llamacpp_mode_effective: "{{ llamacpp_mode | lower }}"
+        llamacpp_model_path: "{{ llamacpp_model_path_b64 | b64decode }}"
+        llamacpp_smoke_prompt: "{{ llamacpp_smoke_prompt_b64 | b64decode }}"
+
+    - name: Resolve managed llama.cpp paths
+      ansible.builtin.set_fact:
+        llamacpp_source_dir: >-
+          {{
+            llamacpp_source_dir_override
+            if (llamacpp_source_dir_override | length > 0)
+            else '/opt/src/llamacpp/' + llamacpp_matrix_profile
+          }}
+        llamacpp_build_dir: >-
+          {{
+            llamacpp_build_dir_override
+            if (llamacpp_build_dir_override | length > 0)
+            else '/opt/build/llamacpp/' + llamacpp_matrix_profile
+          }}
+        llamacpp_install_dir: >-
+          {{
+            llamacpp_install_dir_override
+            if (llamacpp_install_dir_override | length > 0)
+            else '/opt/llama.cpp/' + llamacpp_matrix_profile
+          }}
+        llamacpp_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+
+    - name: Validate exact llama.cpp source and build policy
+      ansible.builtin.assert:
+        that:
+          - llamacpp_mode_effective in ['apply', 'validate', 'smoke', 'upgrade']
+          - llamacpp_profile.repository_url == llamacpp_repository_url
+          - llamacpp_profile.release == llamacpp_release
+          - llamacpp_profile.commit == llamacpp_commit
+          - llamacpp_profile.build_profile == llamacpp_build_profile
+          - llamacpp_profile.cuda_architectures == llamacpp_cuda_architectures
+          - llamacpp_commit is match('^[0-9a-f]{40}$')
+          - llamacpp_source_dir is match('^/opt/src/llamacpp/.+')
+          - llamacpp_build_dir is match('^/opt/build/llamacpp/.+')
+          - llamacpp_install_dir is match('^/opt/llama[.]cpp/.+')
+          - llamacpp_facts_path == '/etc/ansible/debian/facts/llamacpp.yml'
+        fail_msg: >-
+          Source URL, release, full commit, build profile, CUDA architecture,
+          and managed paths must match the selected reviewed matrix profile.
+
+    - name: Check required producer facts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ llamacpp_host_facts_path }}"
+        - "{{ llamacpp_nvidia_facts_path }}"
+      register: llamacpp_producer_fact_stats
+
+    - name: Require host and NVIDIA facts
+      ansible.builtin.assert:
+        that:
+          - llamacpp_producer_fact_stats.results | map(attribute='stat.exists') | min
+        fail_msg: "Run llm/host.sh and nvidia.sh successfully before llama.cpp."
+
+    - name: Read host and NVIDIA facts
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ llamacpp_host_facts_path }}"
+        - "{{ llamacpp_nvidia_facts_path }}"
+      register: llamacpp_producer_fact_contents
+
+    - name: Decode host and NVIDIA facts
+      ansible.builtin.set_fact:
+        llamacpp_host_facts: "{{ llamacpp_producer_fact_contents.results[0].content | b64decode | from_yaml }}"
+        llamacpp_nvidia_facts: "{{ llamacpp_producer_fact_contents.results[1].content | b64decode | from_yaml }}"
+
+    - name: Validate llama.cpp host prerequisites
+      ansible.builtin.assert:
+        that:
+          - llamacpp_host_facts.llm_host.schema_version | default(0) | int == 1
+          - llamacpp_host_facts.llm_host.readiness.host_ready | default(false) | bool
+          - llamacpp_nvidia_facts.nvidia.schema_version | default(0) | int == 1
+          - llamacpp_nvidia_facts.nvidia.driver.kernel_module_ready | default(false) | bool
+          - llamacpp_nvidia_facts.nvidia.driver.nvidia_smi_ready | default(false) | bool
+          - llamacpp_nvidia_facts.nvidia.cuda.nvcc_ready | default(false) | bool
+          - llamacpp_nvidia_facts.nvidia.cuda.runtime_header_ready | default(false) | bool
+        fail_msg: >-
+          llama.cpp requires accepted LLM host facts and a live NVIDIA/CUDA
+          producer contract. It never repairs those prerequisites.
+
+  tasks:
+    - name: Resolve managed llama.cpp owner and group
+      ansible.builtin.set_fact:
+        llamacpp_owner: "{{ llamacpp_host_facts.llm_host.ownership.user }}"
+        llamacpp_group: "{{ llamacpp_host_facts.llm_host.ownership.group }}"
+        llamacpp_selected_uuids: "{{ llamacpp_host_facts.llm_host.producers.gpu.uuids | default([]) }}"
+        llamacpp_previous_smoke:
+          tested: false
+          passed: false
+          model_path: ""
+          log: ""
+
+    - name: Inspect previous llama.cpp facts
+      ansible.builtin.stat:
+        path: "{{ llamacpp_facts_path }}"
+      register: llamacpp_previous_fact_stat
+
+    - name: Read previous llama.cpp facts
+      ansible.builtin.slurp:
+        src: "{{ llamacpp_facts_path }}"
+      register: llamacpp_previous_fact_raw
+      when: llamacpp_previous_fact_stat.stat.exists
+
+    - name: Decode previous llama.cpp facts
+      ansible.builtin.set_fact:
+        llamacpp_previous_facts: "{{ llamacpp_previous_fact_raw.content | b64decode | from_yaml }}"
+      when: llamacpp_previous_fact_stat.stat.exists
+
+    - name: Preserve smoke evidence only for the same llama.cpp source profile
+      ansible.builtin.set_fact:
+        llamacpp_previous_smoke: "{{ llamacpp_previous_facts.llamacpp.smoke }}"
+      when:
+        - llamacpp_previous_fact_stat.stat.exists
+        - llamacpp_previous_facts.llamacpp.source.matrix_profile | default('') == llamacpp_matrix_profile
+        - llamacpp_previous_facts.llamacpp.source.commit | default('') == llamacpp_commit
+        - llamacpp_previous_facts.llamacpp.smoke is mapping
+    - name: Require staged source for a mutating build
+      ansible.builtin.stat:
+        path: "{{ llamacpp_staged_source_path }}"
+      register: llamacpp_staged_source_stat
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Validate staged llama.cpp source
+      ansible.builtin.assert:
+        that:
+          - llamacpp_staged_source_path | length > 0
+          - llamacpp_staged_source_stat.stat.isdir | default(false)
+        fail_msg: >-
+          apply/upgrade requires the exact source staged by the unprivileged
+          runner before sudo.
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Check llama.cpp build commands
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/env
+          - bash
+          - -c
+          - "command -v {{ item }}"
+      loop:
+        - cmake
+        - ninja
+        - git
+        - /usr/local/cuda/bin/nvcc
+      changed_when: false
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Inspect existing llama.cpp source destination
+      ansible.builtin.stat:
+        path: "{{ llamacpp_source_dir }}"
+        follow: false
+      register: llamacpp_source_destination
+
+    - name: Reject unsafe llama.cpp source destination
+      ansible.builtin.assert:
+        that:
+          - not llamacpp_source_destination.stat.exists or llamacpp_source_destination.stat.isdir
+          - not llamacpp_source_destination.stat.exists or not llamacpp_source_destination.stat.islnk
+        fail_msg: "The managed llama.cpp source path must be a real directory."
+
+    - name: Remove requested llama.cpp build directory
+      ansible.builtin.file:
+        path: "{{ llamacpp_build_dir }}"
+        state: absent
+      when:
+        - llamacpp_mode_effective in ['apply', 'upgrade']
+        - llamacpp_clean_build | bool
+
+    - name: Create managed llama.cpp parents
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ llamacpp_owner }}"
+        group: "{{ llamacpp_group }}"
+        mode: '0755'
+      loop:
+        - "{{ llamacpp_source_dir | dirname }}"
+        - "{{ llamacpp_build_dir }}"
+        - "{{ llamacpp_install_dir }}/bin"
+        - /opt/llm/bin
+        - /opt/llm/manifests
+        - /var/log/llm/llamacpp
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Copy pre-sudo staged llama.cpp source into its versioned path
+      ansible.builtin.command:
+        argv:
+          - cp
+          - -a
+          - "{{ llamacpp_staged_source_path }}"
+          - "{{ llamacpp_source_dir }}"
+        creates: "{{ llamacpp_source_dir }}/.git"
+      when:
+        - llamacpp_mode_effective in ['apply', 'upgrade']
+        - not llamacpp_source_destination.stat.exists
+
+    - name: Assign newly managed llama.cpp source to the build owner
+      ansible.builtin.file:
+        path: "{{ llamacpp_source_dir }}"
+        owner: "{{ llamacpp_owner }}"
+        group: "{{ llamacpp_group }}"
+        recurse: true
+      when:
+        - llamacpp_mode_effective in ['apply', 'upgrade']
+        - not llamacpp_source_destination.stat.exists
+
+    - name: Verify installed llama.cpp source identity
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ llamacpp_source_dir }}"
+          - rev-parse
+          - HEAD
+      register: llamacpp_source_head
+      changed_when: false
+
+    - name: Verify installed llama.cpp source origin
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ llamacpp_source_dir }}"
+          - remote
+          - get-url
+          - origin
+      register: llamacpp_source_origin
+      changed_when: false
+
+    - name: Verify installed llama.cpp source is detached
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ llamacpp_source_dir }}"
+          - symbolic-ref
+          - -q
+          - --short
+          - HEAD
+      register: llamacpp_source_symbolic_ref
+      changed_when: false
+      failed_when: false
+
+    - name: Verify installed llama.cpp source is clean and detached
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ llamacpp_source_dir }}"
+          - status
+          - --porcelain
+      register: llamacpp_source_status
+      changed_when: false
+
+    - name: Require exact clean llama.cpp source
+      ansible.builtin.assert:
+        that:
+          - llamacpp_source_head.stdout | trim == llamacpp_commit
+          - llamacpp_source_origin.stdout | trim == llamacpp_repository_url
+          - llamacpp_source_symbolic_ref.rc | int != 0
+          - llamacpp_source_status.stdout | trim | length == 0
+        fail_msg: "The managed llama.cpp source is dirty or at the wrong commit."
+
+    - name: Configure reviewed llama.cpp build
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'cmake',
+              '-S', llamacpp_source_dir,
+              '-B', llamacpp_build_dir,
+              '-G', 'Ninja'
+            ]
+            + llamacpp_profile.cmake_options
+          }}
+        creates: "{{ llamacpp_build_dir }}/CMakeCache.txt"
+      environment:
+        CUDA_HOME: /usr/local/cuda
+        CUDAToolkit_ROOT: /usr/local/cuda
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Build reviewed llama.cpp targets
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv:
+          - cmake
+          - --build
+          - "{{ llamacpp_build_dir }}"
+          - --target
+          - llama-cli
+          - llama-server
+          - llama-bench
+          - -j
+          - "{{ llamacpp_host_facts.llm_host.cpu.physical_core_count | string }}"
+        creates: "{{ llamacpp_build_dir }}/bin/llama-cli"
+      environment:
+        CUDA_HOME: /usr/local/cuda
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Install reviewed llama.cpp binaries
+      ansible.builtin.copy:
+        src: "{{ llamacpp_build_dir }}/bin/{{ item }}"
+        dest: "{{ llamacpp_install_dir }}/bin/{{ item }}"
+        remote_src: true
+        owner: "{{ llamacpp_owner }}"
+        group: "{{ llamacpp_group }}"
+        mode: '0755'
+      loop:
+        - llama-cli
+        - llama-server
+        - llama-bench
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Inspect installed llama.cpp binaries
+      ansible.builtin.stat:
+        path: "{{ llamacpp_install_dir }}/bin/{{ item }}"
+      loop:
+        - llama-cli
+        - llama-server
+        - llama-bench
+      register: llamacpp_installed_binaries
+
+    - name: Require installed llama.cpp binaries
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.executable
+        fail_msg: "Required installed llama.cpp binary is unavailable."
+      loop: "{{ llamacpp_installed_binaries.results }}"
+
+    - name: Capture llama.cpp version
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ llamacpp_install_dir }}/bin/llama-cli"
+          - --version
+      register: llamacpp_version_output
+      changed_when: false
+
+    - name: Capture llama.cpp devices
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ llamacpp_install_dir }}/bin/llama-cli"
+          - --list-devices
+      register: llamacpp_device_output
+      changed_when: false
+
+    - name: Capture llama.cpp command capabilities
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ llamacpp_install_dir }}/bin/llama-cli"
+          - --help
+      register: llamacpp_help_output
+      changed_when: false
+
+    - name: Require baseline llama.cpp capabilities
+      ansible.builtin.assert:
+        that:
+          - "'--offline' in llamacpp_help_output.stdout"
+          - "'--check-tensors' in llamacpp_help_output.stdout"
+          - "'--n-gpu-layers' in llamacpp_help_output.stdout"
+          - "'--split-mode' in llamacpp_help_output.stdout"
+          - "'--tensor-split' in llamacpp_help_output.stdout"
+          - llamacpp_fit_target | length == 0 or '--fit-target' in llamacpp_help_output.stdout
+          - not (llamacpp_cpu_moe | bool) or '--cpu-moe' in llamacpp_help_output.stdout
+          - llamacpp_n_cpu_moe | length == 0 or '--n-cpu-moe' in llamacpp_help_output.stdout
+        fail_msg: >-
+          The pinned llama.cpp binary lacks capabilities required by its
+          managed smoke and later feature runners.
+
+    - name: Calculate installed llama.cpp binary hashes
+      ansible.builtin.stat:
+        path: "{{ llamacpp_install_dir }}/bin/{{ item }}"
+        checksum_algorithm: sha256
+      loop:
+        - llama-cli
+        - llama-server
+        - llama-bench
+      register: llamacpp_binary_hashes
+
+    - name: Decode local llama.cpp smoke inputs
+      ansible.builtin.set_fact:
+        llamacpp_smoke_log_dir: "/var/log/llm/llamacpp/{{ llamacpp_run_id }}"
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Inspect local GGUF smoke model without following a final symlink
+      ansible.builtin.stat:
+        path: "{{ llamacpp_model_path }}"
+        follow: false
+      register: llamacpp_model_stat
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Resolve canonical local GGUF smoke model path
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - --canonicalize-existing
+          - "{{ llamacpp_model_path }}"
+      register: llamacpp_model_realpath
+      changed_when: false
+      failed_when: false
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Require a canonical local non-symlink GGUF model
+      ansible.builtin.assert:
+        that:
+          - llamacpp_model_path is match('^/.+[.]gguf$')
+          - llamacpp_model_stat.stat.exists | default(false)
+          - llamacpp_model_stat.stat.isreg | default(false)
+          - not (llamacpp_model_stat.stat.islnk | default(false))
+          - llamacpp_model_realpath.rc | default(1) | int == 0
+          - llamacpp_model_realpath.stdout | trim == llamacpp_model_path
+        fail_msg: >-
+          smoke requires an existing canonical absolute local GGUF file. URLs,
+          registry IDs, symlinks, and path traversal are rejected.
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Build bounded llama.cpp smoke command
+      ansible.builtin.set_fact:
+        llamacpp_smoke_argv: >-
+          {{
+            [
+              '/usr/bin/timeout',
+              '--signal=TERM',
+              llamacpp_smoke_timeout_seconds | string,
+              llamacpp_install_dir + '/bin/llama-cli',
+              '--model', llamacpp_model_path,
+              '--prompt', llamacpp_smoke_prompt,
+              '--predict', llamacpp_max_tokens | string,
+              '--ctx-size', llamacpp_ctx_size | string,
+              '--threads', llamacpp_threads | string,
+              '--threads-batch', llamacpp_threads_batch | string,
+              '--n-gpu-layers', llamacpp_gpu_layers | string,
+              '--split-mode', llamacpp_split_mode,
+              '--tensor-split', llamacpp_tensor_split,
+              '--seed', llamacpp_seed | string,
+              '--temp', '0'
+            ]
+            + (['--fit-target', llamacpp_fit_target] if (llamacpp_fit_target | length > 0) else [])
+            + (['--offline'] if (llamacpp_offline | bool) else [])
+            + (['--check-tensors'] if (llamacpp_check_tensors | bool) else [])
+            + (['--cpu-moe'] if (llamacpp_cpu_moe | bool) else [])
+            + (['--n-cpu-moe', llamacpp_n_cpu_moe] if (llamacpp_n_cpu_moe | length > 0) else [])
+          }}
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Create immutable llama.cpp smoke log directory
+      ansible.builtin.file:
+        path: "{{ llamacpp_smoke_log_dir }}"
+        state: directory
+        owner: "{{ llamacpp_owner }}"
+        group: "{{ llamacpp_group }}"
+        mode: '0755'
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Run bounded local-model llama.cpp smoke
+      become_user: "{{ llamacpp_owner }}"
+      ansible.builtin.command:
+        argv: "{{ llamacpp_smoke_argv }}"
+      register: llamacpp_smoke_output
+      changed_when: false
+      failed_when: false
+      environment:
+        CUDA_VISIBLE_DEVICES: "{{ llamacpp_selected_uuids | join(',') }}"
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Record bounded llama.cpp smoke output
+      ansible.builtin.copy:
+        dest: "{{ llamacpp_smoke_log_dir }}/smoke.txt"
+        owner: "{{ llamacpp_owner }}"
+        group: "{{ llamacpp_group }}"
+        mode: '0644'
+        content: |
+          {{ llamacpp_smoke_output.stdout | default('') }}
+          {{ llamacpp_smoke_output.stderr | default('') }}
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Create llama.cpp fact and environment directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - "{{ llamacpp_facts_path | dirname }}"
+        - "{{ llamacpp_env_path | dirname }}"
+
+    - name: Persist llama.cpp runtime facts
+      ansible.builtin.copy:
+        dest: "{{ llamacpp_facts_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          llamacpp:
+            schema_version: 1
+            generated_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+            mode: {{ llamacpp_mode_effective | to_json }}
+            source:
+              matrix_profile: {{ llamacpp_matrix_profile | to_json }}
+              repository_url: {{ llamacpp_repository_url | to_json }}
+              release: {{ llamacpp_release | to_json }}
+              commit: {{ llamacpp_commit | to_json }}
+              clean: {{ (llamacpp_source_status.stdout | trim | length == 0) | to_json }}
+            build:
+              profile: {{ llamacpp_build_profile | to_json }}
+              cuda_architectures: {{ llamacpp_cuda_architectures | to_json }}
+              cmake_options: {{ llamacpp_profile.cmake_options | to_json }}
+              source_dir: {{ llamacpp_source_dir | to_json }}
+              build_dir: {{ llamacpp_build_dir | to_json }}
+              install_dir: {{ llamacpp_install_dir | to_json }}
+            runtime:
+              version: {{ llamacpp_version_output.stdout | trim | to_json }}
+              selected_gpu_uuids: {{ llamacpp_selected_uuids | to_json }}
+              device_output: {{ llamacpp_device_output.stdout | to_json }}
+              binary_hashes: {{ llamacpp_binary_hashes.results | map(attribute='stat.checksum') | list | to_json }}
+              help_output: {{ llamacpp_help_output.stdout | to_json }}
+            smoke:
+              tested: {{ ((true if llamacpp_mode_effective == 'smoke' else llamacpp_previous_smoke.tested | default(false))) | to_json }}
+              passed: {{ (((llamacpp_smoke_output.rc | default(1) | int == 0) if llamacpp_mode_effective == 'smoke' else llamacpp_previous_smoke.passed | default(false))) | to_json }}
+              model_path: {{ ((llamacpp_model_path if llamacpp_mode_effective == 'smoke' else llamacpp_previous_smoke.model_path | default(''))) | to_json }}
+              log: {{ (((llamacpp_smoke_log_dir + '/smoke.txt') if llamacpp_mode_effective == 'smoke' else llamacpp_previous_smoke.log | default(''))) | to_json }}
+            safety:
+              model_downloaded: false
+              persistent_server_started: false
+              nvidia_policy_changed: false
+              global_p2p_enabled: false
+            readiness:
+              runtime_ready: true
+              local_model_smoke_ready: {{ (((llamacpp_smoke_output.rc | default(1) | int == 0) if llamacpp_mode_effective == 'smoke' else llamacpp_previous_smoke.passed | default(false))) | to_json }}
+
+    - name: Require bounded llama.cpp smoke success
+      ansible.builtin.assert:
+        that:
+          - llamacpp_smoke_output.rc | int == 0
+        fail_msg: >-
+          The bounded llama.cpp smoke failed or timed out. Review
+          {{ llamacpp_smoke_log_dir }}/smoke.txt.
+      when: llamacpp_mode_effective == 'smoke'
+
+    - name: Persist llama.cpp shell environment
+      ansible.builtin.copy:
+        dest: "{{ llamacpp_env_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by setup/cli/llm/llamacpp.sh.
+          export LLAMACPP_PROFILE={{ llamacpp_matrix_profile | quote }}
+          export LLAMACPP_HOME={{ llamacpp_install_dir | quote }}
+          export LLAMACPP_BIN={{ (llamacpp_install_dir + '/bin') | quote }}
+          export LLAMACPP_FACTS={{ llamacpp_facts_path | quote }}
+
+    - name: Promote validated llama.cpp profile atomically
+      ansible.builtin.file:
+        src: "{{ llamacpp_install_dir }}"
+        dest: /opt/llama.cpp/current
+        state: link
+        force: true
+        owner: "{{ llamacpp_owner }}"
+        group: "{{ llamacpp_group }}"
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Publish stable llama.cpp binary links
+      ansible.builtin.file:
+        src: "/opt/llama.cpp/current/bin/{{ item }}"
+        dest: "/opt/llm/bin/{{ item }}"
+        state: link
+        force: true
+      loop:
+        - llama-cli
+        - llama-server
+        - llama-bench
+      when: llamacpp_mode_effective in ['apply', 'upgrade']
+
+    - name: Report llama.cpp checkpoint
+      ansible.builtin.debug:
+        msg:
+          - "Reviewed source: {{ llamacpp_repository_url }}@{{ llamacpp_commit }}"
+          - "Build profile/SM: {{ llamacpp_build_profile }}/{{ llamacpp_cuda_architectures }}"
+          - "Selected GPUs: {{ llamacpp_selected_uuids | join(', ') }}"
+          - "Model-free runtime: READY"
+          - "Local-model smoke requested/passed: {{ llamacpp_mode_effective == 'smoke' }}/{{ llamacpp_smoke_output.rc | default(1) | int == 0 }}"

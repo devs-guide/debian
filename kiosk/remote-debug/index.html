@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Remote kiosk debugging · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/kiosk/">Kiosk</a> / <a href="/debian/kiosk/remote-debug/">Remote
+debug</a>
+    </p>
+    <article>
+      <h1 id="remote-kiosk-debugging">Remote kiosk debugging</h1>
+      <p>Start the X server only from its intended local console
+      session. After that session is running, an SSH session for the
+      same user can attach an application to the existing display by
+      setting the appropriate display and user runtime environment.</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">DISPLAY</span><span class="op">=</span>:0</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">XAUTHORITY</span><span class="op">=</span>/home/app/.Xauthority</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">XDG_RUNTIME_DIR</span><span class="op">=</span>/run/user/<span class="va">$(</span><span class="fu">id</span> <span class="at">-u</span> app<span class="va">)</span></span></code></pre></div>
+      <p>This is a debugging workflow, not a mechanism for starting an X
+      server over SSH. Check the target application’s display and
+      authentication expectations before attaching it. The complete
+      local-console STARTX policy belongs on the <a
+      href="/debian/cli/startx/">STARTX runner page</a>; do not replace
+      it with <code>startx</code> from an SSH session.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/startx.sh"><code>setup/cli/startx.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

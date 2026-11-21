@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Debian compatibility entrypoint · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/setup/">Setup</a> / <a href="/debian/setup/debian/">Debian</a>
+    </p>
+    <article>
+      <h1 id="debian-compatibility-entrypoint">Debian compatibility
+      entrypoint</h1>
+      <p><code>setup/debian.sh</code> remains a published compatibility
+      entrypoint for the baseline bootstrap flow.</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/debian.sh <span class="kw">|</span> <span class="fu">bash</span></span></code></pre></div>
+      <p>It accepts the same baseline behavior as
+      <code>bootstrap.sh</code>; it is retained for compatibility rather
+      than as a separate feature policy. Use the bootstrap page for
+      cache-refresh and release-overlay controls.</p>
+      <p>For new documentation and examples, prefer the primary <a
+      href="/debian/setup/bootstrap/">bootstrap runner</a>.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/debian.sh"><code>setup/debian.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/debian.sh">https://devs-guide.github.io/debian/setup/debian.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/debian.sh">https://devs-guide.github.io/debian/setup/debian.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

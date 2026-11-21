@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Ansible policy · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/ansible/">Ansible</a>
+    </p>
+    <article>
+      <h1 id="ansible-policy">Ansible policy</h1>
+      <p>The published runners stage the Ansible content under
+      <code>ansible/</code> at runtime. The package catalog and user
+      policy are documented here; feature-specific playbooks remain
+      documented by their matching runner pages.</p>
+      <ul>
+      <li><a href="/debian/ansible/packages/">Package catalog</a></li>
+      <li><a href="/debian/ansible/users/">User policy</a></li>
+      </ul>
+      <p>The baseline playlist is
+      <code>ansible/install.playbooks.txt</code>. It intentionally does
+      not include opt-in CLI, NVIDIA, or NVLink validation
+      playbooks.</p>
+      <h2 id="local-checkout-invocation">Local-checkout invocation</h2>
+      <p>These playbooks are intended for a prepared local checkout or
+      the runtime tree staged by a runner. Do not fetch an Ansible YAML
+      file alone and treat it as a standalone shell script.</p>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ansible-playbook</span> ansible/install.packages.yml <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-e</span> <span class="st">&#39;{&quot;package_group_overrides&quot;:{&quot;desktop_rdp_optional&quot;:false}}&#39;</span></span></code></pre></div>
+      <p>The exact inventory, privilege, and release-overlay choices are
+      host policy. For first-time hosts, use the <a
+      href="/debian/setup/bootstrap/">bootstrap runner</a>, which
+      resolves and stages those inputs together.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/ansible"><code>ansible</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

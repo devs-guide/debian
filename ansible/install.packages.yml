@@ -1,0 +1,148 @@
+---
+- name: Install Debian packages (grouped, user-tunable)
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_managed }}"
+    package_catalog_file: "{{ playbook_dir }}/{{ package_catalog_filename | default('packages.yml') }}"
+    package_catalog_url_effective: "{{ package_catalog_url }}"
+    default_disabled_groups:
+      - storage
+      - monitoring_benchmark
+      - hardware_info
+      - dev_tools
+      - archive_iso_tools
+      - desktop_rdp_optional
+      - apple_media_optional
+      - gpu_vendor_optional
+      - nvidia_runtime_support
+      - nvlink_validation_support
+      - llm_host_support
+      - ipmctl_build
+      - llamacpp_build
+      - ktransformers_build
+      - performance_power
+      - firmware
+    package_group_allowlist: []
+    package_show_disabled_groups: false
+
+  pre_tasks:
+    - name: Normalize package group override inputs
+      ansible.builtin.set_fact:
+        package_group_overrides_effective: "{{ package_group_overrides | default({}) }}"
+        package_group_allowlist_effective: "{{ package_group_allowlist | default([]) }}"
+        package_show_disabled_groups_effective: "{{ package_show_disabled_groups | default(false) }}"
+        package_overrides_effective: "{{ package_overrides | default({}) }}"
+        exclude_packages_effective: "{{ exclude_packages | default([]) }}"
+
+    - name: Check whether local package catalog exists
+      ansible.builtin.stat:
+        path: "{{ package_catalog_file }}"
+      register: package_catalog_stat
+
+    - name: Fetch package catalog from published source when local copy is missing
+      ansible.builtin.get_url:
+        url: "{{ package_catalog_url_effective }}"
+        dest: "{{ package_catalog_file }}"
+        mode: "0644"
+      when: not package_catalog_stat.stat.exists
+
+    - name: Load canonical Debian package catalog
+      ansible.builtin.set_fact:
+        package_catalog: "{{ lookup('file', package_catalog_file) | from_yaml }}"
+
+    - name: Merge package overrides into catalog
+      ansible.builtin.set_fact:
+        effective_catalog: "{{ package_catalog.groups | combine(package_overrides_effective, recursive=True) }}"
+
+    - name: Scope package catalog for feature runner
+      ansible.builtin.set_fact:
+        effective_catalog_scoped: >-
+          {{
+            (
+              effective_catalog
+              | dict2items
+              | selectattr('key', 'in', package_group_allowlist_effective)
+              | list
+              | items2dict
+            )
+            if (package_group_allowlist_effective | length > 0)
+            else effective_catalog
+          }}
+
+    - name: Check whether udftools is available from configured repositories
+      ansible.builtin.command:
+        argv:
+          - apt-cache
+          - show
+          - udftools
+      register: udftools_package_check
+      changed_when: false
+      failed_when: false
+
+    - name: Remove udftools from archive_iso_tools when unavailable
+      ansible.builtin.set_fact:
+        effective_catalog_scoped: >-
+          {{
+            effective_catalog_scoped
+            | combine(
+                {
+                  'archive_iso_tools': (
+                    effective_catalog_scoped.get('archive_iso_tools', {})
+                    | combine(
+                        {
+                          'packages': (
+                            effective_catalog_scoped.get('archive_iso_tools', {}).get('packages', [])
+                            | difference(['udftools'])
+                          )
+                        },
+                        recursive=True
+                      )
+                  )
+                },
+                recursive=True
+              )
+          }}
+      when:
+        - effective_catalog_scoped.get('archive_iso_tools') is mapping
+        - udftools_package_check.rc != 0
+
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: "{{ apt_cache_valid_time | default(0) }}"
+      when: not apt_skip_cache_refresh | default(false)
+
+  tasks:
+    - name: Build enabled package group list
+      ansible.builtin.set_fact:
+        enabled_package_group_items: >-
+          {{
+            effective_catalog_scoped
+            | dict2items
+            | selectattr('value.packages', 'defined')
+            | selectattr('value.packages', 'ne', [])
+            | list
+          }}
+
+    - name: Show selected package groups
+      ansible.builtin.debug:
+        msg: "Group {{ item.key }} packages: {{ item.value.packages | default([]) | difference(exclude_packages_effective) }}"
+      loop: "{{ enabled_package_group_items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when:
+        - package_show_disabled_groups_effective or package_group_overrides_effective.get(item.key, item.key not in default_disabled_groups)
+
+    - name: Install selected package groups
+      ansible.builtin.apt:
+        name: "{{ item.value.packages | default([]) | difference(exclude_packages_effective) }}"
+        state: present
+      loop: "{{ enabled_package_group_items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when:
+        - item.value.packages | default([]) | difference(exclude_packages_effective) | length > 0
+        - package_group_overrides_effective.get(item.key, item.key not in default_disabled_groups)

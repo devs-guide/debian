@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Tauri runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/tauri/">Tauri</a>
+    </p>
+    <article>
+      <h1 id="tauri-runner">Tauri runner</h1>
+      <p>Sets up optional Tauri runtime or build dependencies. Modes are
+      <code>preflight</code>, <code>apply</code>, and
+      <code>upgrade</code>.</p>
+      <h2 id="build-host-toolchain">Build-host toolchain</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/tauri.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_CLI_TAURI_MODE=apply <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_PROFILE=build <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_INSTALL_RUNTIME=1 <span class="dt">\</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS=1 <span class="dt">\</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_INSTALL_NODE=1 <span class="dt">\</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_NODE_INSTALL_SCOPE=shared <span class="dt">\</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_NODE_VERSION=<span class="st">&#39;lts/*&#39;</span> <span class="dt">\</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_ENABLE_COREPACK=1 <span class="dt">\</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_INSTALL_RUST=1 <span class="dt">\</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_RUST_TOOLCHAIN=stable <span class="dt">\</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_RUST_USER=root <span class="dt">\</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_INSTALL_CLI=1 <span class="dt">\</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_CLI_METHOD=npm <span class="dt">\</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>      DEBIAN_CLI_TAURI_NPM_PACKAGE=<span class="st">&#39;@tauri-apps/cli&#39;</span> <span class="dt">\</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>DEBIAN_CLI_TAURI_PROFILE</code></td>
+      <td>Selects the runtime or build dependency profile.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_CLI_TAURI_INSTALL_RUNTIME</code> /
+      <code>DEBIAN_CLI_TAURI_INSTALL_BUILD_DEPS</code></td>
+      <td>Explicitly enables runtime and native build dependencies.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_CLI_TAURI_INSTALL_NODE</code> /
+      <code>DEBIAN_CLI_TAURI_NODE_*</code></td>
+      <td>Installs the selected Node policy for the Tauri CLI.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_CLI_TAURI_INSTALL_RUST</code> /
+      <code>DEBIAN_CLI_TAURI_RUST_*</code></td>
+      <td>Installs Rust for the selected account and toolchain.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_CLI_TAURI_INSTALL_CLI</code> /
+      <code>DEBIAN_CLI_TAURI_CLI_METHOD</code></td>
+      <td>Installs the Tauri CLI with the selected package-manager
+      method.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_CLI_TAURI_INSTALL_APPIMAGE_TOOLS</code> /
+      <code>DEBIAN_CLI_TAURI_INSTALL_TEST_TOOLS</code></td>
+      <td>Optional packaging and test tooling; omitted from this minimal
+      build-host example.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>When setting variables for a streamed runner, put
+      <code>env</code> on the <strong>right</strong> side of the pipe
+      (or export them first), so the downloaded shell receives the
+      <code>DEBIAN_CLI_TAURI_*</code> values. Use <code>preflight</code>
+      before an apply run and <code>upgrade</code> with the same policy
+      when intentionally updating the toolchain.</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/tauri.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_CLI_TAURI_PROFILE=build bash</span></code></pre></div>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/tauri.sh"><code>setup/cli/tauri.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/tauri.sh">https://devs-guide.github.io/debian/setup/cli/tauri.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/tauri.sh">https://devs-guide.github.io/debian/setup/cli/tauri.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

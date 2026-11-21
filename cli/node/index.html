@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>Node LTS runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/node/">Node</a>
+    </p>
+    <article>
+      <h1 id="node-lts-runner">Node LTS runner</h1>
+      <p>Installs or updates the Node feature selected by
+      <code>DEBIAN_NODE_*</code> variables. Modes are
+      <code>preflight</code>, <code>apply</code>, and
+      <code>upgrade</code>; the default is <code>apply</code>.</p>
+      <h2 id="preflight">Preflight</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/node.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_NODE_MODE=preflight bash</span></code></pre></div>
+      <h2 id="shared-node-lts-installation">Shared Node LTS
+      installation</h2>
+      <p>This example installs the current Node LTS selection into the
+      shared NVM location and exposes <code>node</code>/<code>npm</code>
+      through system symlinks.</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/node.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_NODE_MODE=apply <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_NODE_VERSION=<span class="st">&#39;lts/*&#39;</span> <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_NODE_INSTALL_SCOPE=shared <span class="dt">\</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>      DEBIAN_NODE_NPM_POLICY=bundled <span class="dt">\</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>      DEBIAN_NODE_CREATE_SYSTEM_SYMLINKS=1 <span class="dt">\</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>      DEBIAN_NODE_ENABLE_COREPACK=1 <span class="dt">\</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>DEBIAN_NODE_MODE</code></td>
+      <td>Selects <code>preflight</code>, <code>apply</code>, or
+      <code>upgrade</code>.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_NODE_VERSION</code></td>
+      <td>NVM version selector; <code>lts/*</code> follows the current
+      LTS line. Pin a concrete version for repeatable hosts.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_NODE_INSTALL_SCOPE</code></td>
+      <td><code>shared</code> installs under
+      <code>/usr/local/lib/nvm</code>; <code>private</code> uses a
+      per-user NVM directory.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_NODE_NPM_POLICY</code></td>
+      <td>Keeps the Node-bundled npm policy in this example.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_NODE_CREATE_SYSTEM_SYMLINKS</code></td>
+      <td>Makes the selected shared <code>node</code> and
+      <code>npm</code> available on the normal system path.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_NODE_ENABLE_COREPACK</code></td>
+      <td>Enables Corepack for package-manager shims when the selected
+      Node release supports it.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>The runner stages <code>ansible/cli/node.yml</code> and its
+      runtime support before invoking Ansible. Use <code>upgrade</code>
+      with the same policy when intentionally moving an existing host
+      forward.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/node.sh"><code>setup/cli/node.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/node.sh">https://devs-guide.github.io/debian/setup/cli/node.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/node.sh">https://devs-guide.github.io/debian/setup/cli/node.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

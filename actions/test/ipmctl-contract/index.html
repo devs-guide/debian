@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>ipmctl contract action · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/actions/">Actions</a> / <a href="/debian/actions/test/">Test</a> / <a href="/debian/actions/test/ipmctl-contract/">ipmctl-contract</a>
+    </p>
+    <article>
+      <h1 id="ipmctl-contract-action">ipmctl contract action</h1>
+      <p><code>actions/test.ipmctl-contract.sh</code> performs
+      repository-local validation of the Debian 13 ipmctl feature. It
+      checks:</p>
+      <ul>
+      <li>the two-mode <code>install</code> and <code>verify</code>
+      runner interface;</li>
+      <li>exact ipmctl and EDK2 tags, commits, and expected binary
+      version;</li>
+      <li>all three vendored patch SHA-256 values and sole target
+      declarations;</li>
+      <li>strict preimage, apply, reverse-check, postimage, and
+      diff-check tasks;</li>
+      <li>unmanaged-install refusal, managed receipt, and idempotence
+      gates;</li>
+      <li>read-only verification and LLM live-ipmctl integration;</li>
+      <li>removal of the old source-profile, inventory, goal, and
+      hosted-build paths;</li>
+      <li>Bash syntax, YAML parsing, embedded shell syntax, and Ansible
+      syntax when the validation environment provides Ansible.</li>
+      </ul>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.ipmctl-contract.sh</span></code></pre></div>
+      <p>For a minimal local check without Ansible syntax
+      validation:</p>
+      <div class="sourceCode" id="cb2"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> actions/test.ipmctl-contract.sh <span class="at">--shell-only</span></span></code></pre></div>
+      <p>The action does not clone source, compile ipmctl, install
+      packages, run PMem discovery, or change PMem state. Exact-source
+      compilation and the four read-only hardware probes are acceptance
+      steps on the Debian 13 PMem host.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/actions/test.ipmctl-contract.sh"><code>actions/test.ipmctl-contract.sh</code></a></p>
+      
+    </footer>
+  </main>
+</body>
+</html>

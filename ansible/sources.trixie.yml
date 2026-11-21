@@ -1,0 +1,86 @@
+---
+- name: "[debian]: configure apt sources for Trixie"
+  hosts: all
+  become: true
+
+  vars:
+    ansible_python_interpreter: "{{ ansible_python_interpreter_system }}"
+    debian_release: "trixie"
+    debian_components: "main contrib non-free non-free-firmware"
+    debian_sources_path: "/etc/apt/sources.list.d/debian.sources"
+
+  tasks:
+    - name: Ensure apt keyring directory exists
+      ansible.builtin.file:
+        path: "/etc/apt/keyrings"
+        state: directory
+        mode: "0755"
+
+    - name: Configure Debian sources (deb822)
+      ansible.builtin.copy:
+        dest: "{{ debian_sources_path }}"
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: http://deb.debian.org/debian
+          Suites: {{ debian_release }} {{ debian_release }}-updates {{ debian_release }}-backports
+          Components: {{ debian_components }}
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+          Types: deb
+          URIs: http://security.debian.org/debian-security
+          Suites: {{ debian_release }}-security
+          Components: {{ debian_components }}
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+    - name: Check legacy apt sources list
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list
+      register: legacy_sources_list_stat
+
+    - name: Check whether legacy apt sources list has active entries
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -Eq
+          - '^[[:space:]]*deb(-src)?[[:space:]]+'
+          - /etc/apt/sources.list
+      register: legacy_sources_active_check
+      changed_when: false
+      failed_when: false
+      when: legacy_sources_list_stat.stat.exists
+
+    - name: Back up active legacy apt sources list once
+      ansible.builtin.copy:
+        src: /etc/apt/sources.list
+        dest: /etc/apt/sources.list.debian-bootstrap.bak
+        remote_src: true
+        force: false
+        owner: root
+        group: root
+        mode: "0644"
+      when:
+        - legacy_sources_list_stat.stat.exists
+        - legacy_sources_active_check.rc == 0
+
+    - name: Disable legacy apt sources list when using deb822 sources
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by devs-guide Debian bootstrap.
+          # Debian {{ debian_release }} uses deb822 sources in:
+          #   {{ debian_sources_path }}
+          #
+          # The previous active legacy file was backed up once to:
+          #   /etc/apt/sources.list.debian-bootstrap.bak
+      when:
+        - legacy_sources_list_stat.stat.exists
+        - legacy_sources_active_check.rc == 0
+
+    - name: Refresh apt cache for new sources
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0

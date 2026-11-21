@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Documentation for devs-guide/debian.">
+  <title>STARTX runner · devs-guide/debian</title>
+  <link rel="stylesheet" href="/debian/assets/docs/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/debian/">devs-guide/debian</a>
+      <nav aria-label="Primary">
+        <a href="/debian/setup/">Setup</a>
+        <a href="/debian/cli/">CLI</a>
+        <a href="/debian/ansible/">Ansible</a>
+        <a href="/debian/actions/">Actions</a>
+        <a href="/debian/kiosk/">Kiosk</a>
+        <a href="/debian/history/">History</a>
+      </nav>
+    </div>
+  </header>
+  <main class="page-shell">
+    <p class="breadcrumb">
+      <a href="/debian/">Home</a> / <a href="/debian/cli/">CLI</a> / <a href="/debian/cli/startx/">STARTX</a>
+    </p>
+    <article>
+      <h1 id="startx-runner">STARTX runner</h1>
+      <p>Creates the local-console X startup wiring used by a kiosk
+      profile. Modes are <code>preflight</code>, <code>apply</code>, and
+      <code>disable</code>.</p>
+      <h2 id="local-console-startx-wrapper">Local-console STARTX
+      wrapper</h2>
+      <div class="sourceCode" id="cb1"><pre
+      class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">wget</span> <span class="at">-qO-</span> https://devs-guide.github.io/debian/setup/cli/startx.sh <span class="kw">|</span> <span class="dt">\</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">env</span> DEBIAN_STARTX_MODE=apply <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_ENABLE=1 <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_USER=app <span class="dt">\</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_TTY=tty1 <span class="dt">\</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_DISPLAY=:0 <span class="dt">\</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_INSTALL_PACKAGES=1 <span class="dt">\</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_MANAGE_XWRAPPER=1 <span class="dt">\</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_MANAGE_XINITRC=1 <span class="dt">\</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_MANAGE_WRAPPER=1 <span class="dt">\</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_WRAPPER_PATH=/usr/local/bin/kiosk-startx <span class="dt">\</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>      DEBIAN_STARTX_OPENBOX_COMMAND=/usr/bin/openbox-session <span class="dt">\</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>      bash</span></code></pre></div>
+      <table>
+      <thead>
+      <tr class="header">
+      <th>Variable</th>
+      <th>Purpose</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr class="odd">
+      <td><code>DEBIAN_STARTX_USER</code> /
+      <code>DEBIAN_STARTX_TTY</code> /
+      <code>DEBIAN_STARTX_DISPLAY</code></td>
+      <td>Defines the local console identity and X display.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_STARTX_MANAGE_XWRAPPER</code></td>
+      <td>Manages the Xorg wrapper policy needed for the intended
+      console user.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_STARTX_MANAGE_XINITRC</code> /
+      <code>DEBIAN_STARTX_MANAGE_WRAPPER</code></td>
+      <td>Creates the managed startup files and wrapper.</td>
+      </tr>
+      <tr class="even">
+      <td><code>DEBIAN_STARTX_OPENBOX_COMMAND</code></td>
+      <td>Application/session command executed at the end of the managed
+      X startup.</td>
+      </tr>
+      <tr class="odd">
+      <td><code>DEBIAN_STARTX_SERVER_ARGS</code></td>
+      <td>Optional X-server arguments; the default disables TCP
+      listening.</td>
+      </tr>
+      </tbody>
+      </table>
+      <p>The managed wrapper defaults to
+      <code>/usr/local/bin/kiosk-startx</code>; it is intended for a
+      local console session, not for starting an X server over SSH.</p>
+    </article>
+    <footer>
+      <p>Repository source: <a href="https://github.com/devs-guide/debian/blob/main/setup/cli/startx.sh"><code>setup/cli/startx.sh</code></a></p>
+      <p>Published runner: <a href="<a
+href="https://devs-guide.github.io/debian/setup/cli/startx.sh">https://devs-guide.github.io/debian/setup/cli/startx.sh</a>"><code><a
+href="https://devs-guide.github.io/debian/setup/cli/startx.sh">https://devs-guide.github.io/debian/setup/cli/startx.sh</a></code></a></p>
+    </footer>
+  </main>
+</body>
+</html>

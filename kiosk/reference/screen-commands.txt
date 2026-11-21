@@ -1,0 +1,3 @@
+Historical reference only. The original screen commands are retained in
+docs/screen.txt in the repository. Verify display outputs, running user, and
+window IDs on the current host before using any command.
